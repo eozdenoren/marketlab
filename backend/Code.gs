@@ -1,28 +1,76 @@
 /* Marketplace Laboratory: class record endpoint (Google Apps Script, bound to the Google Sheet).
 
    Two tokens: TOKEN is baked into the student page (anyone can read it); ADMIN_TOKEN is
-   known only to the instructor view. A group's PIN is derived from PIN_SECRET, so there is
-   no list to keep: pin = first four digits of SHA-256(PIN_SECRET | class | group).
+   known only to the instructor view. Groups register their own PIN the first time a group
+   number is used in a class (first come, first served); the instructor can reset a group.
 
-   POST {token, records:[{group, question, finding, state, pin}]}
-        page token: each record needs the right PIN for (state.class, group); admin: no PIN.
-        The server stamps the time; a client's ts is ignored.
-   GET  ?token=<page>&class=&group=&pin=   -> that group's records
-        ?token=<admin>[&class=]            -> every record (the instructor view)
-        ?token=<admin>&action=pins&class=&n=45 -> the PIN list for groups 1..n
-   Sheet layout (tab "findings"): ts | group | question | finding | state, read by both sides. */
-var SHEET_NAME = "findings";
+   Tabs: "findings" (ts | group | question | finding | state) and "groups" (class | group | pin | names | registered).
+
+   GET  ?token=<page>&action=check&class=&group=&pin=   -> {status:"new"} | {status:"ok", records:[...]} | bad pin
+        ?token=<admin>[&class=]                         -> every record (the instructor view)
+        ?token=<admin>&action=groups&class=             -> registered groups of a class
+   POST {token:<page>, action:"register", class, group, pin, names}   -> registers (refused if taken)
+        {token:<page>, records:[{group, question, finding, state, pin}]} -> appended if the PIN matches
+        {token:<admin>, records:[...]}                 -> appended, no PIN
+        {token:<admin>, action:"reset", class, group}  -> clears that group's registration */
+var FINDINGS = "findings", GROUPS = "groups";
 var TOKEN = "PAGE-TOKEN";          // same value as "token" in the page's build config
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor view only (app/.streamlit/secrets.toml)
-var PIN_SECRET = "PIN-SECRET";     // never shared; changing it changes every PIN
 
-function pinFor(cls, group) {
-  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, PIN_SECRET + "|" + cls + "|" + group, Utilities.Charset.UTF_8);
-  var n = 0;
-  for (var i = 0; i < 4; i++) n = n * 256 + (bytes[i] < 0 ? bytes[i] + 256 : bytes[i]);
-  var s = String(n % 10000);
-  while (s.length < 4) s = "0" + s;
-  return s;
+function sheet(name, header) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  if (sh.getLastRow() === 0) sh.appendRow(header);
+  return sh;
+}
+function findingsSheet() { return sheet(FINDINGS, ["ts", "group", "question", "finding", "state"]); }
+function groupsSheet() { return sheet(GROUPS, ["class", "group", "pin", "names", "registered"]); }
+
+function findGroup(cls, group) {
+  var values = groupsSheet().getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][0]) === cls && String(values[i][1]) === group)
+      return { row: i + 1, pin: String(values[i][2]), names: String(values[i][3] || ""), registered: values[i][4] };
+  }
+  return null;
+}
+function pinOk(cls, group, pin) {
+  var g = findGroup(cls, group);
+  return !!g && g.pin === String(pin || "");
+}
+function groupRecords(cls, group) {
+  var values = findingsSheet().getDataRange().getValues(), out = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (group !== undefined && String(row[1]) !== group) continue;
+    var st = {};
+    try { st = JSON.parse(row[4] || "{}"); } catch (err) {}
+    if (cls !== undefined && String(st["class"] || "") !== cls) continue;
+    out.push({ ts: Number(row[0]), group: row[1], question: row[2], finding: row[3], state: st });
+  }
+  return out;
+}
+
+function doGet(e) {
+  var p = e.parameter || {};
+  var admin = p.token === ADMIN_TOKEN;
+  if (!admin && p.token !== TOKEN) return reply({ ok: false, error: "bad token" });
+  if (admin) {
+    if (p.action === "groups") {
+      var values = groupsSheet().getDataRange().getValues(), groups = [];
+      for (var i = 1; i < values.length; i++) {
+        if (p["class"] !== undefined && String(values[i][0]) !== p["class"]) continue;
+        groups.push({ "class": values[i][0], group: values[i][1], pin: String(values[i][2]), names: values[i][3] || "", registered: String(values[i][4] || "") });
+      }
+      return reply({ ok: true, groups: groups });
+    }
+    return reply({ ok: true, records: groupRecords(p["class"], undefined) });
+  }
+  if (p.group === undefined || p["class"] === undefined) return reply({ ok: false, error: "group and class required" });
+  var cls = String(p["class"]), group = String(p.group), g = findGroup(cls, group);
+  if (!g) return reply({ ok: true, status: "new" });
+  if (g.pin !== String(p.pin || "")) return reply({ ok: false, error: "bad pin" });
+  return reply({ ok: true, status: "ok", names: g.names, records: groupRecords(cls, group) });
 }
 
 function doPost(e) {
@@ -31,52 +79,31 @@ function doPost(e) {
   if (!data) return reply({ ok: false, error: "bad JSON" });
   var admin = data.token === ADMIN_TOKEN;
   if (!admin && data.token !== TOKEN) return reply({ ok: false, error: "bad token" });
-  var records = (data.records || []).slice(0, 50), rows = [], rejected = 0, now = Date.now() / 1000;
-  records.forEach(function (r, i) {
-    var st = r.state || {}, group = String(r.group || "");
-    if (!admin && pinFor(String(st["class"] || ""), group) !== String(r.pin || "")) { rejected++; return; }
-    rows.push([String(now + i / 1000), group, String(r.question || ""), String(r.finding || ""), JSON.stringify(st)]);
-  });
-  if (rows.length) {
-    var lock = LockService.getScriptLock();
-    lock.waitLock(15000);
-    try { var sh = sheet(); sh.getRange(sh.getLastRow() + 1, 1, rows.length, 5).setValues(rows); }
-    finally { lock.releaseLock(); }
-  }
-  if (rejected && !rows.length) return reply({ ok: false, error: "bad pin", rejected: rejected });
-  return reply({ ok: true, n: rows.length, rejected: rejected });
-}
-
-function doGet(e) {
-  var p = e.parameter || {};
-  var admin = p.token === ADMIN_TOKEN;
-  if (!admin && p.token !== TOKEN) return reply({ ok: false, error: "bad token" });
-  if (admin && p.action === "pins") {
-    var n = Math.min(parseInt(p.n, 10) || 45, 500), pins = [];
-    for (var g = 1; g <= n; g++) pins.push({ group: "Group " + g, pin: pinFor(String(p["class"] || ""), "Group " + g) });
-    return reply({ ok: true, pins: pins });
-  }
-  if (!admin) {
-    if (p.group === undefined || p["class"] === undefined) return reply({ ok: false, error: "group and class required" });
-    if (pinFor(String(p["class"]), String(p.group)) !== String(p.pin || "")) return reply({ ok: false, error: "bad pin" });
-  }
-  var values = sheet().getDataRange().getValues(), out = [];
-  for (var i = 1; i < values.length; i++) {
-    var row = values[i];
-    if (p.group !== undefined && String(row[1]) !== p.group) continue;
-    var st = {};
-    try { st = JSON.parse(row[4] || "{}"); } catch (err) {}
-    if (p["class"] !== undefined && String(st["class"] || "") !== p["class"]) continue;
-    out.push({ ts: Number(row[0]), group: row[1], question: row[2], finding: row[3], state: st });
-  }
-  return reply({ ok: true, records: out });
-}
-
-function sheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-  if (sh.getLastRow() === 0) sh.appendRow(["ts", "group", "question", "finding", "state"]);
-  return sh;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    if (data.action === "register" && !admin) {
+      var cls = String(data["class"] || ""), group = String(data.group || ""), pin = String(data.pin || "");
+      if (!/^\d{4}$/.test(pin) || !/^Group \d+$/.test(group)) return reply({ ok: false, error: "a four-digit PIN and a group number are required" });
+      if (findGroup(cls, group)) return reply({ ok: false, error: "taken" });
+      groupsSheet().appendRow([cls, group, pin, String(data.names || ""), new Date().toISOString()]);
+      return reply({ ok: true, status: "registered" });
+    }
+    if (data.action === "reset" && admin) {
+      var g = findGroup(String(data["class"] || ""), String(data.group || ""));
+      if (g) groupsSheet().deleteRow(g.row);
+      return reply({ ok: true, reset: !!g });
+    }
+    var records = (data.records || []).slice(0, 50), rows = [], rejected = 0, now = Date.now() / 1000;
+    records.forEach(function (r, i) {
+      var st = r.state || {}, grp = String(r.group || "");
+      if (!admin && !pinOk(String(st["class"] || ""), grp, r.pin)) { rejected++; return; }
+      rows.push([String(now + i / 1000), grp, String(r.question || ""), String(r.finding || ""), JSON.stringify(st)]);
+    });
+    if (rows.length) { var sh = findingsSheet(); sh.getRange(sh.getLastRow() + 1, 1, rows.length, 5).setValues(rows); }
+    if (rejected && !rows.length) return reply({ ok: false, error: "bad pin", rejected: rejected });
+    return reply({ ok: true, n: rows.length, rejected: rejected });
+  } finally { lock.releaseLock(); }
 }
 
 function reply(obj) {

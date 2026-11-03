@@ -1038,11 +1038,24 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     fetch(groupUrl(S.group)).then(function (r) { return r.json(); }).then(function (j) { cb(j && j.ok ? j.records : null); }).catch(function () { cb(null); });
   }
   function checkPin(group, cb) {
-    // cb(status, records): "ok" | "bad" | "unknown" (no endpoint or no network)
-    if (!ENDPOINT) { cb("unknown", null); return; }
-    fetch(groupUrl(group)).then(function (r) { return r.json(); })
-      .then(function (j) { if (j && j.ok) cb("ok", j.records); else if (j && /pin/.test(j.error || "")) cb("bad", null); else cb("unknown", null); })
-      .catch(function () { cb("unknown", null); });
+    // cb(status, records, names): "ok" | "new" | "bad" | "unknown" (no endpoint or no network)
+    if (!ENDPOINT) { cb("unknown", null, ""); return; }
+    fetch(groupUrl(group) + "&action=check").then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.status === "new") cb("new", null, "");
+        else if (j && j.ok) cb("ok", j.records || null, j.names || "");
+        else if (j && /pin/.test(j.error || "")) cb("bad", null, "");
+        else cb("unknown", null, "");
+      })
+      .catch(function () { cb("unknown", null, ""); });
+  }
+  function registerGroup(group, cb) {
+    // cb("registered" | "taken" | "error")
+    fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                      body: JSON.stringify({ token: TOKEN, action: "register", "class": S.classCode, group: "Group " + group.number, pin: group.pin, names: group.names || "" }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { cb(j && j.ok ? "registered" : (j && j.error === "taken" ? "taken" : "error")); })
+      .catch(function () { cb("error"); });
   }
   function restoreFromRecords(recs) {
     if (!recs || !recs.length) return;
@@ -1102,7 +1115,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       (needPin ? '<div><label for="group-pin">PIN</label><input type="text" id="group-pin" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off" value="' + esc(groupPin()) + '"></div>' : "") +
       '<div><label for="group-names">Names of the group members (optional)</label><input type="text" id="group-names" placeholder="Ana Lopes, Bo Chen, Chidi Okafor" value="' + esc(groupNames()) + '"></div>' +
       '<div><button type="submit" class="primary" id="group-save" style="width:100%">Save</button></div></form>' +
-      '<div class="caption" style="margin-top:6px">' + (S.classCode ? "Class " + esc(S.classCode) + ". " : "") + (needPin ? "Your group number and PIN were given out with the study groups." : "") + '</div>' +
+      '<div class="caption" style="margin-top:6px">' + (S.classCode ? "Class " + esc(S.classCode) + ". " : "") + (needPin ? "The first time your group uses its number in this class you will be asked to choose a PIN." : "") + '</div>' +
       '<div id="group-error" class="error" hidden></div>';
     $("group-form").onsubmit = function (ev) {
       ev.preventDefault();
@@ -1112,7 +1125,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       if (needPin && !/^\d{4}$/.test(pin)) { errEl.textContent = "Please enter the four-digit PIN of your group."; errEl.hidden = false; return; }
       var names = $("group-names").value.split(/[,;\n]|\band\b|&/).map(function (s) { return s.trim(); }).filter(Boolean).join(", ");
       var candidate = { number: n, names: names, pin: pin }, prev = S.group;
-      var finish = function (recs) {
+      var finish = function (recs, knownNames) {
+        if (!candidate.names && knownNames) candidate.names = knownNames;
         S.group = candidate; S.editingGroup = false; S.pinRejected = false;
         if (!prev || prev.number !== n) {
           var stored = loadStored(storeKey());
@@ -1121,15 +1135,45 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
         if (recs) restoreFromRecords(recs);
         saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment(); renderStatus(); flush();
       };
-      if (!needPin) { finish(null); return; }
+      if (!needPin) { finish(null, ""); return; }
       $("group-save").disabled = true; $("group-save").textContent = "Checking…";
-      checkPin(candidate, function (status, recs) {
+      checkPin(candidate, function (status, recs, knownNames) {
         if (status === "bad") {
           $("group-save").disabled = false; $("group-save").textContent = "Save";
-          errEl.textContent = "That group number and PIN do not match. Check the PIN you were given for this class."; errEl.hidden = false;
+          errEl.textContent = "Group " + n + " is already registered in this class with a different PIN. Check your PIN, or ask the instructor to reset the group."; errEl.hidden = false;
           return;
         }
-        finish(recs);
+        if (status === "new") { renderRegister(candidate, finish); return; }
+        finish(recs, knownNames);
+      });
+    };
+  }
+  function renderRegister(candidate, finish) {
+    var el = $("group-panel");
+    el.innerHTML = '<div class="info"><b>Group ' + candidate.number + '</b> is not registered in class ' + esc(S.classCode) + ' yet. ' +
+      'If that is your group number, choose a four-digit PIN for your group and confirm it. Everyone in the group will use this number and PIN; ' +
+      'write it down. If the number is wrong, go back.</div>' +
+      '<form id="register-form" class="group-form with-pin">' +
+      '<div><label>Group number</label><div style="font-size:1.6rem;font-weight:600;padding:2px 0">' + candidate.number + '</div></div>' +
+      '<div><label for="reg-pin">PIN</label><input type="text" id="reg-pin" inputmode="numeric" maxlength="4" autocomplete="off" value="' + esc(candidate.pin) + '"></div>' +
+      '<div><label for="reg-pin2">Confirm PIN</label><input type="text" id="reg-pin2" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="same 4 digits"></div>' +
+      '<div><button type="submit" class="primary" id="reg-save" style="width:100%">Register Group ' + candidate.number + '</button></div></form>' +
+      '<div class="row" style="margin-top:6px"><button type="button" id="reg-back" class="small">Back</button></div>' +
+      '<div id="reg-error" class="error" hidden></div>';
+    $("reg-back").onclick = function () { renderGroup(); };
+    $("register-form").onsubmit = function (ev) {
+      ev.preventDefault();
+      var p1 = ($("reg-pin").value || "").trim(), p2 = ($("reg-pin2").value || "").trim(), errEl = $("reg-error");
+      if (!/^\d{4}$/.test(p1)) { errEl.textContent = "The PIN must be four digits."; errEl.hidden = false; return; }
+      if (p1 !== p2) { errEl.textContent = "The two PINs differ; type the same four digits twice."; errEl.hidden = false; return; }
+      candidate.pin = p1;
+      $("reg-save").disabled = true; $("reg-save").textContent = "Registering…";
+      registerGroup(candidate, function (status) {
+        if (status === "registered") { finish(null, ""); return; }
+        $("reg-save").disabled = false; $("reg-save").textContent = "Register Group " + candidate.number;
+        errEl.textContent = status === "taken" ? "Someone has just registered this group number. If it is yours, ask the instructor to reset it."
+                                               : "Could not reach the class record. Check the wifi and try again.";
+        errEl.hidden = false;
       });
     };
   }

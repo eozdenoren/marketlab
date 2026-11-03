@@ -1,12 +1,18 @@
 # Class record endpoint (Google Apps Script)
 
 The page saves every pin, note and answer by POSTing to a Google Apps Script
-web app attached to the class Google Sheet. Five minutes to set up, once.
+web app attached to the class Google Sheet. Groups register their own PIN the
+first time a group number is used in a class (tab `groups`); the instructor view
+uses the admin token to list groups, reset one, and read every record. Five
+minutes to set up, once; after a code change: Deploy > Manage deployments >
+edit > New version.
 
 1. Open the Google Sheet that holds the `findings` tab (the same sheet the
    Streamlit instructor view reads; create a new sheet if there is none yet).
 2. Extensions > Apps Script. Delete the sample code, paste `Code.gs`.
-3. Change `TOKEN` to a long random string (keep it: the page needs it too).
+3. Paste `Code.local.gs` (the private copy with the real tokens) rather than
+   `Code.gs`; or set `TOKEN` and `ADMIN_TOKEN` yourself and put the same values
+   in `config.json` and `app/.streamlit/secrets.toml`.
 4. Deploy > New deployment > type "Web app". Execute as: **Me**. Who has access:
    **Anyone**. Deploy, authorise when asked, and copy the web app URL
    (it ends in `/exec`).
