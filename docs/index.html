@@ -94,6 +94,13 @@ table.grid.labbook td.note-cell { white-space: normal; min-width: 160px; font-si
 .question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
 footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
+.qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
+details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
+details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
+details[open].prompt > summary::before { content: "\25BE "; }
+details.prompt > summary::-webkit-details-marker { display: none; }
+details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem; }
 
 </style>
 </head>
@@ -107,12 +114,10 @@ footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
     <button type="button" data-tab="lab" class="active">Laboratory</button>
     <button type="button" data-tab="ext">Externalities</button>
     <button type="button" data-tab="book">Lab book</button>
-    <button type="button" data-tab="assign">Assignment</button>
   </nav>
   <section id="tab-lab"></section>
   <section id="tab-ext" hidden></section>
   <section id="tab-book" hidden></section>
-  <section id="tab-assign" hidden></section>
   <footer><span id="footer-status"></span></footer>
 </div>
 <script>window.MARKETLAB_CONFIG = {"endpoint": "https://script.google.com/macros/s/AKfycbwW81B0dE2LprFnKPKBrGQhMi8r1JiZkeWoPOj4zGk6sepwOcdNyhMr_lhTNBFZus7r5A/exec", "token": "marketlab", "admin_token": "admin-wNymmGhoEmsWa9eShIPtSvad"};</script>
@@ -930,15 +935,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
 
   var QUESTIONS = [
-    "1. Tax on sellers versus the same tax on buyers: who really pays?",
-    "2. Steeper supply or demand: who bears more of the tax?",
-    "3. Doubling the tax: what happens to revenue and to the deadweight loss?",
-    "4. Rent control: a price ceiling and the three rationing rules",
-    "5. A subsidy to sellers: who gains, who pays, and is there a deadweight loss?",
-    "6. Pollution: what tax or permit cap puts the market right?",
-    "Other / free exploration"];
-  var EXT_QUESTION = 5;
-  var ASSIGNMENT = [
     { id: "q1", title: "1. Who really pays a tax?",
       prompt: "Use the default market. Put a tax of 20 per unit on sellers, then remove it and put the same tax on buyers. For both cases report the market price, the price buyers actually pay, the price sellers actually receive, the quantity traded and the tax revenue. Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
     { id: "q2", title: "2. Elasticity and the burden of a tax",
@@ -948,7 +944,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     { id: "q4", title: "4. Rent control",
       prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. Report the shortage, producer surplus, consumer surplus and the deadweight loss under each rule. Explain why consumer surplus depends on who gets the flats, say which rule you think describes real rent control best, and use the Winners and losers tab to say who would support the policy." },
     { id: "q5", title: "5. A subsidy",
-      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20). Report the market price, what buyers pay and sellers receive, the quantity, the cost to the government, the gains to buyers and to sellers, and the deadweight loss. Buyers and sellers are both better off, so why does the subsidy lower total surplus, and who ultimately pays for it?" }];
+      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20). Report the market price, what buyers pay and sellers receive, the quantity, the cost to the government, the gains to buyers and to sellers, and the deadweight loss. Buyers and sellers are both better off, so why does the subsidy lower total surplus, and who ultimately pays for it?" },
+    { id: "q6", title: "6. Pollution: the tax or permit cap that puts the market right",
+      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Then find the tax on sellers that brings the deadweight loss to zero and pin it; try the same tax on buyers, and a permit cap instead. Report who bears the harm before any policy, how the right tax relates to the harm, and whether the cap does the same job. Who gains and who loses from the policy?" },
+    { id: "own", title: "Your own experiments",
+      prompt: "Anything you tried beyond the questions above. Give each column a label and a note saying what it shows, and write here what you learned from it." }];
+  var EXT_QUESTION = 5;
+  function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
   var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
                ["inefficient", "Inefficient: lowest values (or highest costs) are served first"]];
@@ -977,7 +979,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function debounce(fn, ms) { var t; return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); }; }
 
   // ---- state ----------------------------------------------------------------------
-  var S = { classCode: "", group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab",
+  var S = { classCode: "", group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab", lastQ: {},
             inner: { lab: "outcomes", ext: "outcomes" }, hidden: { lab: {}, ext: {} }, lastSaved: null, lastError: "", pinMsg: {} };
   function freshPolicy() { return { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none", control_value: 0, rationing: "efficient", rent_to: "sellers", regional: {} }; }
   function freshLab() { return { supply: clone(DEFAULT_LAB.supply), demand: clone(DEFAULT_LAB.demand), policy: freshPolicy() }; }
@@ -988,7 +990,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function storeKey() { return "marketlab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
     try {
-      localStorage.setItem(storeKey(), JSON.stringify({ lab: S.lab, ext: S.ext, book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab }));
+      localStorage.setItem(storeKey(), JSON.stringify({ lab: S.lab, ext: S.ext, book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab === "assign" ? "book" : S.tab, lastQ: S.lastQ }));
       localStorage.setItem("marketlab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) { /* storage full or disabled: the page still works */ }
   }
@@ -1000,7 +1002,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     (d.book || []).forEach(function (e) { if (!have[e.id]) S.book.push(e); });
     if (!S.notes && d.notes) S.notes = d.notes;
     Object.keys(d.answers || {}).forEach(function (k) { if (!S.answers[k]) S.answers[k] = d.answers[k]; });
-    if (d.tab) S.tab = d.tab;
+    if (d.tab) S.tab = d.tab === "assign" ? "book" : d.tab;
+    if (d.lastQ && typeof d.lastQ === "object") S.lastQ = d.lastQ;
   }
 
   // ---- class record (save queue) --------------------------------------------------
@@ -1089,7 +1092,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     else if (queue.length) parts.push("Saving…");
     else if (S.lastSaved) parts.push("Saved to the class record at " + timeStr(S.lastSaved));
     el.innerHTML = parts.join(" · ");
-    ["book-status", "assign-status"].forEach(function (id) {
+    ["book-status"].forEach(function (id) {
       var s = $(id); if (!s) return;
       if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this laptop only.";
       else if (S.pinRejected) { s.textContent = "The class record refused the group number and PIN; press Change at the top and enter them again."; s.className = "status err"; }
@@ -1133,7 +1136,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
           if (stored) { var keepLab = S.lab, keepExt = S.ext; mergeStored(stored); S.lab = keepLab; S.ext = keepExt; }
         }
         if (recs) restoreFromRecords(recs);
-        saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment(); renderStatus(); flush();
+        saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderStatus(); flush();
       };
       if (!needPin) { finish(null, ""); return; }
       $("group-save").disabled = true; $("group-save").textContent = "Checking…";
@@ -1181,7 +1184,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   // ---- tabs -------------------------------------------------------------------------
   function showTab(name) {
     S.tab = name;
-    ["lab", "ext", "book", "assign"].forEach(function (t) { $("tab-" + t).hidden = t !== name; });
+    ["lab", "ext", "book"].forEach(function (t) { $("tab-" + t).hidden = t !== name; });
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-tab") === name); });
     if (name === "book") renderBook();
     saveLocal();
@@ -1273,7 +1276,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function pinPanel(which, suggestion, qIndex) {
     var dis = S.group ? "" : " disabled";
     return '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" placeholder="' + esc(suggestion) + '" title="Leave blank to use the suggested label."></div>' +
-      '<div><label for="' + which + '-pin-q">Question</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '"' + (i === qIndex ? " selected" : "") + '>' + esc(q) + '</option>'; }).join("") + '</select></div>' +
+      '<div><label for="' + which + '-pin-q">Lab book section</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '"' + ((S.lastQ[which] ? S.lastQ[which] === q.title : i === qIndex) ? " selected" : "") + '>' + esc(q.title) + '</option>'; }).join("") + '</select></div>' +
       '<div><button type="button" class="primary" id="' + which + '-pin" style="width:100%"' + dis + '>Pin to lab book</button></div></div>' +
       (S.group ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
       (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "") + '</div>';
@@ -1281,9 +1284,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function doPin(which, suggestion, measures, baseline, state) {
     var labelEl = $(which + "-pin-label"), label = (labelEl.value || "").trim() || suggestion;
     var q = QUESTIONS[+$(which + "-pin-q").value] || QUESTIONS[QUESTIONS.length - 1];
-    var entry = { id: uid(), ts: Date.now() / 1000, tab: which === "lab" ? "lab" : "externality", label: label, question: q, note: "", measures: measures, baseline: baseline, state: state };
-    S.book.push(entry); labelEl.value = "";
-    S.pinMsg[which] = "Pinned as '" + label + "'. Open the Lab book tab to see it.";
+    var entry = { id: uid(), ts: Date.now() / 1000, tab: which === "lab" ? "lab" : "externality", label: label, question: q.title, note: "", measures: measures, baseline: baseline, state: state };
+    S.book.push(entry); labelEl.value = ""; S.lastQ[which] = q.title;
+    S.pinMsg[which] = "Pinned as '" + label + "' under '" + q.title + "'. Open the Lab book tab to see it.";
     saveLocal(); enqueue(entryRecord(entry, false));
     return entry;
   }
@@ -1594,21 +1597,33 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
     return h;
   }
+  var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
+  function editRows(entries) {
+    var h = '<div class="edit-grid head"><div>Label</div><div>Section</div><div>Note</div><div></div></div>';
+    entries.forEach(function (e) {
+      h += '<div class="edit-grid" data-id="' + e.id + '"><input type="text" data-f="label" value="' + esc(e.label) + '" aria-label="Label">' +
+           '<select data-f="question" aria-label="Section">' + QUESTIONS.map(function (q) { return '<option' + (q.title === e.question ? " selected" : "") + '>' + esc(q.title) + '</option>'; }).join("") + '</select>' +
+           '<input type="text" data-f="note" value="' + esc(e.note) + '" placeholder="What does this column show?" aria-label="Note">' +
+           '<button type="button" class="small remove-entry">Remove</button></div>';
+    });
+    return h;
+  }
   function renderBook() {
-    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " · " + groupNames() : "") : "";
-    var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>';
-    if (!S.book.length) h += '<div class="info">Nothing pinned yet. Run an experiment on the Laboratory or Externalities tab and press "Pin to lab book". Each pinned experiment becomes a column here.</div>';
-    else {
-      h += bookTable(S.book) + '<p class="caption">One column per pinned experiment, next to the baseline it was compared with. Labels, questions and notes can be edited below; everything is saved as you go.</p>';
-      h += '<details class="panel" open><summary>Labels, questions and notes</summary><div class="edit-grid head"><div>Label</div><div>Question</div><div>Note</div><div></div></div>';
-      S.book.forEach(function (e) {
-        h += '<div class="edit-grid" data-id="' + e.id + '"><input type="text" data-f="label" value="' + esc(e.label) + '" aria-label="Label">' +
-             '<select data-f="question" aria-label="Question">' + QUESTIONS.map(function (q) { return '<option' + (q === e.question ? " selected" : "") + '>' + esc(q) + '</option>'; }).join("") + '</select>' +
-             '<input type="text" data-f="note" value="' + esc(e.note) + '" placeholder="What does this column show?" aria-label="Note">' +
-             '<button type="button" class="small remove-entry">Remove</button></div>';
-      });
-      h += '</details>';
-    }
+    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
+    var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
+            '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
+            'Pin from the Laboratory or Externalities tab; move a column to another section with its Section dropdown. Everything is saved as you go.</p>';
+    if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
+    QUESTIONS.forEach(function (q) {
+      var mine = S.book.filter(function (e) { return sectionOf(e) === q.id; });
+      var answered = (S.answers[q.id] || "").trim().length > 0;
+      h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " \u00b7 answered" : "") + '</span></h2>' +
+           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
+      if (mine.length) h += bookTable(mine) + '<details class="panel" open><summary>Labels, sections and notes</summary>' + editRows(mine) + '</details>';
+      else h += '<p class="caption">Nothing pinned here yet.</p>';
+      h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
+           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="Numbers from the lab book, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></section>';
+    });
     h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>' +
          '<div id="book-status" class="status"></div>';
     el.innerHTML = h;
@@ -1621,25 +1636,11 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       });
       row.querySelector(".remove-entry").onclick = function () { S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook(); };
     });
-    $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
-    renderStatus();
-  }
-
-  // ---- Assignment tab --------------------------------------------------------------
-  var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
-  function renderAssignment() {
-    var el = $("tab-assign");
-    var h = '<p><b>Group assignment</b></p><p class="caption">Answer in the boxes below. Everything is saved as you go. Run the experiments on the Laboratory tab and pin the columns you refer to: the lab book is part of the submission.</p>';
-    if (!S.group) h += '<div class="info">Enter your group number at the top of the page to answer.</div>';
-    ASSIGNMENT.forEach(function (q) {
-      h += '<div class="question"><h3>' + esc(q.title) + '</h3><p>' + esc(q.prompt) + '</p><textarea data-q="' + q.id + '" aria-label="Answer to ' + esc(q.title) + '" style="min-height:150px" placeholder="Numbers from the app, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></div>';
-    });
-    h += '<div id="assign-status" class="status"></div>';
-    el.innerHTML = h;
     el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
       var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
       ta.addEventListener("input", upd); ta.addEventListener("change", upd);
     });
+    $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
     renderStatus();
   }
 
@@ -1676,7 +1677,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     mergeStored(loadStored(storeKey()));
     if (!S.lab.policy) S.lab = freshLab();
     buildLab(); buildExt();
-    renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment();
+    renderGroup(); renderLab(); renderExt(); renderBook();
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.onclick = function () { showTab(b.getAttribute("data-tab")); }; });
     var st = stateFromHash();
     if (st) applyState(st); else showTab(S.tab || "lab");

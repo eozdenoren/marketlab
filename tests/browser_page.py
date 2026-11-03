@@ -72,6 +72,7 @@ def run(page, base_url, tag):
     page.locator("#lab-results button[data-inner='winners']").click()
     check("Government" not in page.locator("#lab-results table").inner_text() and "buyers who no longer buy" in page.locator("#lab-results").inner_text(), tag + " winners table")
     shot(page, tag + "_03_ceiling_winners")
+    page.locator("#lab-pin-q").select_option("3")  # file under "4. Rent control"
     page.locator("#lab-pin-label").fill("Rent control 40, lottery")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Rent control 40, lottery'", exact=False).wait_for()
@@ -107,25 +108,29 @@ def run(page, base_url, tag):
     note.press("Enter")
     note.blur()
     page.wait_for_timeout(200)
-    check("price up by 10 only" in page.locator("#tab-book table").inner_text(), tag + " note in table")
+    check("price up by 10 only" in page.locator("#tab-book").inner_text(), tag + " note in table")
+    sec1 = page.locator("#tab-book .qsection[data-q='q1']").inner_text()
+    check("Tax 20 on sellers" in sec1 and "Rent control 40, lottery" not in sec1, tag + " pins sit in their sections")
+    sec6 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
+    check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 6")
+    sec4 = page.locator("#tab-book .qsection[data-q='q4']").inner_text()
+    check("Rent control 40, lottery" in sec4, tag + " rent control pin under question 4")
     page.locator("#book-notes").fill("Equal slopes, equal split.")
     page.locator("#book-notes").blur()
     shot(page, tag + "_05_labbook")
-    # assignment
-    page.locator("#main-tabs button[data-tab='assign']").click()
-    page.locator("textarea[data-q='q1']").fill("Price 60 vs 40; buyers pay 60 both times.")
-    page.locator("textarea[data-q='q1']").blur()
-    shot(page, tag + "_06_assignment")
+    # the answer box of question 1, inside the lab book
+    page.locator("#tab-book textarea[data-q='q1']").fill("Price 60 vs 40; buyers pay 60 both times.")
+    page.locator("#tab-book textarea[data-q='q1']").blur()
+    shot(page, tag + "_06_answers")
     # reload: group, lab book, notes, answers and tab all come back
     page.reload()
     page.wait_for_selector("#group-panel")
     page.wait_for_timeout(500)
     check("Your group: Group 12" in page.locator("#group-panel").inner_text(), tag + " group restored after reload")
-    check(not page.locator("#tab-assign").is_hidden(), tag + " last tab restored after reload")
+    check(not page.locator("#tab-book").is_hidden(), tag + " last tab restored after reload")
     page.locator("#main-tabs button[data-tab='book']").click()
     check("Rent control 40, lottery" in page.locator("#tab-book").inner_text() and page.locator("#book-notes").input_value() == "Equal slopes, equal split.", tag + " lab book restored")
-    page.locator("#main-tabs button[data-tab='assign']").click()
-    check(page.locator("textarea[data-q='q1']").input_value().startswith("Price 60"), tag + " answer restored")
+    check(page.locator("#tab-book textarea[data-q='q1']").input_value().startswith("Price 60"), tag + " answer restored")
     # instructor-style link with a state in the hash
     import base64, json
     st = {"page": "lab", "supply": [["North", 100, 0, 100]], "demand": [["West", 100, 0, 100]],

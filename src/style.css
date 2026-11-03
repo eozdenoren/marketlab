@@ -87,3 +87,10 @@ table.grid.labbook td.note-cell { white-space: normal; min-width: 160px; font-si
 .question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
 footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
+.qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
+details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
+details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
+details[open].prompt > summary::before { content: "\25BE "; }
+details.prompt > summary::-webkit-details-marker { display: none; }
+details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem; }

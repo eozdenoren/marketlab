@@ -8,7 +8,8 @@ downloaded file; everything is computed in the browser.
   engine in `../app` (`tests/gen_cases.py` + `tests/check_engine.js` compare the
   two on hundreds of random cases; run both after any engine change).
 * `src/chart.js` — SVG charts; `src/app.js` — the page (group panel, Laboratory,
-  Externalities, Lab book, Assignment tabs, local storage, save queue);
+  Externalities and Lab book tabs, one lab book section per question with its
+  answer box, local storage, save queue);
   `src/style.css`, `src/index.html`.
 * `build.py [--config config.json]` — inlines everything into `docs/index.html`.
   With a config (endpoint + token) pins, notes and answers are sent to the
