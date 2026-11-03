@@ -8,8 +8,12 @@ import socketserver
 
 from playwright.sync_api import sync_playwright
 
+import subprocess
+import tempfile
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DIST = os.path.join(os.path.dirname(HERE), "docs")
+DIST = tempfile.mkdtemp(prefix="marketlab_offline_")
+subprocess.check_call([sys.executable, os.path.join(os.path.dirname(HERE), "build.py"), "--out", os.path.join(DIST, "index.html")])
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/marketlab_html_shots"
 os.makedirs(OUT, exist_ok=True)
 errors = []

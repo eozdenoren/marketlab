@@ -60,6 +60,7 @@
   function freshLab() { return { supply: clone(DEFAULT_LAB.supply), demand: clone(DEFAULT_LAB.demand), policy: freshPolicy() }; }
   function freshExt() { return { supply: clone(DEFAULT_EXT.supply), demand: clone(DEFAULT_EXT.demand), harm: DEFAULT_EXT.harm, tax_supply: 0, tax_demand: 0, cap: 0 }; }
   function groupKey() { return S.group ? "Group " + S.group.number : "_"; }
+  function groupPin() { return S.group && S.group.pin ? String(S.group.pin) : ""; }
   function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
   function storeKey() { return "marketlab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
@@ -85,13 +86,13 @@
   function record(question, finding, state) {
     state = state || {};
     state["class"] = S.classCode; state.names = groupNames();
-    return { ts: Date.now() / 1000, group: groupKey(), question: question, finding: finding || "", state: state };
+    return { ts: Date.now() / 1000, group: groupKey(), question: question, finding: finding || "", state: state, pin: groupPin() };
   }
-  function enqueue(rec) { if (!S.group) return; queue.push(rec); persistQueue(); flush(); renderStatus(); }
+  function enqueue(rec) { if (!S.group) return; queue.push(rec); persistQueue(); S.pinRejected = false; flush(); renderStatus(); }
   function flush() {
-    if (!ENDPOINT || flushing || !queue.length) return;
+    if (!ENDPOINT || flushing || !queue.length || S.pinRejected) return;
     flushing = true;
-    var batch = queue.slice(0, 20);
+    var batch = queue.slice(0, 20).map(function (r) { r.pin = groupPin(); return r; });
     fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: TOKEN, records: batch }) })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -101,13 +102,24 @@
       })
       .catch(function (err) {
         flushing = false; S.lastError = String(err && err.message || err); renderStatus();
+        if (/bad pin/.test(S.lastError)) { S.pinRejected = true; return; }
         clearTimeout(retryTimer); retryTimer = setTimeout(flush, 20000);
       });
   }
+  function groupUrl(group) {
+    return ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) + "&class=" + encodeURIComponent(S.classCode) +
+           "&group=" + encodeURIComponent("Group " + group.number) + "&pin=" + encodeURIComponent(group.pin || "");
+  }
   function fetchGroupRecords(cb) {
     if (!ENDPOINT || !S.group) { cb(null); return; }
-    var url = ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) + "&class=" + encodeURIComponent(S.classCode) + "&group=" + encodeURIComponent(groupKey());
-    fetch(url).then(function (r) { return r.json(); }).then(function (j) { cb(j && j.ok ? j.records : null); }).catch(function () { cb(null); });
+    fetch(groupUrl(S.group)).then(function (r) { return r.json(); }).then(function (j) { cb(j && j.ok ? j.records : null); }).catch(function () { cb(null); });
+  }
+  function checkPin(group, cb) {
+    // cb(status, records): "ok" | "bad" | "unknown" (no endpoint or no network)
+    if (!ENDPOINT) { cb("unknown", null); return; }
+    fetch(groupUrl(group)).then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok) cb("ok", j.records); else if (j && /pin/.test(j.error || "")) cb("bad", null); else cb("unknown", null); })
+      .catch(function () { cb("unknown", null); });
   }
   function restoreFromRecords(recs) {
     if (!recs || !recs.length) return;
@@ -136,6 +148,7 @@
     if (S.classCode) parts.push("Class " + esc(S.classCode));
     if (S.group) parts.push(esc(groupKey()));
     if (!ENDPOINT) parts.push("Offline copy: nothing is sent to the class record");
+    else if (S.pinRejected) parts.push('<span class="err">The class record refused the group number and PIN; press Change above and enter them again</span>');
     else if (S.lastError && queue.length) parts.push('<span class="err">Could not reach the class record (' + esc(S.lastError) + '); ' + queue.length + ' saved on this laptop, retrying</span>');
     else if (queue.length) parts.push("Saving…");
     else if (S.lastSaved) parts.push("Saved to the class record at " + timeStr(S.lastSaved));
@@ -143,6 +156,7 @@
     ["book-status", "assign-status"].forEach(function (id) {
       var s = $(id); if (!s) return;
       if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this laptop only.";
+      else if (S.pinRejected) { s.textContent = "The class record refused the group number and PIN; press Change at the top and enter them again."; s.className = "status err"; }
       else if (S.lastError && queue.length) { s.textContent = "Could not reach the class record; your work is kept on this laptop and will be sent again."; s.className = "status err"; }
       else if (queue.length) { s.textContent = "Saving…"; s.className = "status"; }
       else if (S.lastSaved) { s.textContent = "Saved to the class record at " + timeStr(S.lastSaved) + "."; s.className = "status"; }
@@ -159,25 +173,41 @@
       $("group-change").onclick = function () { S.editingGroup = true; renderGroup(); };
       return;
     }
-    el.innerHTML = '<form id="group-form" class="group-form">' +
+    var needPin = !!ENDPOINT;
+    el.innerHTML = '<form id="group-form" class="group-form' + (needPin ? " with-pin" : "") + '">' +
       '<div><label for="group-number">Group number</label><input type="number" id="group-number" min="1" max="999" step="1" placeholder="12" value="' + (S.group ? S.group.number : "") + '"></div>' +
+      (needPin ? '<div><label for="group-pin">PIN</label><input type="text" id="group-pin" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off" value="' + esc(groupPin()) + '"></div>' : "") +
       '<div><label for="group-names">Names of the group members (optional)</label><input type="text" id="group-names" placeholder="Ana Lopes, Bo Chen, Chidi Okafor" value="' + esc(groupNames()) + '"></div>' +
-      '<div><button type="submit" class="primary" style="width:100%">Save</button></div></form>' +
-      (S.classCode ? '<div class="caption" style="margin-top:6px">Class ' + esc(S.classCode) + '</div>' : "") +
-      '<div id="group-error" class="error" hidden>Please enter your group number.</div>';
+      '<div><button type="submit" class="primary" id="group-save" style="width:100%">Save</button></div></form>' +
+      '<div class="caption" style="margin-top:6px">' + (S.classCode ? "Class " + esc(S.classCode) + ". " : "") + (needPin ? "Your group number and PIN were given out with the study groups." : "") + '</div>' +
+      '<div id="group-error" class="error" hidden></div>';
     $("group-form").onsubmit = function (ev) {
       ev.preventDefault();
-      var n = parseInt($("group-number").value, 10);
-      if (!(n > 0)) { $("group-error").hidden = false; return; }
+      var n = parseInt($("group-number").value, 10), pin = needPin ? ($("group-pin").value || "").trim() : "";
+      var errEl = $("group-error");
+      if (!(n > 0)) { errEl.textContent = "Please enter your group number."; errEl.hidden = false; return; }
+      if (needPin && !/^\d{4}$/.test(pin)) { errEl.textContent = "Please enter the four-digit PIN of your group."; errEl.hidden = false; return; }
       var names = $("group-names").value.split(/[,;\n]|\band\b|&/).map(function (s) { return s.trim(); }).filter(Boolean).join(", ");
-      var prev = S.group;
-      S.group = { number: n, names: names }; S.editingGroup = false;
-      if (!prev || prev.number !== n) {
-        var stored = loadStored(storeKey());
-        if (stored) { var keepLab = S.lab, keepExt = S.ext; mergeStored(stored); S.lab = keepLab; S.ext = keepExt; }
-        fetchGroupRecords(function (recs) { if (recs) { restoreFromRecords(recs); saveLocal(); renderBook(); renderAssignment(); } });
-      }
-      saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment(); renderStatus();
+      var candidate = { number: n, names: names, pin: pin }, prev = S.group;
+      var finish = function (recs) {
+        S.group = candidate; S.editingGroup = false; S.pinRejected = false;
+        if (!prev || prev.number !== n) {
+          var stored = loadStored(storeKey());
+          if (stored) { var keepLab = S.lab, keepExt = S.ext; mergeStored(stored); S.lab = keepLab; S.ext = keepExt; }
+        }
+        if (recs) restoreFromRecords(recs);
+        saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment(); renderStatus(); flush();
+      };
+      if (!needPin) { finish(null); return; }
+      $("group-save").disabled = true; $("group-save").textContent = "Checking…";
+      checkPin(candidate, function (status, recs) {
+        if (status === "bad") {
+          $("group-save").disabled = false; $("group-save").textContent = "Save";
+          errEl.textContent = "That group number and PIN do not match. Check the PIN you were given for this class."; errEl.hidden = false;
+          return;
+        }
+        finish(recs);
+      });
     };
   }
 

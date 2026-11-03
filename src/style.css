@@ -72,6 +72,7 @@ table.grid td.remove { width: 32px; text-align: center; }
 @media (max-width: 900px) { .pin { grid-template-columns: 1fr; } }
 .group-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .group-form { display: grid; grid-template-columns: 1.6fr 6fr 1.3fr; gap: 10px; align-items: end; }
+.group-form.with-pin { grid-template-columns: 1.4fr 1.2fr 5fr 1.3fr; }
 @media (max-width: 900px) { .group-form { grid-template-columns: 1fr; } }
 .status { color: var(--muted); font-size: 0.86rem; margin-top: 8px; }
 .status.err { color: #9b1c1c; }
