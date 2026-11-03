@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marketplace Laboratory</title>
+<style>
+:root { --text: #1f1e1c; --muted: #52514e; --line: #e4e3df; --panel: #f6f5f3; --primary: #2a78d6; --primary-dark: #1f5fae;
+        --accent: #eb6834; --gain: #2a78d6; --loss: #e34948; --radius: 8px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+       color: var(--text); background: #fff; font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 24px 60px; }
+h1 { font-size: 1.7rem; margin: 0 0 2px; }
+h2 { font-size: 1.1rem; margin: 18px 0 8px; }
+.caption, .small { color: var(--muted); font-size: 0.86rem; }
+.note { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 12px; color: var(--muted); font-size: 0.92rem; }
+.info { background: #e7f1fb; color: #1f5fae; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.error { background: #fbebeb; color: #9b1c1c; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.success { background: #e5f4e4; color: #1f6b2a; padding: 8px 12px; border-radius: var(--radius); margin: 8px 0; font-size: 0.92rem; }
+.panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; background: #fff; }
+.panel.shaded { background: var(--panel); }
+details.panel > summary { cursor: pointer; font-weight: 600; list-style: none; }
+details.panel > summary::before { content: "▸ "; color: var(--muted); font-size: 0.8em; }
+details[open].panel > summary::before { content: "▾ "; }
+details.panel > summary::-webkit-details-marker { display: none; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cols-4-8 { display: grid; grid-template-columns: 4fr 8fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .cols, .cols-4-8 { grid-template-columns: 1fr; } }
+label { display: block; font-size: 0.9rem; color: var(--text); margin: 8px 0 3px; }
+input[type=number], input[type=text], select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); width: 100%; }
+input[type=number]:focus, input[type=text]:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: var(--primary); background: #fff; }
+textarea { min-height: 110px; resize: vertical; }
+.radio label { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; font-weight: 400; }
+.radio input { margin-top: 4px; }
+button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--text); }
+button:hover { border-color: var(--primary); color: var(--primary); }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover { background: var(--primary-dark); color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.small { padding: 3px 9px; font-size: 0.85rem; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; margin-bottom: -1px; color: var(--muted); }
+.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tabs.inner { margin: 6px 0 8px; }
+table.grid { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+table.grid th, table.grid td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: middle; }
+table.grid th { background: var(--panel); font-weight: 600; color: var(--muted); }
+table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid input { padding: 4px 6px; background: #fff; }
+table.grid input[type=number] { text-align: right; }
+table.spec td:first-child input { min-width: 90px; }
+table.grid td.remove { width: 32px; text-align: center; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+.metric .label { color: var(--muted); font-size: 0.86rem; }
+.metric .value { font-size: 1.9rem; font-weight: 400; line-height: 1.15; }
+.metric .delta { font-size: 0.86rem; display: inline-block; padding: 1px 8px; border-radius: 10px; margin-top: 3px; }
+.metric .delta.up { background: #e5f4e4; color: #1f6b2a; } .metric .delta.down { background: #fbebeb; color: #9b1c1c; }
+.metric .delta.up.inverse { background: #fbebeb; color: #9b1c1c; } .metric .delta.down.inverse { background: #e5f4e4; color: #1f6b2a; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .tick { font-size: 11px; fill: var(--muted); } .chart .axis { font-size: 12px; fill: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 6px; }
+.legend-item { border: none; background: none; padding: 2px 4px; font-size: 0.82rem; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+.legend-item.off { color: #b5b4ae; text-decoration: line-through; }
+.legend-item:disabled { color: var(--text); opacity: 1; cursor: default; }
+.sw { display: inline-block; width: 18px; height: 10px; } .sw.line { height: 0; } .sw.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid; background: #fff; }
+.bars { margin: 6px 0 10px; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 0.86rem; }
+.bar-label { width: 36%; text-align: right; color: var(--muted); }
+.bar-track { position: relative; flex: 1; height: 22px; background: var(--panel); }
+.bar-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid #b5b4ae; }
+.bar { position: absolute; top: 2px; bottom: 2px; } .bar.gain { background: var(--gain); } .bar.loss { background: var(--loss); }
+.bar-val { position: absolute; top: 2px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; width: 44px; text-align: right; }
+.bar-val:not([style*='max']) { text-align: left; }
+.pin { display: grid; grid-template-columns: 3fr 3.5fr 1.6fr; gap: 10px; align-items: end; }
+@media (max-width: 900px) { .pin { grid-template-columns: 1fr; } }
+.group-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.group-form { display: grid; grid-template-columns: 1.6fr 6fr 1.3fr; gap: 10px; align-items: end; }
+@media (max-width: 900px) { .group-form { grid-template-columns: 1fr; } }
+.status { color: var(--muted); font-size: 0.86rem; margin-top: 8px; }
+.status.err { color: #9b1c1c; }
+.badge { display: inline-block; font-size: 0.78rem; padding: 1px 8px; border-radius: 10px; background: var(--panel); color: var(--muted); margin-left: 8px; }
+.labbook-wrap { overflow-x: auto; }
+table.grid.labbook td { white-space: nowrap; }
+table.grid.labbook th { white-space: normal; min-width: 120px; }
+table.grid.labbook td.note-cell { white-space: normal; min-width: 160px; font-size: 0.86rem; }
+.edit-grid { display: grid; grid-template-columns: 2.6fr 3.4fr 4fr 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+.edit-grid.head { color: var(--muted); font-size: 0.86rem; }
+@media (max-width: 900px) { .edit-grid { grid-template-columns: 1fr; } }
+.question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
+footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
+[hidden] { display: none !important; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Marketplace Laboratory</h1>
+  <p class="caption">Build a market, run experiments, and pin what you find to your lab book.</p>
+  <div id="group-panel" class="panel"></div>
+  <div id="hint" class="info" hidden></div>
+  <nav class="tabs" id="main-tabs">
+    <button type="button" data-tab="lab" class="active">Laboratory</button>
+    <button type="button" data-tab="ext">Externalities</button>
+    <button type="button" data-tab="book">Lab book</button>
+    <button type="button" data-tab="assign">Assignment</button>
+  </nav>
+  <section id="tab-lab"></section>
+  <section id="tab-ext" hidden></section>
+  <section id="tab-book" hidden></section>
+  <section id="tab-assign" hidden></section>
+  <footer><span id="footer-status"></span></footer>
+</div>
+<script>window.MARKETLAB_CONFIG = {};</script>
+<script>
+/* Marketplace Laboratory engine: a line-by-line port of app/engine.py,
+   app/externality.py and the measures/labels of app/labbook.py.
+   Plain script: defines MarketLab (browser) and exports it for Node tests. */
+var MarketLab = (function () {
+  "use strict";
+  var SUPPLY = "supply", DEMAND = "demand";
+  var RULES = ["efficient", "random", "inefficient"];
+  var CONTROLS = ["none", "ceiling", "floor", "quota"];
+
+  function clip(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+  function normSeg(s) {
+    var lo = Math.min(+s.pmin, +s.pmax), hi = Math.max(+s.pmin, +s.pmax);
+    return { quantity: Math.max(0, +s.quantity), pmin: lo, pmax: hi };
+  }
+  function supplyRegions(m) { return m.regions.filter(function (r) { return r.side === SUPPLY; }); }
+  function demandRegions(m) { return m.regions.filter(function (r) { return r.side === DEMAND; }); }
+
+  // ---- policy -------------------------------------------------------------
+  function defaultPolicy(over) {
+    var p = { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none",
+              control_value: null, rationing: "efficient", rent_to: "sellers", regional: {} };
+    if (over) for (var k in over) if (Object.prototype.hasOwnProperty.call(over, k) && over[k] !== undefined) p[k] = over[k];
+    if (!p.regional) p.regional = {};
+    return p;
+  }
+  function regionPolicy(policy, name) {
+    var rp = (policy.regional || {})[name] || {};
+    return { scale: rp.scale == null ? 1 : +rp.scale, shift: +(rp.shift || 0), tax: +(rp.tax || 0),
+             cap: rp.cap == null ? null : +rp.cap };
+  }
+  function stripped(policy) {
+    var reg = {};
+    for (var k in policy.regional || {}) {
+      var v = regionPolicy(policy, k);
+      reg[k] = { scale: v.scale, shift: v.shift, tax: 0, cap: null };
+    }
+    return defaultPolicy({ cost_shock: policy.cost_shock, benefit_boost: policy.benefit_boost, regional: reg });
+  }
+
+  // ---- effective segments and curves ---------------------------------------
+  function effBlock(e) { return e.hi - e.lo <= 0; }
+  function effDensity(e) { return effBlock(e) ? Infinity : e.mass / (e.hi - e.lo); }
+  function effQ(e, p, limit) {
+    if (e.mass <= 0) return 0;
+    if (e.side === SUPPLY) {
+      if (effBlock(e)) { if (p > e.lo) return e.mass; if (p < e.lo) return 0; return limit === "right" ? e.mass : 0; }
+      return e.mass * clip((p - e.lo) / (e.hi - e.lo));
+    }
+    if (effBlock(e)) { if (p < e.hi) return e.mass; if (p > e.hi) return 0; return limit === "left" ? e.mass : 0; }
+    return e.mass * clip((e.hi - p) / (e.hi - e.lo));
+  }
+  function buildEffective(market, policy) {
+    var out = [];
+    market.regions.forEach(function (r) {
+      var rp = regionPolicy(policy, r.name);
+      r.segments.forEach(function (s0, i) {
+        var s = normSeg(s0), shift, tax, offset;
+        if (r.side === SUPPLY) { shift = rp.shift + policy.cost_shock; tax = rp.tax + policy.tax_supply; offset = shift + tax; }
+        else { shift = rp.shift + policy.benefit_boost; tax = rp.tax + policy.tax_demand; offset = shift - tax; }
+        out.push({ region: r.name, side: r.side, index: i, mass: s.quantity * Math.max(0, rp.scale),
+                   lo: s.pmin + offset, hi: s.pmax + offset, offset: offset, shift: shift, tax: tax });
+      });
+    });
+    return out;
+  }
+
+  function Curves(market, policy) {
+    this.market = market; this.policy = policy; this.effs = buildEffective(market, policy);
+    this.caps = {};
+    var self = this;
+    supplyRegions(market).forEach(function (r) { var rp = regionPolicy(policy, r.name); if (rp.cap != null) self.caps[r.name] = rp.cap; });
+    this.tol = 1e-9 * Math.max(1, this.effs.reduce(function (a, e) { return a + e.mass; }, 0));
+  }
+  Curves.prototype.supplyRegion = function (name, p, limit) {
+    limit = limit || "right"; var q = 0;
+    for (var i = 0; i < this.effs.length; i++) { var e = this.effs[i]; if (e.region === name && e.side === SUPPLY) q += effQ(e, p, limit); }
+    var cap = this.caps[name]; return cap == null ? q : Math.min(q, Math.max(0, cap));
+  };
+  Curves.prototype.supply = function (p, limit) {
+    limit = limit || "right"; var s = 0, regs = supplyRegions(this.market);
+    for (var i = 0; i < regs.length; i++) s += this.supplyRegion(regs[i].name, p, limit);
+    return s;
+  };
+  Curves.prototype.demand = function (p, limit) {
+    limit = limit || "left"; var d = 0;
+    for (var i = 0; i < this.effs.length; i++) if (this.effs[i].side === DEMAND) d += effQ(this.effs[i], p, limit);
+    return d;
+  };
+  Curves.prototype.excess = function (p, limit) { return this.supply(p, limit) - this.demand(p, limit); };
+  Curves.prototype.totalSupplyMass = function () {
+    var t = 0, self = this;
+    supplyRegions(this.market).forEach(function (r) {
+      var m = 0; self.effs.forEach(function (e) { if (e.region === r.name) m += e.mass; });
+      var cap = self.caps[r.name]; t += cap == null ? m : Math.min(cap, m);
+    });
+    return t;
+  };
+  Curves.prototype.totalDemandMass = function () { var t = 0; this.effs.forEach(function (e) { if (e.side === DEMAND) t += e.mass; }); return t; };
+  Curves.prototype.breakpoints = function () {
+    var pts = {}, self = this;
+    this.effs.forEach(function (e) { if (e.mass > 0) { pts[e.lo] = e.lo; pts[e.hi] = e.hi; } });
+    Object.keys(this.caps).forEach(function (name) { var p = self.regionInverseSupply(name, self.caps[name]); if (p != null) pts[p] = p; });
+    return Object.keys(pts).map(function (k) { return pts[k]; }).sort(function (a, b) { return a - b; });
+  };
+  Curves.prototype.regionInverseSupply = function (name, q) {
+    var segs = this.effs.filter(function (e) { return e.region === name && e.side === SUPPLY && e.mass > 0; });
+    return inverseQuantity(segs, q, SUPPLY);
+  };
+  Curves.prototype.clear = function () {
+    var flags = { indeterminate_price: false, no_trade: false };
+    var S = this.totalSupplyMass(), D = this.totalDemandMass(), bps = this.breakpoints();
+    if (S <= this.tol || D <= this.tol || !bps.length) { flags.no_trade = true; return [bps.length ? bps[0] : 0, 0, flags]; }
+    var tol = this.tol, n = bps.length, self = this;
+    var eRight = bps.map(function (b) { return self.excess(b, "right"); });
+    var eLeft = [-D].concat(bps.slice(1).map(function (b) { return self.excess(b, "left"); }));
+    for (var i = 0; i < n; i++) {
+      var eL = eLeft[i], eR = eRight[i];
+      if (eL <= tol && eR >= -tol && (eL < -tol || eR > tol)) {
+        var p = bps[i], q = Math.min(this.supply(p, "right"), this.demand(p, "left"));
+        return this.flatAdjust(p, q, i, bps, eRight, eLeft, flags);
+      }
+      if (i < n - 1 && eR < -tol && eLeft[i + 1] > tol) {
+        var a = bps[i], b = bps[i + 1], pp = a + (b - a) * (-eR) / (eLeft[i + 1] - eR);
+        return [pp, this.supply(pp, "right"), flags];
+      }
+    }
+    var pl = bps[n - 1];
+    return [pl, Math.min(this.supply(pl, "right"), this.demand(pl, "left")), flags];
+  };
+  Curves.prototype.flatAdjust = function (p, q, i, bps, eRight, eLeft, flags) {
+    var tol = this.tol; if (Math.abs(eRight[i]) > tol) return [p, q, flags];
+    var j = i, n = bps.length;
+    while (j < n - 1 && Math.abs(eRight[j]) <= tol && Math.abs(eLeft[j + 1]) <= tol) j++;
+    if (j > i) { var pHi = bps[j]; flags.indeterminate_price = true; flags.price_interval = [p, pHi];
+                 var mid = 0.5 * (p + pHi); return [mid, this.supply(mid, "right"), flags]; }
+    return [p, q, flags];
+  };
+  Curves.prototype.inverseDemand = function (q) {
+    var bps = this.breakpoints(), self = this;
+    if (q <= this.tol) return bps.length ? bps[bps.length - 1] : 0;
+    var p = inverseDemandFn(function (x, l) { return self.demand(x, l); }, bps, q, this.tol);
+    return p != null ? p : (bps.length ? bps[0] : 0);
+  };
+  Curves.prototype.inverseSupply = function (q) {
+    var bps = this.breakpoints(), self = this;
+    if (q <= this.tol) return bps.length ? bps[0] : 0;
+    var p = inverseSupplyFn(function (x, l) { return self.supply(x, l); }, bps, q, this.tol);
+    return p != null ? p : (bps.length ? bps[bps.length - 1] : 0);
+  };
+
+  function inverseSupplyFn(S, bps, q, tol) {
+    if (!bps.length) return null;
+    if (S(bps[0], "right") >= q - tol) return bps[0];
+    for (var i = 0; i < bps.length - 1; i++) {
+      var a = bps[i], b = bps[i + 1], sa = S(a, "right"), sb = S(b, "left");
+      if (sb >= q - tol) { if (sb <= sa + tol) return a; return a + (b - a) * clip((q - sa) / (sb - sa)); }
+      if (S(b, "right") >= q - tol) return b;
+    }
+    return null;
+  }
+  function inverseDemandFn(D, bps, q, tol) {
+    if (!bps.length) return null;
+    var top = bps[bps.length - 1];
+    if (D(top, "left") >= q - tol) return top;
+    for (var i = bps.length - 1; i >= 1; i--) {
+      var b = bps[i], a = bps[i - 1], da = D(a, "right"), db = D(b, "left");
+      if (da >= q - tol) { if (da <= db + tol) return b; return a + (b - a) * clip((da - q) / (da - db)); }
+      if (D(a, "left") >= q - tol) return a;
+    }
+    return null;
+  }
+  function inverseQuantity(segs, q, side) {
+    segs = segs.filter(function (e) { return e.mass > 0; });
+    if (!segs.length) return null;
+    var total = segs.reduce(function (a, e) { return a + e.mass; }, 0), tol = 1e-9 * Math.max(1, total);
+    if (q > total + tol) return null;
+    var set = {}; segs.forEach(function (e) { set[e.lo] = e.lo; set[e.hi] = e.hi; });
+    var bps = Object.keys(set).map(function (k) { return set[k]; }).sort(function (a, b) { return a - b; });
+    if (q <= tol) return side === DEMAND ? bps[bps.length - 1] : bps[0];
+    var f = function (p, lim) { return segs.reduce(function (a, e) { return a + effQ(e, p, lim); }, 0); };
+    return side === DEMAND ? inverseDemandFn(f, bps, q, tol) : inverseSupplyFn(f, bps, q, tol);
+  }
+
+  // ---- allocations --------------------------------------------------------
+  function allocQuantity(a) {
+    var e = a.eff;
+    if (effBlock(e)) return a.pieces.reduce(function (s, p) { return s + p.prob * e.mass; }, 0);
+    var d = effDensity(e); return a.pieces.reduce(function (s, p) { return s + p.prob * d * (p.hi - p.lo); }, 0);
+  }
+  function allocSurplus(a) {
+    var e = a.eff, tot = 0;
+    a.pieces.forEach(function (p) {
+      var m, t;
+      if (effBlock(e)) { m = p.prob * e.mass; t = e.lo; } else { m = p.prob * effDensity(e) * (p.hi - p.lo); t = 0.5 * (p.lo + p.hi); }
+      tot += m * (e.side === SUPPLY ? (a.price_eff - t) : (t - a.price_eff));
+    });
+    return tot;
+  }
+  function allocTax(a) { return a.eff.tax * allocQuantity(a); }
+  function willingPieces(e, p) {
+    if (e.mass <= 0) return [];
+    if (e.side === SUPPLY) {
+      if (effBlock(e)) return e.lo <= p ? [{ lo: e.lo, hi: e.lo, prob: 1 }] : [];
+      if (p <= e.lo) return [];
+      return [{ lo: e.lo, hi: Math.min(e.hi, p), prob: 1 }];
+    }
+    if (effBlock(e)) return e.hi >= p ? [{ lo: e.hi, hi: e.hi, prob: 1 }] : [];
+    if (p >= e.hi) return [];
+    return [{ lo: Math.max(e.lo, p), hi: e.hi, prob: 1 }];
+  }
+  function pieceMass(e, pc) { return pc.prob * (effBlock(e) ? e.mass : effDensity(e) * (pc.hi - pc.lo)); }
+  function willingMass(segs, willing) {
+    var W = 0; willing.forEach(function (ps, k) { ps.forEach(function (pc) { W += pieceMass(segs[k], pc); }); }); return W;
+  }
+  function serveBest(segs, target, side) {
+    var out = segs.map(function () { return []; });
+    var total = segs.reduce(function (a, e) { return a + e.mass; }, 0), tol = 1e-9 * Math.max(1, total);
+    if (target <= tol) return out;
+    target = Math.min(target, total);
+    var thr = inverseQuantity(segs, target, side);
+    if (thr == null) return out;
+    var strict = 0, ties = [];
+    segs.forEach(function (e, k) {
+      if (e.mass <= 0) return;
+      if (side === DEMAND) {
+        if (effBlock(e)) { if (e.lo > thr + tol) { out[k].push({ lo: e.lo, hi: e.lo, prob: 1 }); strict += e.mass; } else if (Math.abs(e.lo - thr) <= tol) ties.push(k); }
+        else { var lo = Math.max(e.lo, thr); if (e.hi > lo + tol) { out[k].push({ lo: lo, hi: e.hi, prob: 1 }); strict += effDensity(e) * (e.hi - lo); } }
+      } else {
+        if (effBlock(e)) { if (e.lo < thr - tol) { out[k].push({ lo: e.lo, hi: e.lo, prob: 1 }); strict += e.mass; } else if (Math.abs(e.lo - thr) <= tol) ties.push(k); }
+        else { var hi = Math.min(e.hi, thr); if (hi > e.lo + tol) { out[k].push({ lo: e.lo, hi: hi, prob: 1 }); strict += effDensity(e) * (hi - e.lo); } }
+      }
+    });
+    var rem = target - strict;
+    if (ties.length && rem > tol) {
+      var tieMass = ties.reduce(function (a, k) { return a + segs[k].mass; }, 0), f = clip(rem / tieMass);
+      ties.forEach(function (k) { out[k].push({ lo: segs[k].lo, hi: segs[k].lo, prob: f }); });
+    }
+    return out;
+  }
+  function serveWorst(segs, target, price, side) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing), tol = 1e-9 * Math.max(1, W);
+    var out = segs.map(function () { return []; });
+    if (target <= tol) return out;
+    if (target >= W - tol) return willing;
+    var best = serveBest(segs, W - target, side);
+    segs.forEach(function (e, k) {
+      willing[k].forEach(function (wp) {
+        if (effBlock(e)) { var pb = best[k].reduce(function (a, b) { return a + b.prob; }, 0); if (1 - pb > tol) out[k].push({ lo: e.lo, hi: e.lo, prob: 1 - pb }); }
+        else {
+          var lo, hi;
+          if (best[k].length) { var b = best[k][0]; if (side === DEMAND) { lo = wp.lo; hi = b.lo; } else { lo = b.hi; hi = wp.hi; } }
+          else { lo = wp.lo; hi = wp.hi; }
+          if (hi > lo + tol) out[k].push({ lo: lo, hi: hi, prob: 1 });
+        }
+      });
+    });
+    return out;
+  }
+  function serveRandom(segs, target, price) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing);
+    if (W <= 0) return segs.map(function () { return []; });
+    var f = clip(target / W);
+    return willing.map(function (ps) { return ps.map(function (pc) { return { lo: pc.lo, hi: pc.hi, prob: pc.prob * f }; }); });
+  }
+  function ration(segs, target, price, side, rule) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing), tol = 1e-9 * Math.max(1, W);
+    if (target >= W - tol) return willing;
+    if (rule === "random") return serveRandom(segs, target, price);
+    if (rule === "inefficient") return serveWorst(segs, target, price, side);
+    return serveBest(segs, target, side);
+  }
+
+  // ---- solve --------------------------------------------------------------
+  function solve(market, policy, withBenchmark) {
+    if (withBenchmark === undefined) withBenchmark = true;
+    policy = defaultPolicy(policy);
+    if (RULES.indexOf(policy.rationing) < 0) throw new Error("unknown rationing rule " + policy.rationing);
+    if (CONTROLS.indexOf(policy.control) < 0) throw new Error("unknown control " + policy.control);
+    var cur = new Curves(market, policy), effs = cur.effs;
+    var cl = cur.clear(), pStar = cl[0], qStar = cl[1], flags = cl[2];
+    var price = pStar, quantity = qStar, rationedSide = null, shortage = 0, binding = false, sellerPrice = null;
+    var ctrl = policy.control, val = policy.control_value;
+    if (ctrl === "ceiling" && val != null && val < pStar - cur.tol && qStar > 0) {
+      price = +val; quantity = cur.supply(price, "right"); shortage = cur.demand(price, "left") - quantity; rationedSide = DEMAND; binding = true;
+    } else if (ctrl === "floor" && val != null && val > pStar + cur.tol && qStar > 0) {
+      price = +val; quantity = cur.demand(price, "left"); shortage = cur.supply(price, "right") - quantity; rationedSide = SUPPLY; binding = true;
+    } else if (ctrl === "quota" && val != null && val < qStar - cur.tol) {
+      if (Object.keys(cur.caps).length) throw new Error("a market-wide quota cannot be combined with regional caps");
+      quantity = Math.max(0, +val); price = cur.inverseDemand(quantity); binding = true;
+      if (policy.rent_to === "government") sellerPrice = cur.inverseSupply(quantity);
+      else { rationedSide = SUPPLY; shortage = cur.supply(price, "right") - quantity; }
+    }
+    var allocs = [];
+    var dSegs = effs.filter(function (e) { return e.side === DEMAND; });
+    var dPieces = ration(dSegs, quantity, price, DEMAND, rationedSide === DEMAND ? policy.rationing : "efficient");
+    dSegs.forEach(function (e, k) { allocs.push({ eff: e, pieces: dPieces[k], price_eff: price }); });
+    var sRegions = supplyRegions(market), pooled = [], pooledTarget = quantity, regionRent = {}, regionCapped = {};
+    sRegions.forEach(function (r) {
+      var segs = effs.filter(function (e) { return e.region === r.name && e.side === SUPPLY; });
+      var cap = cur.caps[r.name];
+      var raw = segs.reduce(function (a, e) { return a + effQ(e, price, "right"); }, 0);
+      if (cap != null && raw > cap + cur.tol && quantity > cur.tol) {
+        regionCapped[r.name] = true;
+        var take = Math.min(cap, quantity); pooledTarget -= take;
+        if (policy.rent_to === "government") {
+          var pr = cur.regionInverseSupply(r.name, take); pr = pr == null ? price : Math.min(pr, price);
+          var pcs = serveBest(segs, take, SUPPLY); regionRent[r.name] = (price - pr) * take;
+          segs.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcs[k], price_eff: pr }); });
+        } else {
+          var pcs2 = ration(segs, take, price, SUPPLY, policy.rationing);
+          segs.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcs2[k], price_eff: price }); });
+        }
+      } else { regionCapped[r.name] = false; segs.forEach(function (e) { pooled.push(e); }); }
+    });
+    if (sellerPrice != null) {
+      var pcsP = serveBest(pooled, pooledTarget, SUPPLY), rentTotal = (price - sellerPrice) * pooledTarget;
+      pooled.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcsP[k], price_eff: sellerPrice }); });
+      var qs = {}, totQ = 0;
+      sRegions.forEach(function (r) { qs[r.name] = allocs.filter(function (a) { return a.eff.region === r.name; }).reduce(function (a, x) { return a + allocQuantity(x); }, 0); totQ += qs[r.name]; });
+      totQ = totQ || 1;
+      sRegions.forEach(function (r) { regionRent[r.name] = (regionRent[r.name] || 0) + rentTotal * qs[r.name] / totQ; });
+    } else {
+      var rule = rationedSide === SUPPLY ? policy.rationing : "efficient";
+      var pcsQ = ration(pooled, Math.max(0, pooledTarget), price, SUPPLY, rule);
+      pooled.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcsQ[k], price_eff: price }); });
+    }
+    var regionsOut = [], cs = 0, ps = 0, tax = 0, rent = 0;
+    market.regions.forEach(function (r) {
+      var mine = allocs.filter(function (a) { return a.eff.region === r.name; });
+      var q = mine.reduce(function (a, x) { return a + allocQuantity(x); }, 0);
+      var s = mine.reduce(function (a, x) { return a + allocSurplus(x); }, 0);
+      var t = mine.reduce(function (a, x) { return a + allocTax(x); }, 0);
+      var rp = regionPolicy(policy, r.name), net, willing;
+      if (r.side === SUPPLY) {
+        var taxUnit = rp.tax + policy.tax_supply, priceEff = mine.length ? mine[0].price_eff : price;
+        net = priceEff - taxUnit;
+        willing = effs.filter(function (e) { return e.region === r.name; }).reduce(function (a, e) { return a + effQ(e, price, "right"); }, 0);
+      } else {
+        net = price + rp.tax + policy.tax_demand;
+        willing = effs.filter(function (e) { return e.region === r.name; }).reduce(function (a, e) { return a + effQ(e, price, "left"); }, 0);
+      }
+      var rr = regionRent[r.name] || 0;
+      regionsOut.push({ name: r.name, side: r.side, quantity: q, surplus: s, tax: t, rent: rr, net_price: net, willing: willing, capped: !!regionCapped[r.name] });
+      if (r.side === SUPPLY) ps += s; else cs += s;
+      tax += t; rent += rr;
+    });
+    var out = { price: price, quantity: quantity, allocs: allocs, regions: regionsOut, consumer_surplus: cs, producer_surplus: ps,
+                tax_revenue: tax, licence_rent: rent, government_revenue: tax + rent, total_surplus: cs + ps + tax + rent,
+                rationed_side: rationedSide, shortage: shortage, flags: flags, control_binding: binding,
+                benchmark_surplus: NaN, deadweight_loss: NaN, rationing_loss: NaN, elasticity_demand: NaN, elasticity_supply: NaN };
+    var el = elasticities(cur, price, quantity); out.elasticity_demand = el[0]; out.elasticity_supply = el[1];
+    if (withBenchmark) {
+      var bench = solve(market, stripped(policy), false);
+      out.benchmark_surplus = bench.total_surplus; out.deadweight_loss = bench.total_surplus - out.total_surplus;
+      var licensed = Object.keys(regionCapped).some(function (k) { return regionCapped[k]; }) && policy.rent_to === "sellers";
+      if ((rationedSide != null || licensed) && policy.rationing !== "efficient") {
+        var p2 = defaultPolicy(policy); p2.rationing = "efficient";
+        out.rationing_loss = solve(market, p2, false).total_surplus - out.total_surplus;
+      } else out.rationing_loss = 0;
+    }
+    return out;
+  }
+  function elasticities(cur, p, q) {
+    if (q <= cur.tol || p <= 0) return [NaN, NaN];
+    var h = 1e-6 * Math.max(1, Math.abs(p));
+    var dD = (cur.demand(p + h, "right") - cur.demand(p - h, "left")) / (2 * h);
+    var dS = (cur.supply(p + h, "right") - cur.supply(p - h, "left")) / (2 * h);
+    return [-dD * p / q, dS * p / q];
+  }
+
+  // ---- winners and losers ----------------------------------------------------
+  function probAt(pieces, x, block) {
+    if (block) return pieces.reduce(function (a, p) { return a + p.prob; }, 0);
+    for (var i = 0; i < pieces.length; i++) { var p = pieces[i]; if (p.lo - 1e-12 <= x && x <= p.hi + 1e-12) return p.prob; }
+    return 0;
+  }
+  function accumulate(g, region, side, p0, p1, mass, x, s0, s1) {
+    if (mass <= 0) return;
+    var m, gg;
+    if (p0 > 0 && p1 > 0) { m = mass * p0 * p1; gg = g(region, side, "kept"); gg.mass += m; gg.change += m * (s1(x) - s0(x)); }
+    if (p0 > 0 && p1 < 1) { m = mass * p0 * (1 - p1); gg = g(region, side, "lost"); gg.mass += m; gg.change += -m * s0(x); }
+    if (p1 > 0 && p0 < 1) { m = mass * (1 - p0) * p1; gg = g(region, side, "new"); gg.mass += m; gg.change += m * s1(x); }
+  }
+  function compare(before, after) {
+    var groups = {}, order = [];
+    var g = function (region, side, kind) {
+      var key = region + "|" + side + "|" + kind;
+      if (!groups[key]) { groups[key] = { region: region, side: side, kind: kind, mass: 0, change: 0 }; order.push(key); }
+      return groups[key];
+    };
+    var bMap = {}, aMap = {}, keys = {};
+    before.allocs.forEach(function (a) { var k = a.eff.region + "\u0000" + a.eff.index; bMap[k] = a; keys[k] = [a.eff.region, a.eff.index]; });
+    after.allocs.forEach(function (a) { var k = a.eff.region + "\u0000" + a.eff.index; aMap[k] = a; keys[k] = [a.eff.region, a.eff.index]; });
+    var sorted = Object.keys(keys).sort(function (x, y) { var kx = keys[x], ky = keys[y]; if (kx[0] < ky[0]) return -1; if (kx[0] > ky[0]) return 1; return kx[1] - ky[1]; });
+    sorted.forEach(function (key) {
+      var a0 = bMap[key], a1 = aMap[key];
+      var e0 = a0 ? a0.eff : a1.eff, e1 = a1 ? a1.eff : a0.eff, side = e0.side, region = e0.region;
+      var loU = e0.lo - e0.offset, hiU = e0.hi - e0.offset;
+      var m0 = a0 ? a0.eff.mass : 0, m1 = a1 ? a1.eff.mass : 0, block = effBlock(e0), common = Math.min(m0, m1);
+      var s0 = function (x) { return side === SUPPLY ? (a0.price_eff - (x + e0.offset)) : ((x + e0.offset) - a0.price_eff); };
+      var s1 = function (x) { return side === SUPPLY ? (a1.price_eff - (x + e1.offset)) : ((x + e1.offset) - a1.price_eff); };
+      var gg, m;
+      if (block) {
+        var p0 = a0 ? probAt(a0.pieces, e0.lo, true) : 0, p1 = a1 ? probAt(a1.pieces, e1.lo, true) : 0, x = loU;
+        accumulate(g, region, side, p0, p1, common, x, a0 ? s0 : null, a1 ? s1 : null);
+        if (m1 > m0 && a1) { gg = g(region, side, "new"); gg.mass += (m1 - m0) * p1; gg.change += (m1 - m0) * p1 * s1(x); }
+        if (m0 > m1 && a0) { gg = g(region, side, "lost"); gg.mass += (m0 - m1) * p0; gg.change += -(m0 - m1) * p0 * s0(x); }
+        return;
+      }
+      var set = {}; set[loU] = loU; set[hiU] = hiU;
+      if (a0) a0.pieces.forEach(function (pc) { set[pc.lo - e0.offset] = pc.lo - e0.offset; set[pc.hi - e0.offset] = pc.hi - e0.offset; });
+      if (a1) a1.pieces.forEach(function (pc) { set[pc.lo - e1.offset] = pc.lo - e1.offset; set[pc.hi - e1.offset] = pc.hi - e1.offset; });
+      var pts = Object.keys(set).map(function (k) { return set[k]; }).filter(function (v) { return loU - 1e-12 <= v && v <= hiU + 1e-12; }).sort(function (a, b) { return a - b; });
+      var width = hiU - loU;
+      for (var i = 0; i < pts.length - 1; i++) {
+        var x1 = pts[i], x2 = pts[i + 1]; if (x2 - x1 <= 1e-12) continue;
+        var mid = 0.5 * (x1 + x2);
+        var q0 = a0 ? probAt(a0.pieces, mid + e0.offset, false) : 0, q1 = a1 ? probAt(a1.pieces, mid + e1.offset, false) : 0;
+        var share = (x2 - x1) / width;
+        accumulate(g, region, side, q0, q1, common * share, mid, a0 ? s0 : null, a1 ? s1 : null);
+        if (m1 > m0 && a1) { m = (m1 - m0) * share * q1; gg = g(region, side, "new"); gg.mass += m; gg.change += m * s1(mid); }
+        if (m0 > m1 && a0) { m = (m0 - m1) * share * q0; gg = g(region, side, "lost"); gg.mass += m; gg.change += -m * s0(mid); }
+      }
+    });
+    return order.map(function (k) { return groups[k]; }).filter(function (gr) { return gr.mass > 1e-9; })
+      .map(function (gr) { gr.average = gr.mass > 1e-12 ? gr.change / gr.mass : 0; return gr; });
+  }
+
+  // ---- plot helpers ---------------------------------------------------------------
+  function dedupPts(pts) {
+    var out = [];
+    pts.forEach(function (qp) { if (!out.length || Math.abs(out[out.length - 1][0] - qp[0]) > 1e-12 || Math.abs(out[out.length - 1][1] - qp[1]) > 1e-12) out.push(qp); });
+    return out;
+  }
+  function curvePoints(cur, side, pMax) {
+    var bps = cur.breakpoints().filter(function (b) { return 0 < b && b < pMax; });
+    var grid = [0].concat(bps, [pMax]), pts = [];
+    var f = side === SUPPLY ? function (b, l) { return cur.supply(b, l); } : function (b, l) { return cur.demand(b, l); };
+    grid.forEach(function (b) { pts.push([f(b, "left"), b]); pts.push([f(b, "right"), b]); });
+    if (side === DEMAND) pts.reverse();
+    var out = dedupPts(pts);
+    if (side === DEMAND) while (out.length > 1 && out[0][0] <= 1e-12 && out[1][0] <= 1e-12) out.shift();
+    return out;
+  }
+  function servedCurvePoints(out, side, offset) {
+    offset = offset || 0;
+    var pieces = [];
+    out.allocs.forEach(function (a) {
+      var e = a.eff; if (e.side !== side) return;
+      a.pieces.forEach(function (pc) {
+        if (effBlock(e)) pieces.push([e.lo + offset, e.lo + offset, pc.prob * e.mass, null]);
+        else if (pc.hi > pc.lo) pieces.push([pc.lo + offset, pc.hi + offset, null, pc.prob * effDensity(e)]);
+      });
+    });
+    if (!pieces.length) return [];
+    var set = {}; pieces.forEach(function (p) { set[p[0]] = p[0]; set[p[1]] = p[1]; });
+    var bps = Object.keys(set).map(function (k) { return set[k]; }).sort(function (a, b) { return a - b; });
+    var qAt = function (p, limit) {
+      var tot = 0;
+      pieces.forEach(function (pc) {
+        var lo = pc[0], hi = pc[1], m = pc[2], d = pc[3];
+        if (m != null) {
+          if (side === DEMAND) tot += (lo > p || (lo === p && limit === "left")) ? m : 0;
+          else tot += (lo < p || (lo === p && limit === "right")) ? m : 0;
+        } else if (side === DEMAND) tot += d * Math.max(0, hi - Math.max(lo, p));
+        else tot += d * Math.max(0, Math.min(hi, p) - lo);
+      });
+      return tot;
+    };
+    var pts = [];
+    bps.forEach(function (b) { pts.push([qAt(b, "left"), b]); pts.push([qAt(b, "right"), b]); });
+    if (side === DEMAND) pts.reverse();
+    return dedupPts(pts);
+  }
+
+  // ---- externality ----------------------------------------------------------------
+  function privateSurplus(out) { return out.consumer_surplus + out.producer_surplus + out.tax_revenue + out.licence_rent; }
+  function socialOptimum(market, policy, harm) { var p = stripped(policy); p.tax_supply = +harm; return solve(market, p, false); }
+  function solveSocial(market, policy, harm) {
+    harm = +harm; policy = defaultPolicy(policy);
+    var out = solve(market, policy, false), opt = socialOptimum(market, policy, harm);
+    var priv = privateSurplus(out), third = -harm * out.quantity, w = priv + third;
+    var wOpt = privateSurplus(opt) - harm * opt.quantity, dwl = wOpt - w;
+    if (dwl < 0 && dwl > -1e-9 * Math.max(1, Math.abs(wOpt))) dwl = 0;
+    return { out: out, harm_per_unit: harm, third_party: third, private_surplus: priv, social_surplus: w, opt: opt,
+             opt_quantity: opt.quantity, opt_buyer_price: opt.price, opt_seller_price: opt.price - harm, opt_surplus: wOpt, deadweight_loss: dwl };
+  }
+
+  // ---- market from rows (scenarios.group_regions) ------------------------------------
+  function groupRegions(rows, side, taken) {
+    taken = taken || {}; var order = [], segs = {};
+    rows.forEach(function (r) {
+      var name = r[0] || "Unnamed"; if (taken[name]) name = name + " (" + side + ")";
+      if (!segs[name]) { order.push(name); segs[name] = []; }
+      segs[name].push({ quantity: +r[1], pmin: +r[2], pmax: +r[3] });
+    });
+    return order.map(function (n) { return { name: n, side: side, segments: segs[n] }; });
+  }
+  function buildMarket(supRows, demRows) {
+    var sup = groupRegions(supRows, SUPPLY), taken = {};
+    sup.forEach(function (r) { taken[r.name] = true; });
+    var dem = groupRegions(demRows, DEMAND, taken);
+    return { regions: sup.concat(dem) };
+  }
+
+  // ---- measures and labels (labbook.py) -------------------------------------------------
+  var MEASURES = ["Market price", "Buyers pay", "Sellers receive", "Quantity traded", "Shortage or excess supply",
+                  "Socially optimal quantity", "Consumer surplus", "Producer surplus", "Government revenue",
+                  "Third parties", "Total surplus", "Deadweight loss"];
+  function uniform(vals) {
+    if (!vals.length) return null;
+    for (var i = 1; i < vals.length; i++) if (Math.abs(vals[i] - vals[0]) >= 1e-9) return null;
+    return vals[0];
+  }
+  function measuresLab(out) {
+    var bp = uniform(out.regions.filter(function (r) { return r.side === DEMAND && r.quantity > 0; }).map(function (r) { return r.net_price; }));
+    var sp = uniform(out.regions.filter(function (r) { return r.side === SUPPLY && r.quantity > 0; }).map(function (r) { return r.net_price; }));
+    var gov = out.government_revenue;
+    var m = {};
+    m["Market price"] = out.price; m["Buyers pay"] = bp != null ? bp : out.price; m["Sellers receive"] = sp != null ? sp : out.price;
+    m["Quantity traded"] = out.quantity;
+    m["Shortage or excess supply"] = (out.control_binding && out.shortage > 1e-9) ? out.shortage : null;
+    m["Socially optimal quantity"] = null; m["Consumer surplus"] = out.consumer_surplus; m["Producer surplus"] = out.producer_surplus;
+    m["Government revenue"] = Math.abs(gov) > 1e-9 ? gov : 0; m["Third parties"] = null; m["Total surplus"] = out.total_surplus;
+    m["Deadweight loss"] = out.deadweight_loss;
+    return m;
+  }
+  function measuresSocial(soc) {
+    var m = measuresLab(soc.out);
+    m["Socially optimal quantity"] = soc.opt_quantity; m["Third parties"] = soc.third_party;
+    m["Total surplus"] = soc.social_surplus; m["Deadweight loss"] = soc.deadweight_loss;
+    return m;
+  }
+  function num(x) { var s = (+x).toFixed(1); return s.slice(-2) === ".0" ? s.slice(0, -2) : s; }
+  function taxBits(ts, td) {
+    var bits = [];
+    if (ts > 0) bits.push("tax " + num(ts) + " on sellers"); else if (ts < 0) bits.push("subsidy " + num(-ts) + " to sellers");
+    if (td > 0) bits.push("tax " + num(td) + " on buyers"); else if (td < 0) bits.push("subsidy " + num(-td) + " to buyers");
+    return bits;
+  }
+  function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function describeLab(policy) {
+    policy = defaultPolicy(policy); var bits = [];
+    if (policy.cost_shock) bits.push("cost shock " + num(policy.cost_shock));
+    if (policy.benefit_boost) bits.push("benefit boost " + num(policy.benefit_boost));
+    bits = bits.concat(taxBits(policy.tax_supply, policy.tax_demand));
+    Object.keys(policy.regional || {}).forEach(function (name) {
+      var rp = regionPolicy(policy, name);
+      if (Math.abs(rp.scale - 1) > 1e-9) bits.push(name + " capacity " + Math.round(100 * rp.scale) + "%");
+      if (rp.shift) bits.push(name + " shift " + num(rp.shift));
+      if (rp.tax > 0) bits.push(name + " tariff " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
+      if (rp.cap != null) bits.push(name + " cap " + num(rp.cap));
+    });
+    var rule = { efficient: "", random: ", lottery", inefficient: ", worst served" }[policy.rationing] || "";
+    if (policy.control === "ceiling" && policy.control_value != null) bits.push("ceiling " + num(policy.control_value) + rule);
+    else if (policy.control === "floor" && policy.control_value != null) bits.push("floor " + num(policy.control_value) + rule);
+    else if (policy.control === "quota" && policy.control_value != null) {
+      var who = policy.rent_to === "government" ? "auctioned" : "given away" + rule;
+      bits.push("quota " + num(policy.control_value) + ", licences " + who);
+    }
+    return bits.length ? cap1(bits.join("; ")) : "No experiment";
+  }
+  function describeExt(policy, harm) {
+    policy = defaultPolicy(policy);
+    var head = harm >= 0 ? "Harm " + num(harm) : "Benefit " + num(-harm);
+    var bits = taxBits(policy.tax_supply, policy.tax_demand);
+    if (policy.control === "quota" && policy.control_value != null) bits.push("permit cap " + num(policy.control_value));
+    return head + ": " + (bits.length ? bits.join("; ") : "no policy");
+  }
+
+  return { SUPPLY: SUPPLY, DEMAND: DEMAND, RULES: RULES, CONTROLS: CONTROLS, MEASURES: MEASURES,
+           defaultPolicy: defaultPolicy, stripped: stripped, regionPolicy: regionPolicy, Curves: Curves, solve: solve, compare: compare,
+           curvePoints: curvePoints, servedCurvePoints: servedCurvePoints, solveSocial: solveSocial, buildMarket: buildMarket,
+           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, describeLab: describeLab,
+           describeExt: describeExt, num: num };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MarketLab;
+
+</script>
+<script>
+/* SVG charts for the Marketplace Laboratory page: a port of app/charts.py.
+   A figure is data (traces, markers, guide lines); render() turns it into SVG
+   and a legend description. Plain script; depends on MarketLab (engine.js). */
+var MLChart = (function () {
+  "use strict";
+  var M = (typeof MarketLab !== "undefined") ? MarketLab : require("./engine.js");
+  var COLORS = { supply: "#2a78d6", demand: "#e34948", gov: "#1baf7a", dwl: "#eb6834", third: "#7b4fb3",
+                 text: "#52514e", grid: "#ececea", black: "#0b0b0b" };
+
+  function clipPath(points, q1, q2) {
+    var out = [];
+    for (var i = 0; i < points.length - 1; i++) {
+      var qa = points[i][0], pa = points[i][1], qb = points[i + 1][0], pb = points[i + 1][1];
+      var lo = Math.min(qa, qb), hi = Math.max(qa, qb);
+      if (hi < q1 - 1e-12 || lo > q2 + 1e-12) continue;
+      if (hi - lo <= 1e-12) { if (q1 + 1e-9 < qa && qa < q2 - 1e-9) { out.push([qa, pa]); out.push([qb, pb]); } continue; }
+      var a = Math.max(q1, lo), b = Math.min(q2, hi);
+      [a, b].forEach(function (q) { var t = (q - qa) / (qb - qa); out.push([q, pa + t * (pb - pa)]); });
+    }
+    var dedup = [];
+    out.forEach(function (pt) { if (!dedup.length || Math.abs(dedup[dedup.length - 1][0] - pt[0]) > 1e-12 || Math.abs(dedup[dedup.length - 1][1] - pt[1]) > 1e-12) dedup.push(pt); });
+    return dedup;
+  }
+  function area(traces, top, bottom, color, alpha, name, hatch, legendonly) {
+    if (top.length < 2) return;
+    var pts;
+    if (typeof bottom === "number") { var q1 = top[0][0], q2 = top[top.length - 1][0]; pts = top.concat([[q2, bottom], [q1, bottom]]); }
+    else pts = top.concat(bottom.slice().reverse());
+    traces.push({ kind: "area", pts: pts, color: color, alpha: alpha, name: name, hatch: hatch || null, legendonly: !!legendonly });
+  }
+  function line(traces, pts, color, width, dash, name) {
+    traces.push({ kind: "line", pts: pts, color: color, width: width, dash: dash || null, name: name });
+  }
+  function netPrice(out, side) {
+    for (var i = 0; i < out.regions.length; i++) { var r = out.regions[i]; if (r.side === side && r.quantity > 0) return r.net_price; }
+    return out.price;
+  }
+  function cap1(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function marketFigure(market, policy, out, benchOut) {
+    policy = M.defaultPolicy(policy);
+    var real = new M.Curves(market, M.stripped(policy)), eff = new M.Curves(market, policy);
+    var allBps = real.breakpoints().concat(eff.breakpoints());
+    var ctrlVals = (policy.control === "ceiling" || policy.control === "floor") && policy.control_value ? [policy.control_value] : [];
+    var pMax = Math.max.apply(null, allBps.concat(ctrlVals, [1])) * 1.08;
+    var qMax = Math.max(real.totalSupplyMass(), real.totalDemandMass(), 1) * 1.05;
+    var traces = [];
+    var regionalTax = Object.keys(policy.regional || {}).some(function (n) { return M.regionPolicy(policy, n).tax; });
+    var caps = Object.keys(eff.caps).length > 0;
+    var simple = !regionalTax && !caps && out.quantity > 0;
+    var dPts = M.curvePoints(real, M.DEMAND, pMax), sPts = M.curvePoints(real, M.SUPPLY, pMax);
+    if (simple) {
+      var buyerPrice = netPrice(out, M.DEMAND), sellerPrice = netPrice(out, M.SUPPLY);
+      var dServed = M.servedCurvePoints(out, M.DEMAND, policy.tax_demand), sServed = M.servedCurvePoints(out, M.SUPPLY, -policy.tax_supply);
+      var Q = out.quantity;
+      area(traces, clipPath(dServed, 0, Q), buyerPrice, COLORS.demand, 0.25, "Consumer surplus");
+      area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
+      if (buyerPrice - sellerPrice > 1e-9 && out.government_revenue > 1e-9)
+        area(traces, [[0, buyerPrice], [Q, buyerPrice]], sellerPrice, COLORS.gov, 0.30, out.licence_rent > out.tax_revenue ? "Licence rent" : "Tax revenue");
+      if (benchOut.quantity > Q + 1e-9)
+        area(traces, clipPath(dPts, Q, benchOut.quantity), clipPath(sPts, Q, benchOut.quantity), COLORS.dwl, 0.35, "Deadweight loss: lost trades", "/");
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND) {
+        area(traces, clipPath(dPts, 0, Q), clipPath(dServed, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
+        line(traces, dServed, COLORS.demand, 1.5, "dot", "Values of the buyers actually served");
+      }
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.SUPPLY) {
+        area(traces, clipPath(sServed, 0, Q), clipPath(sPts, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
+        line(traces, sServed, COLORS.supply, 1.5, "dot", "Costs of the sellers actually selling");
+      }
+    }
+    if (Math.abs(policy.tax_supply) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", "Supply plus tax");
+    if (Math.abs(policy.tax_demand) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", "Demand minus tax");
+    line(traces, sPts, COLORS.supply, 2.5, null, "Supply");
+    line(traces, dPts, COLORS.demand, 2.5, null, "Demand");
+    var hlines = [], vlines = [], markers = [];
+    if ((policy.control === "ceiling" || policy.control === "floor") && policy.control_value != null) hlines.push({ y: policy.control_value, label: cap1(policy.control) });
+    if (policy.control === "quota" && policy.control_value != null && out.control_binding) vlines.push({ x: policy.control_value, label: "Quota" });
+    if (out.quantity > 0) markers.push({ q: out.quantity, p: out.price, color: COLORS.black, name: "Market outcome", guides: "both", hollow: false });
+    return { traces: traces, hlines: hlines, vlines: vlines, markers: markers, qMax: qMax, pMax: pMax };
+  }
+
+  function externalityFigure(market, policy, soc) {
+    policy = M.defaultPolicy(policy);
+    var out = soc.out, opt = soc.opt, harm = soc.harm_per_unit, negative = harm >= 0;
+    var real = new M.Curves(market, M.stripped(policy)), eff = new M.Curves(market, policy);
+    var socPol = M.stripped(policy); if (negative) socPol.tax_supply = harm; else socPol.tax_demand = harm;
+    var socCur = new M.Curves(market, socPol);
+    var allBps = real.breakpoints().concat(eff.breakpoints(), socCur.breakpoints());
+    var pMax = Math.max.apply(null, allBps.concat([1])) * 1.08;
+    var qMax = Math.max(real.totalSupplyMass(), real.totalDemandMass(), 1) * 1.05;
+    var traces = [];
+    var dPts = M.curvePoints(real, M.DEMAND, pMax), sPts = M.curvePoints(real, M.SUPPLY, pMax);
+    var socPts = M.curvePoints(socCur, negative ? M.SUPPLY : M.DEMAND, pMax);
+    var Q = out.quantity, Qo = opt.quantity;
+    var regionalTax = Object.keys(policy.regional || {}).some(function (n) { return M.regionPolicy(policy, n).tax; });
+    var simple = out.quantity > 0 && !regionalTax && !Object.keys(eff.caps).length;
+    if (simple) {
+      var buyerPrice = netPrice(out, M.DEMAND), sellerPrice = netPrice(out, M.SUPPLY);
+      var dServed = M.servedCurvePoints(out, M.DEMAND, policy.tax_demand), sServed = M.servedCurvePoints(out, M.SUPPLY, -policy.tax_supply);
+      area(traces, clipPath(dServed, 0, Q), buyerPrice, COLORS.demand, 0.25, "Consumer surplus");
+      area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
+      if (Math.abs(buyerPrice - sellerPrice) > 1e-9 && Math.abs(out.government_revenue) > 1e-9) {
+        var name = out.licence_rent > out.tax_revenue ? "Permit revenue" : (out.government_revenue > 0 ? "Tax revenue" : "Subsidy paid");
+        area(traces, [[0, buyerPrice], [Q, buyerPrice]], sellerPrice, COLORS.gov, 0.30, name);
+      }
+    }
+    var lo = Math.min(Q, Qo), hi = Math.max(Q, Qo);
+    if (hi > lo + 1e-9) {
+      var other = negative ? dPts : sPts;
+      area(traces, clipPath(socPts, lo, hi), clipPath(other, lo, hi), COLORS.dwl, 0.35,
+           Q > Qo ? "Deadweight loss: too much traded" : "Deadweight loss: too little traded", "/");
+    }
+    if (Math.abs(harm) > 1e-12 && Q > 1e-9) {
+      var basePts = negative ? sPts : dPts;
+      area(traces, clipPath(socPts, 0, Q), clipPath(basePts, 0, Q), COLORS.third, 0.25, negative ? "Harm to third parties" : "Benefit to third parties", "\\", true);
+    }
+    if (Math.abs(policy.tax_supply) > 1e-12) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", policy.tax_supply > 0 ? "Supply plus tax" : "Supply minus subsidy");
+    if (Math.abs(policy.tax_demand) > 1e-12) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", policy.tax_demand > 0 ? "Demand minus tax" : "Demand plus subsidy");
+    if (Math.abs(harm) > 1e-12) line(traces, socPts, COLORS.third, 2.2, "longdash", negative ? "Social marginal cost (supply plus harm)" : "Social marginal benefit (demand plus benefit)");
+    line(traces, sPts, COLORS.supply, 2.5, null, "Supply (private marginal cost)");
+    line(traces, dPts, COLORS.demand, 2.5, null, "Demand (private marginal benefit)");
+    var vlines = [], markers = [];
+    if (policy.control === "quota" && policy.control_value != null && out.control_binding) vlines.push({ x: policy.control_value, label: "Permit cap" });
+    if (Math.abs(harm) > 1e-12 && Qo > 1e-9) markers.push({ q: Qo, p: negative ? soc.opt_buyer_price : soc.opt_seller_price, color: COLORS.third, name: "Social optimum", guides: "vertical", hollow: true });
+    if (out.quantity > 0) markers.push({ q: out.quantity, p: out.price, color: COLORS.black, name: "Market outcome", guides: "both", hollow: false });
+    return { traces: traces, hlines: [], vlines: vlines, markers: markers, qMax: qMax, pMax: pMax };
+  }
+
+  // ---- rendering --------------------------------------------------------------
+  function rgba(hex, a) { var h = hex.replace("#", ""); return "rgba(" + parseInt(h.substr(0, 2), 16) + "," + parseInt(h.substr(2, 2), 16) + "," + parseInt(h.substr(4, 2), 16) + "," + a + ")"; }
+  function niceStep(span, target) {
+    var raw = span / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+    var step = r < 1.5 ? 1 : (r < 3 ? 2 : (r < 7 ? 5 : 10));
+    return step * mag;
+  }
+  function ticks(max, target) { var step = niceStep(max, target || 6), out = []; for (var v = 0; v <= max + 1e-9; v += step) out.push(+v.toFixed(10)); return out; }
+  function dashAttr(d) { return d === "dash" ? ' stroke-dasharray="8,5"' : d === "longdash" ? ' stroke-dasharray="14,6"' : d === "dot" ? ' stroke-dasharray="2,4"' : d === "dashdot" ? ' stroke-dasharray="10,4,2,4"' : ""; }
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+  function render(fig, hidden) {
+    hidden = hidden || {};
+    var W = 760, H = 430, ml = 54, mr = 14, mt = 14, mb = 44, pw = W - ml - mr, ph = H - mt - mb;
+    var X = function (q) { return ml + q / fig.qMax * pw; }, Y = function (p) { return H - mb - p / fig.pMax * ph; };
+    var defs = [], body = [];
+    ticks(fig.qMax, 6).forEach(function (t) {
+      body.push('<line x1="' + X(t) + '" x2="' + X(t) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.grid + '"/>');
+      body.push('<text x="' + X(t) + '" y="' + (H - mb + 16) + '" text-anchor="middle" class="tick">' + M.num(t) + '</text>');
+    });
+    ticks(fig.pMax, 6).forEach(function (t) {
+      body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + Y(t) + '" y2="' + Y(t) + '" stroke="' + COLORS.grid + '"/>');
+      body.push('<text x="' + (ml - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end" class="tick">' + M.num(t) + '</text>');
+    });
+    body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + (H - mb) + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.2"/>');
+    body.push('<line x1="' + ml + '" x2="' + ml + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.2"/>');
+    body.push('<text x="' + (ml + pw / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="axis">Quantity</text>');
+    body.push('<text transform="translate(14,' + (mt + ph / 2) + ') rotate(-90)" text-anchor="middle" class="axis">Price</text>');
+    body.push('<clipPath id="plot"><rect x="' + ml + '" y="' + mt + '" width="' + pw + '" height="' + ph + '"/></clipPath>');
+    body.push('<g clip-path="url(#plot)">');
+    fig.traces.forEach(function (t, i) {
+      var off = hidden[t.name] !== undefined ? hidden[t.name] : !!t.legendonly;
+      if (off) return;
+      var d = t.pts.map(function (qp) { return X(qp[0]).toFixed(2) + "," + Y(qp[1]).toFixed(2); }).join(" ");
+      if (t.kind === "area") {
+        if (t.hatch) {
+          var pid = "hatch" + i, rot = t.hatch === "/" ? -45 : 45;
+          defs.push('<pattern id="' + pid + '" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(' + rot + ')">' +
+                    '<rect width="7" height="7" fill="' + rgba(t.color, 0.15) + '"/><line x1="0" y1="0" x2="0" y2="7" stroke="' + rgba(t.color, 0.9) + '" stroke-width="1.6"/></pattern>');
+          body.push('<polygon points="' + d + '" fill="url(#' + pid + ')" stroke="none"/>');
+        } else body.push('<polygon points="' + d + '" fill="' + rgba(t.color, t.alpha) + '" stroke="none"/>');
+      } else body.push('<polyline points="' + d + '" fill="none" stroke="' + t.color + '" stroke-width="' + t.width + '"' + dashAttr(t.dash) + ' stroke-linejoin="round"/>');
+    });
+    body.push("</g>");
+    fig.hlines.forEach(function (l) {
+      body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + Y(l.y) + '" y2="' + Y(l.y) + '" stroke="' + COLORS.text + '" stroke-width="1.5"' + dashAttr("dashdot") + '/>');
+      body.push('<text x="' + (W - mr - 4) + '" y="' + (Y(l.y) - 5) + '" text-anchor="end" class="tick">' + esc(l.label) + '</text>');
+    });
+    fig.vlines.forEach(function (l) {
+      body.push('<line x1="' + X(l.x) + '" x2="' + X(l.x) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.5"' + dashAttr("dashdot") + '/>');
+      body.push('<text x="' + (X(l.x) + 4) + '" y="' + (mt + 12) + '" class="tick">' + esc(l.label) + '</text>');
+    });
+    fig.markers.forEach(function (m) {
+      if (m.guides === "both" || m.guides === "horizontal") body.push('<line x1="' + ml + '" x2="' + X(m.q) + '" y1="' + Y(m.p) + '" y2="' + Y(m.p) + '" stroke="' + m.color + '" stroke-width="1"' + dashAttr("dot") + '/>');
+      if (m.guides === "both" || m.guides === "vertical") body.push('<line x1="' + X(m.q) + '" x2="' + X(m.q) + '" y1="' + Y(m.p) + '" y2="' + (H - mb) + '" stroke="' + m.color + '" stroke-width="1"' + dashAttr("dot") + '/>');
+      body.push('<circle cx="' + X(m.q) + '" cy="' + Y(m.p) + '" r="5.5" fill="' + (m.hollow ? "white" : m.color) + '" stroke="' + (m.hollow ? m.color : "white") + '" stroke-width="2"><title>' + esc(m.name) + ": Q " + M.num(m.q) + ", P " + M.num(m.p) + '</title></circle>');
+    });
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Supply and demand chart"><defs>' + defs.join("") + '</defs>' + body.join("") + '</svg>';
+    var legend = fig.traces.map(function (t) {
+      return { name: t.name, color: t.color, kind: t.kind, hatch: t.hatch, dash: t.dash, off: hidden[t.name] !== undefined ? hidden[t.name] : !!t.legendonly };
+    }).concat(fig.markers.filter(function (m) { return m.hollow; }).map(function (m) { return { name: m.name, color: m.color, kind: "marker", off: false, fixed: true }; }));
+    return { svg: svg, legend: legend };
+  }
+
+  function legendHtml(legend) {
+    return '<div class="legend">' + legend.map(function (it) {
+      var sw;
+      if (it.kind === "area") sw = '<span class="sw area" style="background:' + rgba(it.color, it.hatch ? 0.6 : 0.35) + '"></span>';
+      else if (it.kind === "line") sw = '<span class="sw line" style="border-top:2.5px ' + (it.dash ? "dashed" : "solid") + ' ' + it.color + '"></span>';
+      else sw = '<span class="sw dot" style="border-color:' + it.color + '"></span>';
+      return '<button type="button" class="legend-item' + (it.off ? " off" : "") + (it.fixed ? " fixed" : "") + '" data-name="' + esc(it.name) + '"' + (it.fixed ? ' disabled' : '') + '>' + sw + esc(it.name) + '</button>';
+    }).join("") + "</div>";
+  }
+
+  function winnersHtml(rows) {
+    rows = rows.filter(function (r) { return Math.abs(r[1]) > 1e-9; });
+    if (!rows.length) return "";
+    var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1]); })) || 1;
+    return '<div class="bars">' + rows.map(function (r) {
+      var pct = Math.abs(r[1]) / maxAbs * 42, pos = r[1] >= 0, w = pct.toFixed(1);
+      var valPos = pos ? "left:calc(50% + " + w + "% + 4px)" : "left:max(2px, calc(50% - " + w + "% - 48px))";
+      return '<div class="bar-row"><div class="bar-label">' + esc(r[0]) + '</div><div class="bar-track">' +
+             '<div class="bar ' + (pos ? "gain" : "loss") + '" style="' + (pos ? "left:50%;" : "right:50%;") + 'width:' + w + '%"></div>' +
+             '<span class="bar-val" style="' + valPos + '">' + (r[1] >= 0 ? "+" : "") + Math.round(r[1]).toLocaleString() + '</span></div></div>';
+    }).join("") + "</div>";
+  }
+
+  return { COLORS: COLORS, marketFigure: marketFigure, externalityFigure: externalityFigure, render: render, legendHtml: legendHtml, winnersHtml: winnersHtml, clipPath: clipPath };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
+
+</script>
+<script>
+/* Marketplace Laboratory page: state, storage, the four tabs. Depends on
+   MarketLab (engine.js) and MLChart (chart.js). */
+(function () {
+  "use strict";
+  var M = MarketLab, CH = MLChart;
+  var CONFIG = window.MARKETLAB_CONFIG || {};
+  var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
+
+  var QUESTIONS = [
+    "1. Tax on sellers versus the same tax on buyers: who really pays?",
+    "2. Steeper supply or demand: who bears more of the tax?",
+    "3. Doubling the tax: what happens to revenue and to the deadweight loss?",
+    "4. Rent control: a price ceiling and the three rationing rules",
+    "5. A subsidy to sellers: who gains, who pays, and is there a deadweight loss?",
+    "6. Pollution: what tax or permit cap puts the market right?",
+    "Other / free exploration"];
+  var EXT_QUESTION = 5;
+  var ASSIGNMENT = [
+    { id: "q1", title: "1. Who really pays a tax?",
+      prompt: "Use the default market. Put a tax of 20 per unit on sellers, then remove it and put the same tax on buyers. For both cases report the market price, the price buyers actually pay, the price sellers actually receive, the quantity traded and the tax revenue. Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
+    { id: "q2", title: "2. Elasticity and the burden of a tax",
+      prompt: "Change the supply table so that sellers' costs run from 0 to 200 (Pmax = 200) and apply a tax of 20 on sellers. Report how much of the tax buyers pay and how much sellers absorb, and the two elasticities shown at the bottom of the Outcomes table. Then build a market in which buyers bear at least three quarters of a tax of 20, report its specification (the supply and demand rows) and explain why it works." },
+    { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
+      prompt: "On the default market, record the tax revenue and the deadweight loss for taxes on sellers of 10, 20, 40, 50 and 60 per unit (pin each one). Which tax raises the most revenue? Describe how the deadweight loss changes as the tax doubles, and explain the pattern using the shape of the loss on the chart." },
+    { id: "q4", title: "4. Rent control",
+      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. Report the shortage, producer surplus, consumer surplus and the deadweight loss under each rule. Explain why consumer surplus depends on who gets the flats, say which rule you think describes real rent control best, and use the Winners and losers tab to say who would support the policy." },
+    { id: "q5", title: "5. A subsidy",
+      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20). Report the market price, what buyers pay and sellers receive, the quantity, the cost to the government, the gains to buyers and to sellers, and the deadweight loss. Buyers and sellers are both better off, so why does the subsidy lower total surplus, and who ultimately pays for it?" }];
+  var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
+               ["random", "Random lottery: everyone willing has the same chance"],
+               ["inefficient", "Inefficient: lowest values (or highest costs) are served first"]];
+  var CONTROLS = [["none", "None"], ["ceiling", "Price ceiling"], ["floor", "Price floor"], ["quota", "Quota (cap on quantity traded)"]];
+  var CONTROL_VALUE_LABEL = { ceiling: "Ceiling price", floor: "Floor price", quota: "Quota (units)" };
+  var RENTS = [["sellers", "Sellers (licences given away)"], ["government", "Government (licences auctioned)"]];
+  var DEFAULT_LAB = { supply: [["North", 100, 0, 100]], demand: [["West", 100, 0, 100]] };
+  var DEFAULT_EXT = { supply: [["Factories", 100, 0, 100]], demand: [["Customers", 100, 0, 100]], harm: 20 };
+  var STORY = "Widget factories on the shore of a lake sell to customers across the country. Every unit they make leaves sludge in the water, and the fishing families downstream lose a fixed amount for each one. Nobody in the market pays for that loss, so neither the price nor the quantity takes it into account. Set the harm per unit, see what the market does and who gains and who loses, then look for the policy that makes the market count the fishing families too.";
+
+  // ---- utilities --------------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+  function fmt(x, d, signed) {
+    if (x == null || (typeof x === "number" && isNaN(x))) return "–";
+    if (d === undefined) d = 1;
+    if (Math.abs(x) < 5e-10) x = 0;
+    var s = Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+    return (x < 0 ? "-" : (signed ? "+" : "")) + s;
+  }
+  function pct(x) { return x == null || isNaN(x) ? "–" : Math.round(100 * x) + "%"; }
+  function num(v, d) { var x = parseFloat(v); return isNaN(x) ? d : x; }
+  function timeStr(ts) { var dt = new Date(ts); return dt.toTimeString().slice(0, 8); }
+  function uid() { return Math.random().toString(16).slice(2, 10); }
+  function debounce(fn, ms) { var t; return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); }; }
+
+  // ---- state ----------------------------------------------------------------------
+  var S = { classCode: "", group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab",
+            inner: { lab: "outcomes", ext: "outcomes" }, hidden: { lab: {}, ext: {} }, lastSaved: null, lastError: "", pinMsg: {} };
+  function freshPolicy() { return { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none", control_value: 0, rationing: "efficient", rent_to: "sellers", regional: {} }; }
+  function freshLab() { return { supply: clone(DEFAULT_LAB.supply), demand: clone(DEFAULT_LAB.demand), policy: freshPolicy() }; }
+  function freshExt() { return { supply: clone(DEFAULT_EXT.supply), demand: clone(DEFAULT_EXT.demand), harm: DEFAULT_EXT.harm, tax_supply: 0, tax_demand: 0, cap: 0 }; }
+  function groupKey() { return S.group ? "Group " + S.group.number : "_"; }
+  function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
+  function storeKey() { return "marketlab:" + S.classCode + ":" + groupKey(); }
+  function saveLocal() {
+    try {
+      localStorage.setItem(storeKey(), JSON.stringify({ lab: S.lab, ext: S.ext, book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab }));
+      localStorage.setItem("marketlab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
+    } catch (e) { /* storage full or disabled: the page still works */ }
+  }
+  function loadStored(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function mergeStored(d) {
+    if (!d) return;
+    if (d.lab) S.lab = d.lab; if (d.ext) S.ext = d.ext;
+    var have = {}; S.book.forEach(function (e) { have[e.id] = true; });
+    (d.book || []).forEach(function (e) { if (!have[e.id]) S.book.push(e); });
+    if (!S.notes && d.notes) S.notes = d.notes;
+    Object.keys(d.answers || {}).forEach(function (k) { if (!S.answers[k]) S.answers[k] = d.answers[k]; });
+    if (d.tab) S.tab = d.tab;
+  }
+
+  // ---- class record (save queue) --------------------------------------------------
+  var queue = loadStored("marketlab:queue") || [], flushing = false, retryTimer = null;
+  function persistQueue() { try { localStorage.setItem("marketlab:queue", JSON.stringify(queue)); } catch (e) {} }
+  function record(question, finding, state) {
+    state = state || {};
+    state["class"] = S.classCode; state.names = groupNames();
+    return { ts: Date.now() / 1000, group: groupKey(), question: question, finding: finding || "", state: state };
+  }
+  function enqueue(rec) { if (!S.group) return; queue.push(rec); persistQueue(); flush(); renderStatus(); }
+  function flush() {
+    if (!ENDPOINT || flushing || !queue.length) return;
+    flushing = true;
+    var batch = queue.slice(0, 20);
+    fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: TOKEN, records: batch }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || "bad response");
+        queue.splice(0, batch.length); persistQueue(); S.lastSaved = Date.now(); S.lastError = ""; flushing = false; renderStatus();
+        if (queue.length) flush();
+      })
+      .catch(function (err) {
+        flushing = false; S.lastError = String(err && err.message || err); renderStatus();
+        clearTimeout(retryTimer); retryTimer = setTimeout(flush, 20000);
+      });
+  }
+  function fetchGroupRecords(cb) {
+    if (!ENDPOINT || !S.group) { cb(null); return; }
+    var url = ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) + "&class=" + encodeURIComponent(S.classCode) + "&group=" + encodeURIComponent(groupKey());
+    fetch(url).then(function (r) { return r.json(); }).then(function (j) { cb(j && j.ok ? j.records : null); }).catch(function () { cb(null); });
+  }
+  function restoreFromRecords(recs) {
+    if (!recs || !recs.length) return;
+    recs.sort(function (a, b) { return a.ts - b.ts; });
+    var entries = {}, order = [], notes = "", answers = null;
+    recs.forEach(function (f) {
+      var st = f.state || {}, lbk = st.labbook;
+      if (!lbk) return;
+      if (lbk.kind === "notes") { notes = f.finding || ""; return; }
+      if (lbk.kind === "answers") { answers = st.answers || {}; return; }
+      if (lbk.kind === "class") return;
+      if (lbk.deleted) { delete entries[lbk.id]; return; }
+      if (!entries[lbk.id]) order.push(lbk.id);
+      var sw = {}; Object.keys(st).forEach(function (k) { if (k !== "labbook") sw[k] = st[k]; });
+      entries[lbk.id] = { id: lbk.id, ts: f.ts, tab: lbk.tab || "lab", label: lbk.label || "", question: f.question || "", note: f.finding || "",
+                          measures: lbk.measures || {}, baseline: lbk.baseline || {}, state: sw };
+    });
+    var have = {}; S.book.forEach(function (e) { have[e.id] = true; });
+    order.forEach(function (id) { if (entries[id] && !have[id]) S.book.push(entries[id]); });
+    if (!S.notes && notes) S.notes = notes;
+    if (answers) Object.keys(answers).forEach(function (k) { if (!S.answers[k]) S.answers[k] = answers[k]; });
+  }
+  function renderStatus() {
+    var el = $("footer-status");
+    var parts = [];
+    if (S.classCode) parts.push("Class " + esc(S.classCode));
+    if (S.group) parts.push(esc(groupKey()));
+    if (!ENDPOINT) parts.push("Offline copy: nothing is sent to the class record");
+    else if (S.lastError && queue.length) parts.push('<span class="err">Could not reach the class record (' + esc(S.lastError) + '); ' + queue.length + ' saved on this laptop, retrying</span>');
+    else if (queue.length) parts.push("Saving…");
+    else if (S.lastSaved) parts.push("Saved to the class record at " + timeStr(S.lastSaved));
+    el.innerHTML = parts.join(" · ");
+    ["book-status", "assign-status"].forEach(function (id) {
+      var s = $(id); if (!s) return;
+      if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this laptop only.";
+      else if (S.lastError && queue.length) { s.textContent = "Could not reach the class record; your work is kept on this laptop and will be sent again."; s.className = "status err"; }
+      else if (queue.length) { s.textContent = "Saving…"; s.className = "status"; }
+      else if (S.lastSaved) { s.textContent = "Saved to the class record at " + timeStr(S.lastSaved) + "."; s.className = "status"; }
+      else s.textContent = "";
+    });
+  }
+
+  // ---- group panel -------------------------------------------------------------------
+  function renderGroup() {
+    var el = $("group-panel");
+    if (S.group && !S.editingGroup) {
+      el.innerHTML = '<div class="group-line"><div><b>Your group:</b> ' + esc(groupKey()) + (groupNames() ? " · " + esc(groupNames()) : "") +
+                     (S.classCode ? " · Class " + esc(S.classCode) : "") + '</div><button type="button" id="group-change">Change</button></div>';
+      $("group-change").onclick = function () { S.editingGroup = true; renderGroup(); };
+      return;
+    }
+    el.innerHTML = '<form id="group-form" class="group-form">' +
+      '<div><label for="group-number">Group number</label><input type="number" id="group-number" min="1" max="999" step="1" placeholder="12" value="' + (S.group ? S.group.number : "") + '"></div>' +
+      '<div><label for="group-names">Names of the group members (optional)</label><input type="text" id="group-names" placeholder="Ana Lopes, Bo Chen, Chidi Okafor" value="' + esc(groupNames()) + '"></div>' +
+      '<div><button type="submit" class="primary" style="width:100%">Save</button></div></form>' +
+      (S.classCode ? '<div class="caption" style="margin-top:6px">Class ' + esc(S.classCode) + '</div>' : "") +
+      '<div id="group-error" class="error" hidden>Please enter your group number.</div>';
+    $("group-form").onsubmit = function (ev) {
+      ev.preventDefault();
+      var n = parseInt($("group-number").value, 10);
+      if (!(n > 0)) { $("group-error").hidden = false; return; }
+      var names = $("group-names").value.split(/[,;\n]|\band\b|&/).map(function (s) { return s.trim(); }).filter(Boolean).join(", ");
+      var prev = S.group;
+      S.group = { number: n, names: names }; S.editingGroup = false;
+      if (!prev || prev.number !== n) {
+        var stored = loadStored(storeKey());
+        if (stored) { var keepLab = S.lab, keepExt = S.ext; mergeStored(stored); S.lab = keepLab; S.ext = keepExt; }
+        fetchGroupRecords(function (recs) { if (recs) { restoreFromRecords(recs); saveLocal(); renderBook(); renderAssignment(); } });
+      }
+      saveLocal(); renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment(); renderStatus();
+    };
+  }
+
+  // ---- tabs -------------------------------------------------------------------------
+  function showTab(name) {
+    S.tab = name;
+    ["lab", "ext", "book", "assign"].forEach(function (t) { $("tab-" + t).hidden = t !== name; });
+    Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-tab") === name); });
+    if (name === "book") renderBook();
+    saveLocal();
+  }
+
+  // ---- shared pieces ----------------------------------------------------------------
+  function rowsToMarket(sup, dem) {
+    var ok = function (r) { var q = num(r[1], 0); return q > 0; };
+    var fix = function (r) { return [String(r[0] || "").trim(), num(r[1], 0), num(r[2], 0), isNaN(parseFloat(r[3])) ? num(r[2], 0) : num(r[3], 0)]; };
+    return M.buildMarket(sup.map(fix).filter(ok), dem.map(fix).filter(ok));
+  }
+  function specTable(id, rows, side) {
+    var h = '<table class="grid spec" id="' + id + '"><thead><tr><th>Region</th><th class="num">Quantity</th><th class="num">Pmin</th><th class="num">Pmax</th><th></th></tr></thead><tbody>';
+    rows.forEach(function (r, i) {
+      h += '<tr data-i="' + i + '"><td><input type="text" value="' + esc(r[0]) + '" aria-label="Region"></td>' +
+           '<td><input type="number" value="' + esc(r[1]) + '" min="0" step="10" aria-label="Quantity"></td>' +
+           '<td><input type="number" value="' + esc(r[2]) + '" step="10" aria-label="Pmin"></td>' +
+           '<td><input type="number" value="' + esc(r[3]) + '" step="10" aria-label="Pmax"></td>' +
+           '<td class="remove"><button type="button" class="small" title="Remove this row" aria-label="Remove row">✕</button></td></tr>';
+    });
+    return h + '</tbody></table><button type="button" class="small add-row" data-table="' + id + '">+ Add a row</button>';
+  }
+  function readSpec(id) {
+    var rows = [];
+    Array.prototype.forEach.call($(id).querySelectorAll("tbody tr"), function (tr) {
+      var ins = tr.querySelectorAll("input");
+      rows.push([ins[0].value, num(ins[1].value, 0), num(ins[2].value, 0), num(ins[3].value, 0)]);
+    });
+    return rows;
+  }
+  function bindSpec(container, id, get, set, after) {
+    container.addEventListener("change", function (ev) {
+      var t = ev.target; if (!t.closest || !t.closest("#" + id)) return;
+      set(readSpec(id)); after();
+    });
+    container.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (t.classList.contains("add-row") && t.getAttribute("data-table") === id) { var rows = get(); rows.push(["", 0, 0, 0]); set(rows); after(true); }
+      else if (t.closest && t.closest("#" + id) && t.tagName === "BUTTON") { var tr = t.closest("tr"); var rows2 = readSpec(id); rows2.splice(+tr.getAttribute("data-i"), 1); set(rows2); after(true); }
+    });
+  }
+  function metric(label, value, base, opts) {
+    opts = opts || {};
+    var d = base == null ? null : value - base, cls = "";
+    var delta = "";
+    if (d != null && Math.abs(d) > 5e-10) {
+      cls = (d > 0 ? "up" : "down") + (opts.inverse ? " inverse" : "");
+      delta = '<div class="delta ' + cls + '">' + (d > 0 ? "↑ " : "↓ ") + fmt(d, opts.decimals, true) + '</div>';
+    }
+    return '<div class="metric"><div class="label">' + esc(label) + (opts.help ? ' <span title="' + esc(opts.help) + '">ⓘ</span>' : "") + '</div><div class="value">' + fmt(value, opts.decimals) + '</div>' + delta + '</div>';
+  }
+  function table3(rows, head) {
+    var h = '<table class="grid"><thead><tr><th></th><th class="num">' + esc(head[0]) + '</th><th class="num">' + esc(head[1]) + '</th><th class="num">' + esc(head[2]) + '</th></tr></thead><tbody>';
+    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td><td class="num">' + r[3] + '</td></tr>'; });
+    return h + '</tbody></table>';
+  }
+  function innerTabs(which, items) {
+    return '<div class="tabs inner" data-which="' + which + '">' + items.map(function (it) {
+      return '<button type="button" data-inner="' + it[0] + '" class="' + (S.inner[which] === it[0] ? "active" : "") + '">' + esc(it[1]) + '</button>';
+    }).join("") + '</div>';
+  }
+  function groupLabel(g) {
+    var kind = g.side === M.DEMAND ? { kept: "buyers who keep buying", lost: "buyers who no longer buy", "new": "buyers who newly buy" }[g.kind]
+                                   : { kept: "sellers who keep selling", lost: "sellers who stop selling", "new": "new sellers" }[g.kind];
+    return g.region + ": " + kind;
+  }
+  function winnersHtml(out, base, groups, extra) {
+    var order = { demand: 0, supply: 1 }, ko = { kept: 0, lost: 1, "new": 2 };
+    groups = groups.slice().sort(function (a, b) { return (order[a.side] - order[b.side]) || (a.region < b.region ? -1 : a.region > b.region ? 1 : 0) || (ko[a.kind] - ko[b.kind]); });
+    var rows = groups.map(function (g) { return [groupLabel(g), fmt(g.mass), fmt(g.average, 1, true), fmt(g.change, 1, true)]; });
+    var bars = groups.map(function (g) { return [groupLabel(g), g.change]; });
+    var gov = out.government_revenue - base.government_revenue;
+    if (Math.abs(gov) > 1e-9) { rows.push(["Government (tax, permit and licence revenue)", "", "", fmt(gov, 1, true)]); bars.push(["Government", gov]); }
+    (extra || []).forEach(function (x) { if (Math.abs(x[1]) > 1e-9) { rows.push([x[0], "", "", fmt(x[1], 1, true)]); bars.push([x[0], x[1]]); } });
+    var total = groups.reduce(function (a, g) { return a + g.change; }, 0) + gov + (extra || []).reduce(function (a, x) { return a + x[1]; }, 0);
+    rows.push(["Everyone together", "", "", fmt(total, 1, true)]);
+    if (!groups.length && Math.abs(gov) < 1e-9 && !(extra || []).some(function (x) { return Math.abs(x[1]) > 1e-9; }))
+      return '<p class="caption">Nothing has changed yet. Run an experiment to see who gains and who loses.</p>';
+    var h = CH.winnersHtml(bars) + '<table class="grid"><thead><tr><th>Who</th><th class="num">How many</th><th class="num">Each, on average</th><th class="num">Total</th></tr></thead><tbody>';
+    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td><td class="num">' + r[3] + '</td></tr>'; });
+    return h + '</tbody></table><p class="caption">Compared with the baseline market. Under a random lottery the counts are expected numbers: every willing trader faces the same odds.</p>';
+  }
+  function uniformPrice(out, side) {
+    var vals = out.regions.filter(function (r) { return r.side === side && r.quantity > 0; }).map(function (r) { return r.net_price; });
+    if (!vals.length) return null;
+    for (var i = 1; i < vals.length; i++) if (Math.abs(vals[i] - vals[0]) >= 1e-9) return null;
+    return vals[0];
+  }
+  function pinPanel(which, suggestion, qIndex) {
+    var dis = S.group ? "" : " disabled";
+    return '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" placeholder="' + esc(suggestion) + '" title="Leave blank to use the suggested label."></div>' +
+      '<div><label for="' + which + '-pin-q">Question</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '"' + (i === qIndex ? " selected" : "") + '>' + esc(q) + '</option>'; }).join("") + '</select></div>' +
+      '<div><button type="button" class="primary" id="' + which + '-pin" style="width:100%"' + dis + '>Pin to lab book</button></div></div>' +
+      (S.group ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
+      (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "") + '</div>';
+  }
+  function doPin(which, suggestion, measures, baseline, state) {
+    var labelEl = $(which + "-pin-label"), label = (labelEl.value || "").trim() || suggestion;
+    var q = QUESTIONS[+$(which + "-pin-q").value] || QUESTIONS[QUESTIONS.length - 1];
+    var entry = { id: uid(), ts: Date.now() / 1000, tab: which === "lab" ? "lab" : "externality", label: label, question: q, note: "", measures: measures, baseline: baseline, state: state };
+    S.book.push(entry); labelEl.value = "";
+    S.pinMsg[which] = "Pinned as '" + label + "'. Open the Lab book tab to see it.";
+    saveLocal(); enqueue(entryRecord(entry, false));
+    return entry;
+  }
+  function entryRecord(e, deleted) {
+    var st = clone(e.state || {});
+    st.labbook = { id: e.id, label: e.label, tab: e.tab, measures: e.measures, baseline: e.baseline, deleted: !!deleted };
+    return record(e.question, e.note, st);
+  }
+
+  // ---- Laboratory tab -------------------------------------------------------------------
+  function buildLab() {
+    var p = S.lab.policy;
+    $("tab-lab").innerHTML =
+      '<div class="row between"><p class="caption" style="margin:0">Build a market from linear segments, run experiments, and read off prices, quantities, surplus, and who wins and who loses.</p>' +
+      '<div class="row"><button type="button" id="lab-reset-market">Reset market</button><button type="button" id="lab-reset-exp">Reset experiments</button></div></div>' +
+      '<details class="panel" open id="lab-spec-panel"><summary>Market specification</summary><p class="caption">Each row is a segment: a Quantity of units whose values (buyers) or costs (sellers) are spread evenly from Pmin to Pmax. Pmin = Pmax makes a block of identical units. Rows with the same region name belong to one region; a new name makes a new region. Change a number and press Enter or click elsewhere.</p>' +
+      '<div class="cols"><div><b>Supply</b> <span class="caption">(sellers, costs from Pmin to Pmax)</span><div id="lab-supply-wrap"></div></div><div><b>Demand</b> <span class="caption">(buyers, values from Pmin to Pmax)</span><div id="lab-demand-wrap"></div></div></div></details>' +
+      '<details class="panel" id="lab-regional-panel"><summary>Regional experiments</summary><p class="caption">One row per region. Capacity scales a region\'s quantities. A tax on an importing region is a tariff; a tax on an exporting demand region is an export tariff. A cap limits how much a supply region may sell (an import quota); 0 means no cap.</p><div id="lab-regional"></div></details>' +
+      '<div class="cols-4-8"><div>' +
+      '<details class="panel" open><summary>Global experiments</summary><div class="cols">' +
+      '<div><label for="lab-cost">Cost shock (all sellers)</label><input type="number" id="lab-cost" step="5" value="' + p.cost_shock + '" title="Raises every seller\'s cost by this amount. Negative for a cost saving."></div>' +
+      '<div><label for="lab-boost">Benefit boost (all buyers)</label><input type="number" id="lab-boost" step="5" value="' + p.benefit_boost + '" title="Raises every buyer\'s value by this amount. Negative for a demand slump."></div>' +
+      '<div><label for="lab-tax-s">Tax on sellers (per unit)</label><input type="number" id="lab-tax-s" step="5" value="' + p.tax_supply + '" title="Sellers keep the price minus the tax. Negative for a subsidy."></div>' +
+      '<div><label for="lab-tax-d">Tax on buyers (per unit)</label><input type="number" id="lab-tax-d" step="5" value="' + p.tax_demand + '" title="Buyers pay the price plus the tax. Negative for a subsidy."></div></div></details>' +
+      '<details class="panel" open><summary>Price and quantity controls</summary>' +
+      '<div class="cols"><div><label for="lab-control">Market control</label><select id="lab-control">' + CONTROLS.map(function (c) { return '<option value="' + c[0] + '"' + (p.control === c[0] ? " selected" : "") + '>' + c[1] + '</option>'; }).join("") + '</select></div>' +
+      '<div id="lab-control-value-wrap"><label for="lab-control-value" id="lab-control-value-label">Ceiling price</label><input type="number" id="lab-control-value" min="0" step="5" value="' + p.control_value + '"></div></div>' +
+      '<label style="margin-top:10px">Rationing rule when a control leaves some willing traders out</label><div class="radio" id="lab-rationing">' +
+      RULES.map(function (r) { return '<label><input type="radio" name="lab-rationing" value="' + r[0] + '"' + (p.rationing === r[0] ? " checked" : "") + '> ' + r[1] + '</label>'; }).join("") + '</div>' +
+      '<div id="lab-rent-wrap"><label style="margin-top:10px">Who collects the quota rent</label><div class="radio row" id="lab-rent">' +
+      RENTS.map(function (r) { return '<label><input type="radio" name="lab-rent" value="' + r[0] + '"' + (p.rent_to === r[0] ? " checked" : "") + '> ' + r[1] + '</label>'; }).join("") + '</div></div></details>' +
+      '</div><div id="lab-results"></div></div><div id="lab-pin-wrap"></div>';
+    $("lab-supply-wrap").innerHTML = specTable("lab-supply", S.lab.supply, M.SUPPLY);
+    $("lab-demand-wrap").innerHTML = specTable("lab-demand", S.lab.demand, M.DEMAND);
+    var tab = $("tab-lab");
+    bindSpec(tab, "lab-supply", function () { return S.lab.supply; }, function (r) { S.lab.supply = r; }, function (rebuild) { if (rebuild) $("lab-supply-wrap").innerHTML = specTable("lab-supply", S.lab.supply, M.SUPPLY); renderLab(); });
+    bindSpec(tab, "lab-demand", function () { return S.lab.demand; }, function (r) { S.lab.demand = r; }, function (rebuild) { if (rebuild) $("lab-demand-wrap").innerHTML = specTable("lab-demand", S.lab.demand, M.DEMAND); renderLab(); });
+    $("lab-reset-market").onclick = function () { S.lab = freshLab(); buildLab(); renderLab(); };
+    $("lab-reset-exp").onclick = function () { S.lab.policy = freshPolicy(); buildLab(); renderLab(); };
+    ["lab-cost", "lab-boost", "lab-tax-s", "lab-tax-d", "lab-control-value"].forEach(function (id) { $(id).addEventListener("change", readLabInputs); });
+    $("lab-control").addEventListener("change", readLabInputs);
+    $("lab-rationing").addEventListener("change", readLabInputs);
+    $("lab-rent").addEventListener("change", readLabInputs);
+    tab.addEventListener("change", function (ev) { if (ev.target.closest && ev.target.closest("#lab-regional")) readRegional(); });
+    tab.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (t.id === "lab-pin") { var r = computeLab(); if (r.err) return; doPin("lab", M.describeLab(r.policy), M.measuresLab(r.out), M.measuresLab(r.base), labState(r)); renderLab(); }
+      else if (t.classList.contains("legend-item") && t.closest("#lab-results")) { var n = t.getAttribute("data-name"); S.hidden.lab[n] = !(S.hidden.lab[n] !== undefined ? S.hidden.lab[n] : t.classList.contains("off")); renderLab(); }
+      else if (t.getAttribute && t.getAttribute("data-inner") && t.closest("#lab-results")) { S.inner.lab = t.getAttribute("data-inner"); renderLab(); }
+    });
+  }
+  function readLabInputs() {
+    var p = S.lab.policy;
+    p.cost_shock = num($("lab-cost").value, 0); p.benefit_boost = num($("lab-boost").value, 0);
+    p.tax_supply = num($("lab-tax-s").value, 0); p.tax_demand = num($("lab-tax-d").value, 0);
+    p.control = $("lab-control").value; p.control_value = num($("lab-control-value").value, 0);
+    var r = document.querySelector('input[name="lab-rationing"]:checked'); p.rationing = r ? r.value : "efficient";
+    var t = document.querySelector('input[name="lab-rent"]:checked'); p.rent_to = t ? t.value : "sellers";
+    renderLab();
+  }
+  function regionNames() { var m = rowsToMarket(S.lab.supply, S.lab.demand); return { supply: m.regions.filter(function (r) { return r.side === M.SUPPLY; }).map(function (r) { return r.name; }), demand: m.regions.filter(function (r) { return r.side === M.DEMAND; }).map(function (r) { return r.name; }) }; }
+  function renderRegional(names) {
+    var h = "";
+    [[M.SUPPLY, "Supply regions"], [M.DEMAND, "Demand regions"]].forEach(function (side) {
+      h += '<p style="margin:8px 0 4px"><b>' + side[1] + '</b></p>';
+      var list = names[side[0]];
+      if (!list.length) { h += '<p class="caption">No regions yet.</p>'; return; }
+      var shock = side[0] === M.SUPPLY ? "Cost shock" : "Benefit boost";
+      h += '<table class="grid"><thead><tr><th>Region</th><th class="num">Capacity %</th><th class="num">' + shock + '</th><th class="num">Tax per unit</th>' + (side[0] === M.SUPPLY ? '<th class="num">Cap on sales</th>' : "") + '</tr></thead><tbody>';
+      list.forEach(function (n) {
+        var rp = S.lab.policy.regional[n] || { scale: 100, shift: 0, tax: 0, cap: 0 };
+        h += '<tr data-region="' + esc(n) + '" data-side="' + side[0] + '"><td>' + esc(n) + '</td><td><input type="number" data-f="scale" value="' + rp.scale + '" min="0" step="10" aria-label="Capacity % ' + esc(n) + '"></td>' +
+             '<td><input type="number" data-f="shift" value="' + rp.shift + '" step="5" aria-label="' + shock + ' ' + esc(n) + '"></td><td><input type="number" data-f="tax" value="' + rp.tax + '" step="5" aria-label="Tax per unit ' + esc(n) + '"></td>' +
+             (side[0] === M.SUPPLY ? '<td><input type="number" data-f="cap" value="' + rp.cap + '" min="0" step="10" aria-label="Cap on sales ' + esc(n) + '"></td>' : "") + '</tr>';
+      });
+      h += '</tbody></table>';
+    });
+    $("lab-regional").innerHTML = h;
+  }
+  function readRegional() {
+    Array.prototype.forEach.call($("lab-regional").querySelectorAll("tr[data-region]"), function (tr) {
+      var n = tr.getAttribute("data-region"), rp = { scale: 100, shift: 0, tax: 0, cap: 0 };
+      Array.prototype.forEach.call(tr.querySelectorAll("input"), function (inp) { rp[inp.getAttribute("data-f")] = num(inp.value, rp[inp.getAttribute("data-f")]); });
+      S.lab.policy.regional[n] = rp;
+    });
+    renderLab(false);
+  }
+  function labPolicy(names) {
+    var p = S.lab.policy, regional = {};
+    names.supply.concat(names.demand).forEach(function (n) {
+      var rp = S.lab.policy.regional[n]; if (!rp) return;
+      regional[n] = { scale: num(rp.scale, 100) / 100, shift: num(rp.shift, 0), tax: num(rp.tax, 0), cap: (names.supply.indexOf(n) >= 0 && num(rp.cap, 0) > 0) ? num(rp.cap, 0) : null };
+    });
+    return M.defaultPolicy({ cost_shock: p.cost_shock, benefit_boost: p.benefit_boost, tax_supply: p.tax_supply, tax_demand: p.tax_demand,
+                             control: p.control, control_value: p.control !== "none" ? p.control_value : null, rationing: p.rationing, rent_to: p.rent_to, regional: regional });
+  }
+  function computeLab() {
+    var market = rowsToMarket(S.lab.supply, S.lab.demand), names = regionNames(), policy = labPolicy(names);
+    try {
+      var out = M.solve(market, policy), base = M.solve(market, {}), bench = M.solve(market, M.stripped(policy), false);
+      return { market: market, names: names, policy: policy, out: out, base: base, bench: bench, groups: M.compare(base, out) };
+    } catch (e) { return { err: e.message, names: names, policy: policy }; }
+  }
+  function labState(r) {
+    var p = r.policy, regional = { supply: {}, demand: {} };
+    r.names.supply.forEach(function (n) { var rp = M.regionPolicy(p, n); regional.supply[n] = { scale: rp.scale, shift: rp.shift, tax: rp.tax, cap: rp.cap }; });
+    r.names.demand.forEach(function (n) { var rp = M.regionPolicy(p, n); regional.demand[n] = { scale: rp.scale, shift: rp.shift, tax: rp.tax, cap: rp.cap }; });
+    return { page: "lab", supply: clone(S.lab.supply), demand: clone(S.lab.demand),
+             policy: { cost_shock: p.cost_shock, benefit_boost: p.benefit_boost, tax_supply: p.tax_supply, tax_demand: p.tax_demand, control: p.control, control_value: p.control_value, rationing: p.rationing, rent_to: p.rent_to, regional: regional },
+             outcome: { price: r.out.price, quantity: r.out.quantity, consumer_surplus: r.out.consumer_surplus, producer_surplus: r.out.producer_surplus, tax_revenue: r.out.tax_revenue, licence_rent: r.out.licence_rent, total_surplus: r.out.total_surplus, deadweight_loss: r.out.deadweight_loss } };
+  }
+  function renderLab(withRegional) {
+    if (!$("lab-results")) return;
+    var r = computeLab();
+    if (withRegional !== false) renderRegional(r.names);
+    var p = S.lab.policy;
+    $("lab-control-value-wrap").hidden = p.control === "none";
+    $("lab-control-value-label").textContent = CONTROL_VALUE_LABEL[p.control] || "Value";
+    var anyCap = r.names.supply.some(function (n) { return S.lab.policy.regional[n] && num(S.lab.policy.regional[n].cap, 0) > 0; });
+    $("lab-rent-wrap").hidden = !(p.control === "quota" || anyCap);
+    var el = $("lab-results");
+    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; $("lab-pin-wrap").innerHTML = pinPanel("lab", M.describeLab(r.policy), 0); return; }
+    var out = r.out, base = r.base, bench = r.bench;
+    var h = '<div class="metrics">' + metric("Market price", out.price, base.price) + metric("Quantity traded", out.quantity, base.quantity) +
+            metric("Total surplus", out.total_surplus, base.total_surplus, { decimals: 0 }) +
+            metric("Deadweight loss", out.deadweight_loss, null, { decimals: 0, help: "Total surplus lost relative to the efficient outcome with the same costs, values and capacity." }) + '</div>';
+    var fig = CH.marketFigure(r.market, r.policy, out, bench), rend = CH.render(fig, S.hidden.lab);
+    h += rend.svg + CH.legendHtml(rend.legend);
+    if (out.flags.no_trade) h += '<div class="error">No trade: one side of the market is empty.</div>';
+    if (out.flags.indeterminate_price) h += '<div class="info">Any price between ' + fmt(out.flags.price_interval[0]) + ' and ' + fmt(out.flags.price_interval[1]) + ' clears the market; the midpoint is shown.</div>';
+    if (r.policy.control !== "none" && !out.control_binding && out.quantity > 0) h += '<p class="caption">The ' + (r.policy.control === "quota" ? "quota" : r.policy.control) + ' does not bind at these settings.</p>';
+    if (out.control_binding && out.rationed_side) {
+      var side = out.rationed_side === M.DEMAND ? "buyers" : "sellers", willing = out.quantity + out.shortage, rule = r.policy.rationing, how;
+      if (rule === "random") how = "each willing " + side.slice(0, -1) + " trades with probability " + pct(willing ? out.quantity / willing : 0);
+      else if (rule === "efficient") how = "the " + side + " who value the trade most are served";
+      else how = "the " + side + " who value the trade least are served";
+      var lead = out.rationed_side === M.DEMAND ? "Shortage: " + fmt(willing) + " buyers want to buy at this price but only " + fmt(out.quantity) + " units are offered"
+                                                 : "Excess supply: " + fmt(willing) + " sellers want to sell at this price but buyers take only " + fmt(out.quantity) + " units";
+      var split = out.rationing_loss > 1e-9 ? " Deadweight loss " + fmt(out.deadweight_loss, 0) + ": " + fmt(out.deadweight_loss - out.rationing_loss, 0) + " from lost trades and " + fmt(out.rationing_loss, 0) + " from giving the units to the wrong people." : "";
+      h += '<div class="note">' + esc(lead) + '. Rationing: ' + esc(how) + '.' + esc(split) + '</div>';
+    }
+    out.regions.forEach(function (rg) {
+      if (rg.capped && rg.willing > rg.quantity + 1e-9) {
+        var how2 = r.policy.rent_to === "government" ? "licences are auctioned, so the lowest-cost sellers buy them and the government keeps the rent"
+                 : r.policy.rationing === "random" ? "licences are handed out by lottery, each willing seller sells with probability " + pct(rg.quantity / rg.willing)
+                 : r.policy.rationing === "efficient" ? "licences go to the lowest-cost sellers" : "licences go to the highest-cost sellers willing at this price";
+        h += '<div class="note">' + esc(rg.name) + ' is capped at ' + fmt(rg.quantity) + ' although ' + fmt(rg.willing) + ' would sell at this price; ' + esc(how2) + '.</div>';
+      }
+    });
+    h += innerTabs("lab", [["outcomes", "Outcomes"], ["regions", "By region"], ["winners", "Winners and losers"]]);
+    if (S.inner.lab === "outcomes") h += labOutcomes(r);
+    else if (S.inner.lab === "regions") h += regionTable(out, base);
+    else h += winnersHtml(out, base, r.groups);
+    el.innerHTML = h;
+    $("lab-pin-wrap").innerHTML = pinPanel("lab", M.describeLab(r.policy), 0);
+    saveLocal();
+  }
+  function labOutcomes(r) {
+    var out = r.out, base = r.base, rows = [["Market price", base.price, out.price]];
+    var bp0 = uniformPrice(base, M.DEMAND), bp1 = uniformPrice(out, M.DEMAND), sp0 = uniformPrice(base, M.SUPPLY), sp1 = uniformPrice(out, M.SUPPLY);
+    if (bp1 != null && bp0 != null && (Math.abs(bp1 - out.price) > 1e-9 || Math.abs(bp0 - base.price) > 1e-9)) rows.push(["Buyers pay (with tax)", bp0, bp1]);
+    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - base.price) > 1e-9)) rows.push(["Sellers receive (after tax)", sp0, sp1]);
+    rows.push(["Quantity traded", base.quantity, out.quantity]);
+    if (out.control_binding && out.shortage > 1e-9) rows.push([out.rationed_side === M.DEMAND ? "Shortage (excess demand)" : "Excess supply", 0, out.shortage]);
+    rows.push(["Consumer surplus", base.consumer_surplus, out.consumer_surplus], ["Producer surplus", base.producer_surplus, out.producer_surplus]);
+    if (Math.abs(out.tax_revenue) > 1e-9 || Math.abs(base.tax_revenue) > 1e-9) rows.push(["Tax revenue", base.tax_revenue, out.tax_revenue]);
+    if (Math.abs(out.licence_rent) > 1e-9) rows.push(["Licence rent (government)", base.licence_rent, out.licence_rent]);
+    rows.push(["Total surplus", base.total_surplus, out.total_surplus], ["Deadweight loss", base.deadweight_loss, out.deadweight_loss]);
+    if (out.rationing_loss > 1e-9) rows.push(["  of which caused by the rationing rule", 0, out.rationing_loss]);
+    var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; });
+    t.push(["Demand elasticity at the outcome", fmt(base.elasticity_demand, 2), fmt(out.elasticity_demand, 2), ""]);
+    t.push(["Supply elasticity at the outcome", fmt(base.elasticity_supply, 2), fmt(out.elasticity_supply, 2), ""]);
+    var h = table3(t, ["Baseline", "Experiment", "Change"]);
+    if (r.policy.cost_shock) h += '<p class="caption">Pass-through of the cost shock to the market price: ' + pct((out.price - base.price) / r.policy.cost_shock) + '.</p>';
+    if (r.policy.benefit_boost) h += '<p class="caption">Share of the benefit boost showing up in the price: ' + pct((out.price - base.price) / r.policy.benefit_boost) + '.</p>';
+    return h;
+  }
+  function regionTable(out, base) {
+    var regs = out.regions.filter(function (r) { return r.willing > 0 || r.quantity > 0 || base.regions.some(function (b) { return b.name === r.name && b.quantity > 0; }); });
+    if (!regs.length) return '<p class="caption">No regions with units.</p>';
+    var anyRent = out.regions.some(function (x) { return x.rent; });
+    var idx = ["Side", "Quantity", "Market share", "Surplus (profit or consumer surplus)", "Change in surplus", "Share of total surplus", "Price received / paid", "Tax paid"];
+    if (anyRent) idx.push("Licence rent to government");
+    if (out.rationed_side) idx.push("Willing at this price");
+    var cols = regs.map(function (r) {
+      var b = base.regions.filter(function (x) { return x.name === r.name; })[0];
+      var c = [r.side.charAt(0).toUpperCase() + r.side.slice(1), fmt(r.quantity), pct(out.quantity > 0 ? r.quantity / out.quantity : 0), fmt(r.surplus),
+               fmt(r.surplus - (b ? b.surplus : 0), 1, true), pct(out.total_surplus > 0 ? r.surplus / out.total_surplus : 0), fmt(r.net_price), fmt(r.tax)];
+      if (anyRent) c.push(fmt(r.rent));
+      if (out.rationed_side) c.push(fmt(r.willing));
+      return c;
+    });
+    var h = '<table class="grid"><thead><tr><th></th>' + regs.map(function (r) { return '<th class="num">' + esc(r.name) + '</th>'; }).join("") + '</tr></thead><tbody>';
+    idx.forEach(function (name, i) { h += '<tr><td>' + esc(name) + '</td>' + cols.map(function (c) { return '<td class="num">' + c[i] + '</td>'; }).join("") + '</tr>'; });
+    return h + '</tbody></table>';
+  }
+
+  // ---- Externalities tab ------------------------------------------------------------
+  function buildExt() {
+    var e = S.ext;
+    $("tab-ext").innerHTML =
+      '<div class="row between"><p class="caption" style="margin:0">A market whose trades affect people outside it. Find the social optimum, then the policy that gets the market there.</p>' +
+      '<div class="row"><button type="button" id="ext-reset-all">Reset everything</button><button type="button" id="ext-reset-pol">Reset policies</button></div></div>' +
+      '<div class="note">' + esc(STORY) + '</div>' +
+      '<details class="panel" id="ext-spec-panel"><summary>Market specification</summary><p class="caption">Each row is a segment: a Quantity of units whose values (buyers) or costs (sellers) are spread evenly from Pmin to Pmax. The default is the laboratory\'s market: 100 units over prices 0 to 100 on each side.</p>' +
+      '<div class="cols"><div><b>Supply</b><div id="ext-supply-wrap"></div></div><div><b>Demand</b><div id="ext-demand-wrap"></div></div></div></details>' +
+      '<div class="cols-4-8"><div>' +
+      '<details class="panel" open><summary>The externality</summary><label for="ext-harm">Harm to third parties per unit traded</label><input type="number" id="ext-harm" step="5" value="' + e.harm + '" title="What each unit traded costs people outside the market. A negative number is a benefit to outsiders: a positive externality."></details>' +
+      '<details class="panel" open><summary>Policy experiments</summary>' +
+      '<label for="ext-tax-s">Tax on sellers (per unit)</label><input type="number" id="ext-tax-s" step="5" value="' + e.tax_supply + '" title="Sellers keep the price minus the tax. Negative for a subsidy.">' +
+      '<label for="ext-tax-d">Tax on buyers (per unit)</label><input type="number" id="ext-tax-d" step="5" value="' + e.tax_demand + '" title="Buyers pay the price plus the tax. Negative for a subsidy.">' +
+      '<label for="ext-cap">Permit cap on units traded (0 = no cap)</label><input type="number" id="ext-cap" min="0" step="5" value="' + e.cap + '" title="Only this many units may be traded. Permits are auctioned, so the lowest-cost sellers buy them and the government keeps the proceeds."></details>' +
+      '</div><div id="ext-results"></div></div><div id="ext-pin-wrap"></div>';
+    $("ext-supply-wrap").innerHTML = specTable("ext-supply", S.ext.supply, M.SUPPLY);
+    $("ext-demand-wrap").innerHTML = specTable("ext-demand", S.ext.demand, M.DEMAND);
+    var tab = $("tab-ext");
+    bindSpec(tab, "ext-supply", function () { return S.ext.supply; }, function (r) { S.ext.supply = r; }, function (rb) { if (rb) $("ext-supply-wrap").innerHTML = specTable("ext-supply", S.ext.supply, M.SUPPLY); renderExt(); });
+    bindSpec(tab, "ext-demand", function () { return S.ext.demand; }, function (r) { S.ext.demand = r; }, function (rb) { if (rb) $("ext-demand-wrap").innerHTML = specTable("ext-demand", S.ext.demand, M.DEMAND); renderExt(); });
+    $("ext-reset-all").onclick = function () { S.ext = freshExt(); buildExt(); renderExt(); };
+    $("ext-reset-pol").onclick = function () { S.ext.tax_supply = 0; S.ext.tax_demand = 0; S.ext.cap = 0; buildExt(); renderExt(); };
+    ["ext-harm", "ext-tax-s", "ext-tax-d", "ext-cap"].forEach(function (id) { $(id).addEventListener("change", readExtInputs); });
+    tab.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (t.id === "ext-pin") { var r = computeExt(); if (r.err) return; doPin("ext", M.describeExt(r.policy, r.harm), M.measuresSocial(r.soc), M.measuresSocial(r.base), extState(r)); renderExt(); }
+      else if (t.classList.contains("legend-item") && t.closest("#ext-results")) { var n = t.getAttribute("data-name"); S.hidden.ext[n] = !(S.hidden.ext[n] !== undefined ? S.hidden.ext[n] : t.classList.contains("off")); renderExt(); }
+      else if (t.getAttribute && t.getAttribute("data-inner") && t.closest("#ext-results")) { S.inner.ext = t.getAttribute("data-inner"); renderExt(); }
+    });
+  }
+  function readExtInputs() {
+    S.ext.harm = num($("ext-harm").value, 0); S.ext.tax_supply = num($("ext-tax-s").value, 0); S.ext.tax_demand = num($("ext-tax-d").value, 0); S.ext.cap = num($("ext-cap").value, 0);
+    renderExt();
+  }
+  function extPolicy() {
+    var cap = num(S.ext.cap, 0);
+    return M.defaultPolicy({ tax_supply: num(S.ext.tax_supply, 0), tax_demand: num(S.ext.tax_demand, 0), control: cap > 0 ? "quota" : "none", control_value: cap > 0 ? cap : null, rent_to: "government" });
+  }
+  function computeExt() {
+    var market = rowsToMarket(S.ext.supply, S.ext.demand), policy = extPolicy(), harm = num(S.ext.harm, 0);
+    try { var soc = M.solveSocial(market, policy, harm), base = M.solveSocial(market, {}, harm); return { market: market, policy: policy, harm: harm, soc: soc, base: base }; }
+    catch (e) { return { err: e.message, policy: policy, harm: harm }; }
+  }
+  function extState(r) {
+    var o = r.soc.out;
+    return { page: "externality", supply: clone(S.ext.supply), demand: clone(S.ext.demand),
+             policy: { harm: r.harm, tax_supply: r.policy.tax_supply, tax_demand: r.policy.tax_demand, cap: r.policy.control_value },
+             outcome: { price: o.price, quantity: o.quantity, consumer_surplus: o.consumer_surplus, producer_surplus: o.producer_surplus, government_revenue: o.government_revenue,
+                        third_party: r.soc.third_party, social_surplus: r.soc.social_surplus, opt_quantity: r.soc.opt_quantity, deadweight_loss: r.soc.deadweight_loss } };
+  }
+  function renderExt() {
+    if (!$("ext-results")) return;
+    var r = computeExt(), el = $("ext-results");
+    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; $("ext-pin-wrap").innerHTML = pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION); return; }
+    var soc = r.soc, out = soc.out, base = r.base;
+    var h = '<div class="metrics">' + metric("Market price", out.price, base.out.price) + metric("Quantity traded", out.quantity, base.out.quantity) +
+            metric("Socially optimal quantity", soc.opt_quantity, null, { help: "The quantity that makes everyone together, third parties included, best off: where the gap between buyers' values and sellers' costs equals the harm per unit." }) +
+            metric("Deadweight loss", soc.deadweight_loss, base.deadweight_loss, { decimals: 0, inverse: true, help: "Social surplus lost relative to the social optimum. The loss can be positive before any policy: the market itself gets the quantity wrong." }) + '</div>';
+    var fig = CH.externalityFigure(r.market, r.policy, soc), rend = CH.render(fig, S.hidden.ext);
+    h += rend.svg + CH.legendHtml(rend.legend) + '<p class="caption">Click "Harm to third parties" in the legend to shade what the outsiders bear.</p>';
+    if (out.flags.no_trade) h += '<div class="error">No trade: one side of the market is empty.</div>';
+    if (out.flags.indeterminate_price) h += '<div class="info">Any price between ' + fmt(out.flags.price_interval[0]) + ' and ' + fmt(out.flags.price_interval[1]) + ' clears the market; the midpoint is shown.</div>';
+    if (r.policy.control === "quota" && !out.control_binding && out.quantity > 0) h += '<p class="caption">The permit cap does not bind at these settings.</p>';
+    h += innerTabs("ext", [["outcomes", "Outcomes"], ["winners", "Winners and losers"]]);
+    if (S.inner.ext === "outcomes") h += extOutcomes(r);
+    else h += winnersHtml(out, base.out, M.compare(base.out, out), [["People outside the market (third parties)", soc.third_party - base.third_party]]);
+    el.innerHTML = h;
+    $("ext-pin-wrap").innerHTML = pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION);
+    saveLocal();
+  }
+  function extOutcomes(r) {
+    var soc = r.soc, out = soc.out, base = r.base, b = base.out, harm = r.harm, rows = [["Market price", b.price, out.price]];
+    var bp0 = uniformPrice(b, M.DEMAND), bp1 = uniformPrice(out, M.DEMAND), sp0 = uniformPrice(b, M.SUPPLY), sp1 = uniformPrice(out, M.SUPPLY);
+    if (bp1 != null && bp0 != null && (Math.abs(bp1 - out.price) > 1e-9 || Math.abs(bp0 - b.price) > 1e-9)) rows.push(["Buyers pay (with tax)", bp0, bp1]);
+    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - b.price) > 1e-9)) rows.push(["Sellers receive (after tax)", sp0, sp1]);
+    rows.push(["Quantity traded", b.quantity, out.quantity], ["Socially optimal quantity", base.opt_quantity, soc.opt_quantity],
+              ["Consumer surplus", b.consumer_surplus, out.consumer_surplus], ["Producer surplus", b.producer_surplus, out.producer_surplus]);
+    if (Math.abs(out.tax_revenue) > 1e-9 || Math.abs(b.tax_revenue) > 1e-9) rows.push([Math.min(out.tax_revenue, b.tax_revenue) < -1e-9 ? "Tax revenue (negative: subsidy paid)" : "Tax revenue", b.tax_revenue, out.tax_revenue]);
+    if (Math.abs(out.licence_rent) > 1e-9 || Math.abs(b.licence_rent) > 1e-9) rows.push(["Permit revenue (government)", b.licence_rent, out.licence_rent]);
+    rows.push(["Buyers, sellers and government together", base.private_surplus, soc.private_surplus]);
+    if (harm >= 0) rows.push(["Harm to third parties", -base.third_party, -soc.third_party]); else rows.push(["Benefit to third parties", base.third_party, soc.third_party]);
+    rows.push(["Social surplus (everyone, third parties included)", base.social_surplus, soc.social_surplus], ["Deadweight loss (against the social optimum)", base.deadweight_loss, soc.deadweight_loss]);
+    return table3(rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; }), ["Baseline (no policy)", "Experiment", "Change"]) +
+           '<p class="caption">Baseline: the market with the externality and no policy. Social surplus is what buyers, sellers and the government get, less the harm to third parties.</p>';
+  }
+
+  // ---- Lab book tab ------------------------------------------------------------------
+  function sameMarket(a, b) {
+    return ["Market price", "Quantity traded"].every(function (k) { return a[k] != null && b[k] != null && Math.abs(a[k] - b[k]) <= 1e-6; });
+  }
+  function baselineName(e) {
+    if (e.tab !== "externality") return "Baseline";
+    var h = +(((e.state || {}).policy || {}).harm || 0);
+    return "Baseline, " + (h >= 0 ? "harm " : "benefit ") + M.num(Math.abs(h));
+  }
+  function cell(x) { return x == null ? "–" : (typeof x === "string" ? x : fmt(x)); }
+  function bookTable(entries) {
+    var cols = [], foot = [], seen = {}, bases = {};
+    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, ""]); } });
+    entries.forEach(function (e) {
+      var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
+      var base = bases[e.tab + "|" + baselineName(e)];
+      if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
+      cols.push([label, e.measures, e.note || ""]);
+    });
+    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); });
+    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) { return '<th>' + esc(c[0]) + '</th>'; }).join("") + '</tr></thead><tbody>';
+    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + '</td>'; }).join("") + '</tr>'; });
+    h += '<tr><td>Note</td>' + cols.map(function (c) { return '<td class="note-cell">' + esc(c[2]) + '</td>'; }).join("") + '</tr></tbody></table></div>';
+    foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
+    return h;
+  }
+  function renderBook() {
+    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " · " + groupNames() : "") : "";
+    var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>';
+    if (!S.book.length) h += '<div class="info">Nothing pinned yet. Run an experiment on the Laboratory or Externalities tab and press "Pin to lab book". Each pinned experiment becomes a column here.</div>';
+    else {
+      h += bookTable(S.book) + '<p class="caption">One column per pinned experiment, next to the baseline it was compared with. Labels, questions and notes can be edited below; everything is saved as you go.</p>';
+      h += '<details class="panel" open><summary>Labels, questions and notes</summary><div class="edit-grid head"><div>Label</div><div>Question</div><div>Note</div><div></div></div>';
+      S.book.forEach(function (e) {
+        h += '<div class="edit-grid" data-id="' + e.id + '"><input type="text" data-f="label" value="' + esc(e.label) + '" aria-label="Label">' +
+             '<select data-f="question" aria-label="Question">' + QUESTIONS.map(function (q) { return '<option' + (q === e.question ? " selected" : "") + '>' + esc(q) + '</option>'; }).join("") + '</select>' +
+             '<input type="text" data-f="note" value="' + esc(e.note) + '" placeholder="What does this column show?" aria-label="Note">' +
+             '<button type="button" class="small remove-entry">Remove</button></div>';
+      });
+      h += '</details>';
+    }
+    h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>' +
+         '<div id="book-status" class="status"></div>';
+    el.innerHTML = h;
+    el.querySelectorAll(".edit-grid[data-id]").forEach(function (row) {
+      var id = row.getAttribute("data-id"), e = S.book.filter(function (x) { return x.id === id; })[0];
+      row.addEventListener("change", function (ev) {
+        var f = ev.target.getAttribute("data-f"); if (!f) return;
+        if (f === "label") { var v = ev.target.value.trim(); if (v) e.label = v; } else e[f] = ev.target.value;
+        saveLocal(); enqueue(entryRecord(e, false)); renderBook();
+      });
+      row.querySelector(".remove-entry").onclick = function () { S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook(); };
+    });
+    $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
+    renderStatus();
+  }
+
+  // ---- Assignment tab --------------------------------------------------------------
+  var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
+  function renderAssignment() {
+    var el = $("tab-assign");
+    var h = '<p><b>Group assignment</b></p><p class="caption">Answer in the boxes below. Everything is saved as you go. Run the experiments on the Laboratory tab and pin the columns you refer to: the lab book is part of the submission.</p>';
+    if (!S.group) h += '<div class="info">Enter your group number at the top of the page to answer.</div>';
+    ASSIGNMENT.forEach(function (q) {
+      h += '<div class="question"><h3>' + esc(q.title) + '</h3><p>' + esc(q.prompt) + '</p><textarea data-q="' + q.id + '" aria-label="Answer to ' + esc(q.title) + '" style="min-height:150px" placeholder="Numbers from the app, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></div>';
+    });
+    h += '<div id="assign-status" class="status"></div>';
+    el.innerHTML = h;
+    el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
+      var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
+      ta.addEventListener("input", upd); ta.addEventListener("change", upd);
+    });
+    renderStatus();
+  }
+
+  // ---- loading a recorded state (instructor links) ------------------------------------
+  function applyState(st) {
+    if (!st) return;
+    if (st.page === "externality") {
+      S.ext = freshExt(); S.ext.supply = st.supply || S.ext.supply; S.ext.demand = st.demand || S.ext.demand;
+      var p = st.policy || {}; S.ext.harm = num(p.harm, 0); S.ext.tax_supply = num(p.tax_supply, 0); S.ext.tax_demand = num(p.tax_demand, 0); S.ext.cap = num(p.cap, 0);
+      buildExt(); renderExt(); showTab("ext"); $("hint").textContent = "Loaded into the Externalities tab."; $("hint").hidden = false;
+    } else {
+      S.lab = freshLab(); S.lab.supply = st.supply || S.lab.supply; S.lab.demand = st.demand || S.lab.demand;
+      var q = st.policy || {}, pol = S.lab.policy;
+      pol.cost_shock = num(q.cost_shock, 0); pol.benefit_boost = num(q.benefit_boost, 0); pol.tax_supply = num(q.tax_supply, 0); pol.tax_demand = num(q.tax_demand, 0);
+      pol.control = q.control || "none"; pol.control_value = num(q.control_value, 0); pol.rationing = q.rationing || "efficient"; pol.rent_to = q.rent_to || "sellers";
+      pol.regional = {};
+      ["supply", "demand"].forEach(function (side) { Object.keys((q.regional || {})[side] || {}).forEach(function (n) { var rp = q.regional[side][n]; pol.regional[n] = { scale: 100 * num(rp.scale, 1), shift: num(rp.shift, 0), tax: num(rp.tax, 0), cap: num(rp.cap, 0) }; }); });
+      buildLab(); renderLab(); showTab("lab"); $("hint").textContent = "Loaded into the Laboratory tab."; $("hint").hidden = false;
+    }
+  }
+  function stateFromHash() {
+    var m = /#state=([A-Za-z0-9_\-]+)/.exec(location.hash || "");
+    if (!m) return null;
+    try { var b64 = m[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch (e) { return null; }
+  }
+
+  // ---- init ----------------------------------------------------------------------------
+  function init() {
+    var qs = new URLSearchParams(location.search);
+    S.classCode = (qs.get("class") || "").trim();
+    S.lab = freshLab(); S.ext = freshExt();
+    var last = loadStored("marketlab:" + S.classCode + ":last");
+    if (last && last.number) S.group = last;
+    mergeStored(loadStored(storeKey()));
+    if (!S.lab.policy) S.lab = freshLab();
+    buildLab(); buildExt();
+    renderGroup(); renderLab(); renderExt(); renderBook(); renderAssignment();
+    Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.onclick = function () { showTab(b.getAttribute("data-tab")); }; });
+    var st = stateFromHash();
+    if (st) applyState(st); else showTab(S.tab || "lab");
+    window.addEventListener("hashchange", function () { var s2 = stateFromHash(); if (s2) applyState(s2); });
+    renderStatus(); flush();
+    setInterval(flush, 30000);
+  }
+  document.addEventListener("DOMContentLoaded", init);
+  window.MarketLabApp = { state: S, applyState: applyState };
+})();
+
+</script>
+
+</body>
+</html>

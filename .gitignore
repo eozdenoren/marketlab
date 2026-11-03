@@ -1,0 +1,5 @@
+tests/cases.json
+config.json
+dist/
+__pycache__/
+.DS_Store
