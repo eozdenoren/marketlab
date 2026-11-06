@@ -76,6 +76,10 @@ def run(page, base_url, tag):
     page.locator("#lab-pin-label").fill("Rent control 40, lottery")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Rent control 40, lottery'", exact=False).wait_for()
+    page.locator("#lab-pin-q").select_option("6")  # a column to remove later, under "Your own experiments"
+    page.locator("#lab-pin-label").fill("Throwaway")
+    page.locator("#lab-pin").click()
+    page.get_by_text("Pinned as 'Throwaway'", exact=False).wait_for()
     # steeper supply via the spec table (experiments cleared first), then reset
     page.locator("#lab-reset-exp").click()
     page.wait_for_timeout(200)
@@ -103,12 +107,22 @@ def run(page, base_url, tag):
     page.locator("#main-tabs button[data-tab='book']").click()
     txt = page.locator("#tab-book").inner_text()
     check("Baseline, harm 20" in txt and "Rent control 40, lottery" in txt and "Tax 20 on sellers" in txt, tag + " lab book columns")
-    note = page.locator("#tab-book input[aria-label='Note']").first
-    note.fill("price up by 10 only")
-    note.press("Enter")
-    note.blur()
+    # each section is the table and the answer box only: no label/section/note panel, no Note row
+    first_cells = [c.strip() for c in page.locator("#tab-book table.labbook tbody td:first-child").all_inner_texts()]
+    check("Labels, sections and notes" not in txt and page.locator("#tab-book input[aria-label='Note']").count() == 0
+          and "Note" not in first_cells and page.locator("#tab-book .edit-grid").count() == 0, tag + " no editing panel in the lab book")
+    # the x on a pinned column removes it, after a confirmation; baselines have no x
+    own = "#tab-book .qsection[data-q='own']"
+    check("Throwaway" in page.locator(own).inner_text(), tag + " throwaway column under own experiments")
+    check(page.locator(own + " .remove-entry").count() == 1, tag + " one remove button: the baseline has none")
+    page.once("dialog", lambda d: d.dismiss())
+    page.locator(own).get_by_role("button", name="Remove Throwaway").click()
     page.wait_for_timeout(200)
-    check("price up by 10 only" in page.locator("#tab-book").inner_text(), tag + " note in table")
+    check("Throwaway" in page.locator(own).inner_text(), tag + " column kept when the removal is cancelled")
+    page.once("dialog", lambda d: d.accept())
+    page.locator(own).get_by_role("button", name="Remove Throwaway").click()
+    page.wait_for_timeout(200)
+    check("Throwaway" not in page.locator(own).inner_text() and "Nothing pinned here yet" in page.locator(own).inner_text(), tag + " column removed with the x")
     sec1 = page.locator("#tab-book .qsection[data-q='q1']").inner_text()
     check("Tax 20 on sellers" in sec1 and "Rent control 40, lottery" not in sec1, tag + " pins sit in their sections")
     sec6 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
@@ -131,6 +145,7 @@ def run(page, base_url, tag):
     page.locator("#main-tabs button[data-tab='book']").click()
     check("Rent control 40, lottery" in page.locator("#tab-book").inner_text() and page.locator("#book-notes").input_value() == "Equal slopes, equal split.", tag + " lab book restored")
     check(page.locator("#tab-book textarea[data-q='q1']").input_value().startswith("Price 60"), tag + " answer restored")
+    check("Throwaway" not in page.locator("#tab-book").inner_text(), tag + " removed column stays removed after reload")
     # instructor-style link with a state in the hash
     import base64, json
     st = {"page": "lab", "supply": [["North", 100, 0, 100]], "demand": [["West", 100, 0, 100]],

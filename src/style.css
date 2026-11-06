@@ -80,10 +80,8 @@ table.grid td.remove { width: 32px; text-align: center; }
 .labbook-wrap { overflow-x: auto; }
 table.grid.labbook td { white-space: nowrap; }
 table.grid.labbook th { white-space: normal; min-width: 120px; }
-table.grid.labbook td.note-cell { white-space: normal; min-width: 160px; font-size: 0.86rem; }
-.edit-grid { display: grid; grid-template-columns: 2.6fr 3.4fr 4fr 1fr; gap: 8px; align-items: center; margin: 6px 0; }
-.edit-grid.head { color: var(--muted); font-size: 0.86rem; }
-@media (max-width: 900px) { .edit-grid { grid-template-columns: 1fr; } }
+table.grid.labbook th .remove-entry { float: right; margin-left: 8px; padding: 0 6px; line-height: 1.5; color: var(--muted); background: #fff; }
+table.grid.labbook th .remove-entry:hover { color: var(--loss); border-color: var(--loss); }
 .question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
 footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }

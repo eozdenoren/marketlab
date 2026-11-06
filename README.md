@@ -9,7 +9,7 @@ downloaded file; everything is computed in the browser.
   two on hundreds of random cases; run both after any engine change).
 * `src/chart.js` — SVG charts; `src/app.js` — the page (group panel, Laboratory,
   Externalities and Lab book tabs, one lab book section per question with its
-  answer box, local storage, save queue);
+  answer box and a remove button per pinned column, local storage, save queue);
   `src/style.css`, `src/index.html`.
 * `build.py [--config config.json]` — inlines everything into `docs/index.html`.
   With a config (endpoint + token) pins, notes and answers are sent to the

@@ -20,7 +20,7 @@
     { id: "q6", title: "6. Pollution: the tax or permit cap that puts the market right",
       prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Then find the tax on sellers that brings the deadweight loss to zero and pin it; try the same tax on buyers, and a permit cap instead. Report who bears the harm before any policy, how the right tax relates to the harm, and whether the cap does the same job. Who gains and who loses from the policy?" },
     { id: "own", title: "Your own experiments",
-      prompt: "Anything you tried beyond the questions above. Give each column a label and a note saying what it shows, and write here what you learned from it." }];
+      prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
   var EXT_QUESTION = 5;
   function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
   var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
@@ -655,43 +655,35 @@
   function cell(x) { return x == null ? "–" : (typeof x === "string" ? x : fmt(x)); }
   function bookTable(entries) {
     var cols = [], foot = [], seen = {}, bases = {};
-    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, ""]); } });
+    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, null]); } });
     entries.forEach(function (e) {
       var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
       var base = bases[e.tab + "|" + baselineName(e)];
       if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
-      cols.push([label, e.measures, e.note || ""]);
+      cols.push([label, e.measures, e.id]);
     });
     var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); });
-    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) { return '<th>' + esc(c[0]) + '</th>'; }).join("") + '</tr></thead><tbody>';
+    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
+      return '<th>' + (c[2] ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">\u2715</button>' : "") + esc(c[0]) + '</th>';
+    }).join("") + '</tr></thead><tbody>';
     rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + '</td>'; }).join("") + '</tr>'; });
-    h += '<tr><td>Note</td>' + cols.map(function (c) { return '<td class="note-cell">' + esc(c[2]) + '</td>'; }).join("") + '</tr></tbody></table></div>';
+    h += '</tbody></table></div>';
     foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
     return h;
   }
   var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
-  function editRows(entries) {
-    var h = '<div class="edit-grid head"><div>Label</div><div>Section</div><div>Note</div><div></div></div>';
-    entries.forEach(function (e) {
-      h += '<div class="edit-grid" data-id="' + e.id + '"><input type="text" data-f="label" value="' + esc(e.label) + '" aria-label="Label">' +
-           '<select data-f="question" aria-label="Section">' + QUESTIONS.map(function (q) { return '<option' + (q.title === e.question ? " selected" : "") + '>' + esc(q.title) + '</option>'; }).join("") + '</select>' +
-           '<input type="text" data-f="note" value="' + esc(e.note) + '" placeholder="What does this column show?" aria-label="Note">' +
-           '<button type="button" class="small remove-entry">Remove</button></div>';
-    });
-    return h;
-  }
   function renderBook() {
     var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
-            'Pin from the Laboratory or Externalities tab; move a column to another section with its Section dropdown. Everything is saved as you go.</p>';
+            'Pin from the Laboratory or Externalities tab, choosing the section as you pin; the \u2715 on a column removes it. Everything is saved as you go.</p>';
     if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
     QUESTIONS.forEach(function (q) {
       var mine = S.book.filter(function (e) { return sectionOf(e) === q.id; });
       var answered = (S.answers[q.id] || "").trim().length > 0;
       h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " \u00b7 answered" : "") + '</span></h2>' +
            '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
-      if (mine.length) h += bookTable(mine) + '<details class="panel" open><summary>Labels, sections and notes</summary>' + editRows(mine) + '</details>';
+      if (mine.length) h += bookTable(mine);
       else h += '<p class="caption">Nothing pinned here yet.</p>';
       h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
            '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="Numbers from the lab book, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></section>';
@@ -699,14 +691,12 @@
     h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>' +
          '<div id="book-status" class="status"></div>';
     el.innerHTML = h;
-    el.querySelectorAll(".edit-grid[data-id]").forEach(function (row) {
-      var id = row.getAttribute("data-id"), e = S.book.filter(function (x) { return x.id === id; })[0];
-      row.addEventListener("change", function (ev) {
-        var f = ev.target.getAttribute("data-f"); if (!f) return;
-        if (f === "label") { var v = ev.target.value.trim(); if (v) e.label = v; } else e[f] = ev.target.value;
-        saveLocal(); enqueue(entryRecord(e, false)); renderBook();
-      });
-      row.querySelector(".remove-entry").onclick = function () { S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook(); };
+    el.querySelectorAll(".remove-entry").forEach(function (btn) {
+      var id = btn.getAttribute("data-id"), e = S.book.filter(function (x) { return x.id === id; })[0];
+      btn.onclick = function () {
+        if (!e || !window.confirm("Remove '" + e.label + "' from your lab book?")) return;
+        S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook();
+      };
     });
     el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
       var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
