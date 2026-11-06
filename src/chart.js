@@ -72,7 +72,9 @@ var MLChart = (function () {
       } else area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
       if (buyerPrice - sellerPrice > 1e-9 && out.government_revenue > 1e-9)
         area(traces, [[0, buyerPrice], [Q, buyerPrice]], sellerPrice, COLORS.gov, 0.30, out.licence_rent > out.tax_revenue ? "Licence rent" : "Tax revenue");
-      if (benchOut.quantity > Q + 1e-9)
+      // Under a lottery the lost trades are not a definite set of buyers, so the usual triangle is not drawn: the dotted
+      // triangle and its note carry the story, and the loss is read from the Outcomes table.
+      if (benchOut.quantity > Q + 1e-9 && !lottery)
         area(traces, clipPath(dPts, Q, benchOut.quantity), clipPath(sPts, Q, benchOut.quantity), COLORS.dwl, 0.35, "Deadweight loss: lost trades", "/");
       if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND && !lottery) {
         area(traces, clipPath(dPts, 0, Q), clipPath(dServed, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");

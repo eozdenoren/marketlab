@@ -530,7 +530,7 @@
       else how = "the " + side + " who value the trade least are served";
       var lead = out.rationed_side === M.DEMAND ? "Shortage: " + fmt(willing) + " buyers want to buy at this price but only " + fmt(out.quantity) + " units are offered"
                                                  : "Excess supply: " + fmt(willing) + " sellers want to sell at this price but buyers take only " + fmt(out.quantity) + " units";
-      var split = out.rationing_loss > 1e-9 ? " Deadweight loss " + fmt(out.deadweight_loss, 0) + ": " + fmt(out.deadweight_loss - out.rationing_loss, 0) + " from lost trades and " + fmt(out.rationing_loss, 0) + " from giving the units to the wrong people." : "";
+      var split = out.rationing_loss > 1e-9 ? " Deadweight loss " + fmt(out.deadweight_loss, 0) + "; it would be " + fmt(out.deadweight_loss - out.rationing_loss, 0) + " if the units went to the " + side + " who value them most, so the rule costs " + fmt(out.rationing_loss, 0) + "." : "";
       h += '<div class="note">' + esc(lead) + '. Rationing: ' + esc(how) + '.' + esc(split) + '</div>';
     }
     out.regions.forEach(function (rg) {
@@ -565,10 +565,10 @@
     var dTS = out.total_surplus - base.total_surplus, dwl = out.deadweight_loss, rl = out.rationing_loss > 1e-9 ? out.rationing_loss : 0;
     var same = dwl > 1e-9 && Math.abs(dwl + dTS) < 1e-6, whole = function (x) { return fmt(x, Math.abs(x - Math.round(x)) < 0.05 ? 0 : 1); };
     var h = table3(t, ["Baseline", "Experiment", "Change"], same ? [rows.length - 1, 3] : null);
-    if (same) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b>, the fall in total surplus' +
-      (rl ? ': ' + whole(dwl - rl) + ' from lost trades and ' + whole(rl) + ' from giving units to the wrong people' : '') + '.</p>';
-    else if (dwl > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b> against the market with the same shock but no tax or control' +
-      (rl ? ' (' + whole(rl) + ' of it from giving units to the wrong people)' : '') + '; total surplus changed by ' + fmt(dTS, 1, true) + ' in all, the rest being the shock itself.</p>';
+    var who = out.rationed_side === M.DEMAND ? "buyers" : "sellers";
+    var ruleCost = rl ? ' It would be ' + whole(dwl - rl) + ' if the units went to the ' + who + ' who value them most; the rationing rule costs the other ' + whole(rl) + '.' : '';
+    if (same) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b>, the fall in total surplus.' + ruleCost + '</p>';
+    else if (dwl > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b> against the market with the same shock but no tax or control; total surplus changed by ' + fmt(dTS, 1, true) + ' in all, the rest being the shock itself.' + ruleCost + '</p>';
     else if (Math.abs(dTS) > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = 0</b>: the change in total surplus comes from the shock to costs or capacity, not from a distortion.</p>';
     if (r.policy.cost_shock) h += '<p class="caption">Pass-through of the cost shock to the market price: ' + pct((out.price - base.price) / r.policy.cost_shock) + '.</p>';
     if (r.policy.benefit_boost) h += '<p class="caption">Share of the benefit boost showing up in the price: ' + pct((out.price - base.price) / r.policy.benefit_boost) + '.</p>';
