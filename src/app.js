@@ -363,17 +363,17 @@
   function winnersHtml(out, base, groups, extra) {
     var order = { demand: 0, supply: 1 }, ko = { kept: 0, lost: 1, "new": 2 };
     groups = groups.slice().sort(function (a, b) { return (order[a.side] - order[b.side]) || (a.region < b.region ? -1 : a.region > b.region ? 1 : 0) || (ko[a.kind] - ko[b.kind]); });
-    var rows = groups.map(function (g) { return [groupLabel(g), fmt(g.mass), fmt(g.average, 1, true), fmt(g.change, 1, true)]; });
+    var rows = groups.map(function (g) { return [groupLabel(g), fmt(g.mass), fmt(g.change, 1, true)]; });
     var bars = groups.map(function (g) { return [groupLabel(g), g.change]; });
     var gov = out.government_revenue - base.government_revenue;
-    if (Math.abs(gov) > 1e-9) { rows.push(["Government (tax, permit and licence revenue)", "", "", fmt(gov, 1, true)]); bars.push(["Government", gov]); }
-    (extra || []).forEach(function (x) { if (Math.abs(x[1]) > 1e-9) { rows.push([x[0], "", "", fmt(x[1], 1, true)]); bars.push([x[0], x[1]]); } });
+    if (Math.abs(gov) > 1e-9) { rows.push(["Government (tax, permit and licence revenue)", "", fmt(gov, 1, true)]); bars.push(["Government", gov]); }
+    (extra || []).forEach(function (x) { if (Math.abs(x[1]) > 1e-9) { rows.push([x[0], "", fmt(x[1], 1, true)]); bars.push([x[0], x[1]]); } });
     var total = groups.reduce(function (a, g) { return a + g.change; }, 0) + gov + (extra || []).reduce(function (a, x) { return a + x[1]; }, 0);
-    rows.push(["Everyone together", "", "", fmt(total, 1, true)]);
+    rows.push(["Everyone together", "", fmt(total, 1, true)]);
     if (!groups.length && Math.abs(gov) < 1e-9 && !(extra || []).some(function (x) { return Math.abs(x[1]) > 1e-9; }))
       return '<p class="caption">Nothing has changed yet. Run an experiment to see who gains and who loses.</p>';
-    var h = CH.winnersHtml(bars) + '<table class="grid"><thead><tr><th>Who</th><th class="num">How many</th><th class="num">Each, on average</th><th class="num">Total</th></tr></thead><tbody>';
-    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td><td class="num">' + r[3] + '</td></tr>'; });
+    var h = CH.winnersHtml(bars) + '<table class="grid"><thead><tr><th>Who</th><th class="num">How many</th><th class="num">Total</th></tr></thead><tbody>';
+    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td></tr>'; });
     return h + '</tbody></table><p class="caption">Compared with the baseline market. Under a random lottery the counts are expected numbers: every willing trader faces the same odds.</p>';
   }
   function uniformPrice(out, side) {
