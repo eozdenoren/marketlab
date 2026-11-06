@@ -36,6 +36,7 @@ var MLChart = (function () {
     return out.price;
   }
   function cap1(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function thousands(x) { return Number(x.toFixed(1)).toLocaleString("en-GB"); }
 
   function marketFigure(market, policy, out, benchOut) {
     policy = M.defaultPolicy(policy);
@@ -44,7 +45,7 @@ var MLChart = (function () {
     var ctrlVals = (policy.control === "ceiling" || policy.control === "floor") && policy.control_value ? [policy.control_value] : [];
     var pMax = Math.max.apply(null, allBps.concat(ctrlVals, [1])) * 1.08;
     var qMax = Math.max(real.totalSupplyMass(), real.totalDemandMass(), 1) * 1.05;
-    var traces = [];
+    var traces = [], notes = [];
     var regionalTax = Object.keys(policy.regional || {}).some(function (n) { return M.regionPolicy(policy, n).tax; });
     var caps = Object.keys(eff.caps).length > 0;
     var simple = !regionalTax && !caps && out.quantity > 0;
@@ -53,17 +54,31 @@ var MLChart = (function () {
       var buyerPrice = netPrice(out, M.DEMAND), sellerPrice = netPrice(out, M.SUPPLY);
       var dServed = M.servedCurvePoints(out, M.DEMAND, policy.tax_demand), sServed = M.servedCurvePoints(out, M.SUPPLY, -policy.tax_supply);
       var Q = out.quantity;
-      area(traces, clipPath(dServed, 0, Q), buyerPrice, COLORS.demand, 0.25, "Consumer surplus");
-      area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
+      // A lottery: everyone willing has the same chance, so the side's surplus is a share of the whole triangle it would
+      // get if all of them traded. Draw that triangle, dotted, and say what share of it is won; the other side as usual.
+      var lottery = policy.rationing === "random" && out.control_binding && out.rationed_side && out.shortage > 1e-9;
+      var willing = Q + out.shortage;
+      if (lottery && out.rationed_side === M.DEMAND) {
+        var tri = clipPath(dPts, 0, willing), top = tri.length ? tri[0][1] : buyerPrice;
+        area(traces, tri, buyerPrice, COLORS.demand, 0.12, "Consumer surplus: a " + M.num(Q) + "-in-" + M.num(willing) + " share of the dotted triangle", ".");
+        notes.push({ q: willing * 0.85, p: buyerPrice + 0.8 * (top - buyerPrice), to: [willing * 0.3, buyerPrice + 0.3 * (top - buyerPrice)],
+                     text: "Consumer surplus = " + M.num(Q) + "/" + M.num(willing) + " of this triangle = " + thousands(out.consumer_surplus) });
+      } else area(traces, clipPath(dServed, 0, Q), buyerPrice, COLORS.demand, 0.25, "Consumer surplus");
+      if (lottery && out.rationed_side === M.SUPPLY) {
+        var triS = clipPath(sPts, 0, willing), bottom = triS.length ? triS[0][1] : sellerPrice;
+        area(traces, triS, sellerPrice, COLORS.supply, 0.12, "Producer surplus: a " + M.num(Q) + "-in-" + M.num(willing) + " share of the dotted triangle", ".");
+        notes.push({ q: willing * 0.85, p: sellerPrice - 0.8 * (sellerPrice - bottom), to: [willing * 0.3, sellerPrice - 0.3 * (sellerPrice - bottom)],
+                     text: "Producer surplus = " + M.num(Q) + "/" + M.num(willing) + " of this triangle = " + thousands(out.producer_surplus) });
+      } else area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
       if (buyerPrice - sellerPrice > 1e-9 && out.government_revenue > 1e-9)
         area(traces, [[0, buyerPrice], [Q, buyerPrice]], sellerPrice, COLORS.gov, 0.30, out.licence_rent > out.tax_revenue ? "Licence rent" : "Tax revenue");
       if (benchOut.quantity > Q + 1e-9)
         area(traces, clipPath(dPts, Q, benchOut.quantity), clipPath(sPts, Q, benchOut.quantity), COLORS.dwl, 0.35, "Deadweight loss: lost trades", "/");
-      if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND) {
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND && !lottery) {
         area(traces, clipPath(dPts, 0, Q), clipPath(dServed, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
         line(traces, dServed, COLORS.demand, 1.5, "dot", "Values of the buyers actually served");
       }
-      if (out.rationing_loss > 1e-9 && out.rationed_side === M.SUPPLY) {
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.SUPPLY && !lottery) {
         area(traces, clipPath(sServed, 0, Q), clipPath(sPts, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
         line(traces, sServed, COLORS.supply, 1.5, "dot", "Costs of the sellers actually selling");
       }
@@ -92,7 +107,7 @@ var MLChart = (function () {
       markers.push({ q: willing, p: out.price, color: dem ? COLORS.demand : COLORS.supply,
                      name: (dem ? "Buyers who want to buy at this price: " : "Sellers who want to sell at this price: ") + M.num(willing), guides: "vertical", hollow: true });
     }
-    return { traces: traces, hlines: hlines, vlines: vlines, markers: markers, qMax: qMax, pMax: pMax };
+    return { traces: traces, hlines: hlines, vlines: vlines, markers: markers, notes: notes, qMax: qMax, pMax: pMax };
   }
 
   function externalityFigure(market, policy, soc) {
@@ -177,7 +192,12 @@ var MLChart = (function () {
       if (off) return;
       var d = t.pts.map(function (qp) { return X(qp[0]).toFixed(2) + "," + Y(qp[1]).toFixed(2); }).join(" ");
       if (t.kind === "area") {
-        if (t.hatch) {
+        if (t.hatch === ".") {
+          var did = "dots" + i;
+          defs.push('<pattern id="' + did + '" patternUnits="userSpaceOnUse" width="7" height="7"><rect width="7" height="7" fill="' + rgba(t.color, t.alpha) + '"/>' +
+                    '<circle cx="3.5" cy="3.5" r="1.2" fill="' + rgba(t.color, 0.7) + '"/></pattern>');
+          body.push('<polygon points="' + d + '" fill="url(#' + did + ')" stroke="none"/>');
+        } else if (t.hatch) {
           var pid = "hatch" + i, rot = t.hatch === "/" ? -45 : 45;
           defs.push('<pattern id="' + pid + '" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(' + rot + ')">' +
                     '<rect width="7" height="7" fill="' + rgba(t.color, 0.15) + '"/><line x1="0" y1="0" x2="0" y2="7" stroke="' + rgba(t.color, 0.9) + '" stroke-width="1.6"/></pattern>');
@@ -193,6 +213,13 @@ var MLChart = (function () {
     fig.vlines.forEach(function (l) {
       body.push('<line x1="' + X(l.x) + '" x2="' + X(l.x) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.5"' + dashAttr("dashdot") + '/>');
       body.push('<text x="' + (X(l.x) + 4) + '" y="' + (mt + 12) + '" class="tick">' + esc(l.label) + '</text>');
+    });
+    (fig.notes || []).forEach(function (n, i) {
+      var aid = "arrow" + i;
+      defs.push('<marker id="' + aid + '" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="' + COLORS.text + '"/></marker>');
+      var x1 = X(n.q), y1 = Y(n.p), x2 = X(n.to[0]), y2 = Y(n.to[1]);
+      body.push('<line x1="' + x1 + '" y1="' + (y1 + 6) + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + COLORS.text + '" stroke-width="1.3" marker-end="url(#' + aid + ')"/>');
+      body.push('<text x="' + x1 + '" y="' + y1 + '" text-anchor="middle" class="note-text" paint-order="stroke" stroke="white" stroke-width="4" fill="' + COLORS.text + '">' + esc(n.text) + '</text>');
     });
     fig.markers.forEach(function (m) {
       if (m.guides === "both" || m.guides === "horizontal") body.push('<line x1="' + ml + '" x2="' + X(m.q) + '" y1="' + Y(m.p) + '" y2="' + Y(m.p) + '" stroke="' + m.color + '" stroke-width="1"' + dashAttr("dot") + '/>');

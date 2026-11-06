@@ -350,6 +350,11 @@
       return '<button type="button" data-inner="' + it[0] + '" class="' + (S.inner[which] === it[0] ? "active" : "") + '">' + esc(it[1]) + '</button>';
     }).join("") + '</div>';
   }
+  // The Change column: signed, except that a loss is a magnitude, so its row reads "100.0 worse" rather than "+100.0".
+  function changeCell(name, delta) {
+    if (!/loss|rationing rule/i.test(name)) return fmt(delta, 1, true);
+    return Math.abs(delta) < 5e-10 ? fmt(0) : fmt(Math.abs(delta)) + (delta > 0 ? " worse" : " better");
+  }
   function uniformPrice(out, side) {
     var vals = out.regions.filter(function (r) { return r.side === side && r.quantity > 0; }).map(function (r) { return r.net_price; });
     if (!vals.length) return null;
@@ -557,7 +562,7 @@
     if (Math.abs(out.licence_rent) > 1e-9) rows.push(["Licence rent (government)", base.licence_rent, out.licence_rent]);
     rows.push(["Total surplus", base.total_surplus, out.total_surplus], ["Deadweight loss", base.deadweight_loss, out.deadweight_loss]);
     if (out.rationing_loss > 1e-9) rows.push(["  of which caused by the rationing rule", 0, out.rationing_loss]);
-    var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; });
+    var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), changeCell(x[0], x[2] - x[1])]; });
     var h = table3(t, ["Baseline", "Experiment", "Change"]);
     if (r.policy.cost_shock) h += '<p class="caption">Pass-through of the cost shock to the market price: ' + pct((out.price - base.price) / r.policy.cost_shock) + '.</p>';
     if (r.policy.benefit_boost) h += '<p class="caption">Share of the benefit boost showing up in the price: ' + pct((out.price - base.price) / r.policy.benefit_boost) + '.</p>';
@@ -665,7 +670,7 @@
     rows.push(["Buyers, sellers and government together", base.private_surplus, soc.private_surplus]);
     if (harm >= 0) rows.push(["Harm to third parties", -base.third_party, -soc.third_party]); else rows.push(["Benefit to third parties", base.third_party, soc.third_party]);
     rows.push(["Social surplus (everyone, third parties included)", base.social_surplus, soc.social_surplus], ["Deadweight loss (against the social optimum)", base.deadweight_loss, soc.deadweight_loss]);
-    return table3(rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; }), ["Baseline (no policy)", "Experiment", "Change"]) +
+    return table3(rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), changeCell(x[0], x[2] - x[1])]; }), ["Baseline (no policy)", "Experiment", "Change"]) +
            '<p class="caption">Baseline: the market with the externality and no policy. Social surplus is what buyers, sellers and the government get, less the harm to third parties.</p>';
   }
 

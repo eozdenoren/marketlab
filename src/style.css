@@ -55,6 +55,7 @@ table.grid td.remove { width: 32px; text-align: center; }
 .metric .delta.up.inverse { background: #fbebeb; color: #9b1c1c; } .metric .delta.down.inverse { background: #e5f4e4; color: #1f6b2a; }
 .chart { width: 100%; height: auto; display: block; }
 .chart .tick { font-size: 11px; fill: var(--muted); } .chart .axis { font-size: 12px; fill: var(--muted); }
+.chart .note-text { font-size: 13px; font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 6px; }
 .legend-item { border: none; background: none; padding: 2px 4px; font-size: 0.82rem; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
 .legend-item.off { color: #b5b4ae; text-decoration: line-through; }
