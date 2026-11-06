@@ -9,7 +9,10 @@ downloaded file; everything is computed in the browser.
   two on hundreds of random cases; run both after any engine change).
 * `src/chart.js` — SVG charts; `src/app.js` — the page (group panel, Laboratory,
   Externalities and Lab book tabs, one lab book section per question with its
-  answer box and a remove button per pinned column, local storage, save queue);
+  answer box, a remove button per pinned column and a button that sets up the
+  market the question starts from; local storage, save queue). The questions
+  are `QUESTIONS` at the top of the file and must match `ASSIGNMENT` in
+  `../app/scenarios.py` (`../app/tests/test_questions.py` checks it);
   `src/style.css`, `src/index.html`.
 * `build.py [--config config.json]` — inlines everything into `docs/index.html`.
   With a config (endpoint + token) pins, notes and answers are sent to the

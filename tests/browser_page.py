@@ -94,11 +94,11 @@ def run(page, base_url, tag):
     page.locator("#lab-results button[data-inner='winners']").click()
     check("Government" not in page.locator("#lab-results table").inner_text() and "buyers who no longer buy" in page.locator("#lab-results").inner_text(), tag + " winners table")
     shot(page, tag + "_03_ceiling_winners")
-    page.locator("#lab-pin-q").select_option("3")  # file under "4. Rent control"
+    page.locator("#lab-pin-q").select_option("5")  # file under "6. Rent control"
     page.locator("#lab-pin-label").fill("Rent control 40, lottery")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Rent control 40, lottery'", exact=False).wait_for()
-    page.locator("#lab-pin-q").select_option("6")  # a column to remove later, under "Your own experiments"
+    page.locator("#lab-pin-q").select_option("10")  # a column to remove later, under "Your own experiments"
     page.locator("#lab-pin-label").fill("Throwaway")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Throwaway'", exact=False).wait_for()
@@ -147,10 +147,58 @@ def run(page, base_url, tag):
     check("Throwaway" not in page.locator(own).inner_text() and "Nothing pinned here yet" in page.locator(own).inner_text(), tag + " column removed with the x")
     sec1 = page.locator("#tab-book .qsection[data-q='q1']").inner_text()
     check("Tax 20 on sellers" in sec1 and "Rent control 40, lottery" not in sec1, tag + " pins sit in their sections")
-    sec6 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
-    check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 6")
-    sec4 = page.locator("#tab-book .qsection[data-q='q4']").inner_text()
-    check("Rent control 40, lottery" in sec4, tag + " rent control pin under question 4")
+    sec6 = page.locator("#tab-book .qsection[data-q='q10']").inner_text()
+    check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 10")
+    sec4 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
+    check("Rent control 40, lottery" in sec4, tag + " rent control pin under question 6")
+    # The button under a question sets up the tab it starts from. Question 4 has its own market (two supply regions):
+    # declined, nothing changes; accepted, the Laboratory opens on that market with the pin panel filed under question 4,
+    # and the lab book shows what each region sells and earns.
+    q4 = "#tab-book .qsection[data-q='q4']"
+    page.once("dialog", lambda d: d.dismiss())
+    page.locator(q4 + " .start-q").click()
+    check(not page.locator("#tab-book").is_hidden(), tag + " set-up declined: still in the lab book")
+    page.once("dialog", lambda d: d.accept())
+    page.locator(q4 + " .start-q").click()
+    page.wait_for_timeout(300)
+    names = [i.input_value() for i in page.locator("#lab-supply tbody tr td:first-child input").all()]
+    check(not page.locator("#tab-lab").is_hidden() and names == ["North", "South"], tag + " set-up loads the two-region market in the Laboratory")
+    check(page.locator("#lab-pin-q").input_value() == "3" and metric(page, "Market price") == "50.0", tag + " set-up files pins under question 4, no experiment left")
+    set_num(page, "Tax on sellers (per unit)", 20)
+    page.locator("#lab-pin").click()
+    page.get_by_text("Pinned as 'Tax 20 on sellers' under '4. Broad base", exact=False).wait_for()
+    set_num(page, "Tax on sellers (per unit)", 0)
+    page.locator("#lab-regional-panel summary").click()
+    north = page.locator("#lab-regional tr[data-region='North'] input[data-f='tax']")
+    north.click(click_count=3)
+    page.keyboard.type("40")
+    page.locator("#lab-pin").click()
+    page.get_by_text("Pinned as 'North tax 40' under '4. Broad base", exact=False).wait_for()
+    page.locator("#main-tabs button[data-tab='book']").click()
+    rows = {}
+    for tr in page.locator(q4 + " table.labbook tbody tr").all():
+        cells = [c.strip() for c in tr.locator("td").all_inner_texts()]
+        rows[cells[0]] = cells[1:]
+    # (by now the tab has been rebuilt several times, by the two reset buttons and by the set-up button: one click on
+    # Pin must still give exactly one column, so three columns here: the baseline and the two pins)
+    check(all(len(v) == 3 for v in rows.values()), tag + " one click on Pin gives one column, also after resets")
+    check(rows.get("Government revenue") == ["0.0", "800.0", "400.0"] and rows.get("Deadweight loss") == ["0.0", "100.0", "300.0"]
+          and rows.get("Buyers pay") == ["50.0", "60.0", "60.0"], tag + " question 4: same buyers' price, half the revenue, three times the loss")
+    check(rows.get("Quantity: North") == ["25.0", "20.0", "10.0"] and rows.get("Quantity: South") == ["25.0", "20.0", "30.0"]
+          and rows.get("Surplus: South") == ["625.0", "400.0", "900.0"], tag + " question 4: regional rows in the lab book")
+    check("Quantity: North" not in page.locator("#tab-book .qsection[data-q='q1']").inner_text(), tag + " no regional rows for a one-region market")
+    # a question on the default market: the set-up puts the default market back and files pins under it
+    page.once("dialog", lambda d: d.accept())
+    page.locator("#tab-book .qsection[data-q='q5'] .start-q").click()
+    page.wait_for_timeout(300)
+    names = [i.input_value() for i in page.locator("#lab-supply tbody tr td:first-child input").all()]
+    check(names == ["North"] and page.locator("#lab-pin-q").input_value() == "4", tag + " set-up for question 5: default market, pins filed under it")
+    page.once("dialog", lambda d: d.accept())
+    page.locator("#main-tabs button[data-tab='book']").click()
+    page.locator("#tab-book .qsection[data-q='q10'] .start-q").click()
+    page.wait_for_timeout(300)
+    check(not page.locator("#tab-ext").is_hidden() and page.locator("#ext-pin-q").input_value() == "9", tag + " set-up for question 10 opens the Externalities tab")
+    page.locator("#main-tabs button[data-tab='book']").click()
     page.locator("#book-notes").fill("Equal slopes, equal split.")
     page.locator("#book-notes").blur()
     shot(page, tag + "_05_labbook")

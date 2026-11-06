@@ -56,7 +56,7 @@ for (const c of cases) {
     check(c.id, `group ${k}.change`, got[k].change, want[k].change);
   }
   const meas = M.measuresLab(out);
-  for (const k of M.MEASURES) check(c.id, `measure ${k}`, meas[k], c.measures[k]);
+  for (const k of new Set([...M.MEASURES, ...Object.keys(c.measures), ...Object.keys(meas)])) check(c.id, `measure ${k}`, meas[k], c.measures[k]);
   check(c.id, "label", M.describeLab(c.policy), c.label);
   const real = new M.Curves(market, M.stripped(M.defaultPolicy(c.policy)));
   checkPts(c.id, "curve.supply", M.curvePoints(real, M.SUPPLY, c.p_max), c.curves.supply);

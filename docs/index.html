@@ -94,6 +94,7 @@ footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
 .qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
+.qsection .start-row { margin: 2px 0 10px; }
 details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
 details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
 details[open].prompt > summary::before { content: "\25BE "; }
@@ -648,7 +649,25 @@ var MarketLab = (function () {
     m["Socially optimal quantity"] = null; m["Consumer surplus"] = out.consumer_surplus; m["Producer surplus"] = out.producer_surplus;
     m["Government revenue"] = Math.abs(gov) > 1e-9 ? gov : 0; m["Third parties"] = null; m["Total surplus"] = out.total_surplus;
     m["Deadweight loss"] = out.deadweight_loss;
+    regionMeasures(out, m);
     return m;
+  }
+  // With several regions on a side of the market: what each of them trades and earns (a tax on one region,
+  // a tariff). Rows named "Quantity: North", "Surplus: North"; nothing is added for a side with one region.
+  function regionMeasures(out, m) {
+    var rs = [];
+    [SUPPLY, DEMAND].forEach(function (side) {
+      var mine = out.regions.filter(function (r) { return r.side === side; });
+      if (mine.length > 1) rs = rs.concat(mine);
+    });
+    rs.forEach(function (r) { m["Quantity: " + r.name] = r.quantity; });
+    rs.forEach(function (r) { m["Surplus: " + r.name] = r.surplus; });
+  }
+  function extraMeasures(columns) {
+    // the regional rows present in any of these measure sets, in first-seen order (after the fixed MEASURES)
+    var seen = {}, out = [];
+    columns.forEach(function (c) { Object.keys(c || {}).forEach(function (k) { if (MEASURES.indexOf(k) < 0 && !seen[k] && /^(Quantity|Surplus): /.test(k)) { seen[k] = 1; out.push(k); } }); });
+    return out.filter(function (k) { return /^Quantity: /.test(k); }).concat(out.filter(function (k) { return /^Surplus: /.test(k); }));
   }
   function measuresSocial(soc) {
     var m = measuresLab(soc.out);
@@ -673,7 +692,7 @@ var MarketLab = (function () {
       var rp = regionPolicy(policy, name);
       if (Math.abs(rp.scale - 1) > 1e-9) bits.push(name + " capacity " + Math.round(100 * rp.scale) + "%");
       if (rp.shift) bits.push(name + " shift " + num(rp.shift));
-      if (rp.tax > 0) bits.push(name + " tariff " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
+      if (rp.tax > 0) bits.push(name + " tax " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
       if (rp.cap != null) bits.push(name + " cap " + num(rp.cap));
     });
     var rule = { efficient: "", random: ", lottery", inefficient: ", worst served" }[policy.rationing] || "";
@@ -696,7 +715,7 @@ var MarketLab = (function () {
   return { SUPPLY: SUPPLY, DEMAND: DEMAND, RULES: RULES, CONTROLS: CONTROLS, MEASURES: MEASURES,
            defaultPolicy: defaultPolicy, stripped: stripped, regionPolicy: regionPolicy, Curves: Curves, solve: solve, compare: compare,
            curvePoints: curvePoints, servedCurvePoints: servedCurvePoints, solveSocial: solveSocial, buildMarket: buildMarket,
-           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, describeLab: describeLab,
+           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, extraMeasures: extraMeasures, describeLab: describeLab,
            describeExt: describeExt, num: num };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = MarketLab;
@@ -773,8 +792,17 @@ var MLChart = (function () {
         line(traces, sServed, COLORS.supply, 1.5, "dot", "Costs of the sellers actually selling");
       }
     }
-    if (Math.abs(policy.tax_supply) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", "Supply plus tax");
-    if (Math.abs(policy.tax_demand) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", "Demand minus tax");
+    // The shifted curve is drawn only for a side that is actually taxed or subsidised (everyone, or one of its regions),
+    // and named after what was done to it.
+    var shifted = function (side, all, plus, minus, both) {
+      var taxes = out.regions.filter(function (r) { return r.side === side; }).map(function (r) { return M.regionPolicy(policy, r.name).tax || 0; }).concat([all || 0]);
+      var up = taxes.some(function (t) { return t > 1e-12; }), down = taxes.some(function (t) { return t < -1e-12; });
+      return up && down ? both : up ? plus : down ? minus : null;
+    };
+    var sName = shifted(M.SUPPLY, policy.tax_supply, "Supply plus tax", "Supply minus subsidy", "Supply after taxes and subsidies");
+    var dName = shifted(M.DEMAND, policy.tax_demand, "Demand minus tax", "Demand plus subsidy", "Demand after taxes and subsidies");
+    if (sName) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", sName);
+    if (dName) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", dName);
     line(traces, sPts, COLORS.supply, 2.5, null, "Supply");
     line(traces, dPts, COLORS.demand, 2.5, null, "Demand");
     var hlines = [], vlines = [], markers = [];
@@ -932,22 +960,37 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   var CONFIG = window.MARKETLAB_CONFIG || {};
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
 
+  // The lab book sections: the class questions, in the order they build on each other, and a section for the group's own
+  // experiments. `start` is the market a question begins from (the default one when absent) or "ext" for the Externalities tab.
+  // Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks it).
   var QUESTIONS = [
     { id: "q1", title: "1. Who really pays a tax?",
       prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different and what is the same? Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
-    { id: "q2", title: "2. Elasticity and the burden of a tax",
-      prompt: "Change the supply table so that sellers' costs run from 0 to 200 (Pmax = 200) and apply a tax of 20 on sellers. Report how much of the tax buyers pay and how much sellers absorb, and the two elasticities shown at the bottom of the Outcomes table. Then build a market in which buyers bear at least three quarters of a tax of 20, report its specification (the supply and demand rows) and explain why it works." },
+    { id: "q2", title: "2. Who bears more of the tax?",
+      prompt: "Change the supply table so that sellers' costs run from 0 to 200 (set Pmax to 200), put a tax of 20 on sellers and pin. How much of the 20 do buyers pay, and how much do sellers absorb? Compare that split with the way the surplus was split between buyers and sellers before the tax (the Baseline column). Then build a market in which buyers bear at least three quarters of a tax of 20. Pin it without the tax and with it, and explain why it works." },
     { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
-      prompt: "On the default market, record the tax revenue and the deadweight loss for taxes on sellers of 10, 20, 40, 50 and 60 per unit (pin each one). Which tax raises the most revenue? Describe how the deadweight loss changes as the tax doubles, and explain the pattern using the shape of the loss on the chart." },
-    { id: "q4", title: "4. Rent control",
-      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. Report the shortage, producer surplus, consumer surplus and the deadweight loss under each rule. Explain why consumer surplus depends on who gets the flats, say which rule you think describes real rent control best, and use the Winners and losers tab to say who would support the policy." },
+      prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the fall in quantity, to the tax revenue and to the deadweight loss? Use the chart to explain why the loss grows faster than the tax. Then find the tax that raises the most revenue and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
+    { id: "q4", title: "4. Broad base or high rate?",
+      prompt: "This market has the same sellers as the default one, split into two regions, North and South. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Buyers pay the same in both cases. Compare the tax revenue, the deadweight loss and what each region sells. Why does the narrow tax raise less and waste more? Who would lobby for it?",
+      start: { supply: [["North", 50, 0, 100], ["South", 50, 0, 100]], demand: [["West", 100, 0, 100]] } },
     { id: "q5", title: "5. A subsidy",
-      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20). Report the market price, what buyers pay and sellers receive, the quantity, the cost to the government, the gains to buyers and to sellers, and the deadweight loss. Buyers and sellers are both better off, so why does the subsidy lower total surplus, and who ultimately pays for it?" },
-    { id: "q6", title: "6. Pollution: the tax or permit cap that puts the market right",
-      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Then find the tax on sellers that brings the deadweight loss to zero and pin it; try the same tax on buyers, and a permit cap instead. Report who bears the harm before any policy, how the right tax relates to the harm, and whether the cap does the same job. Who gains and who loses from the policy?" },
+      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Both sides of the market are better off, so why does total surplus fall, and who ultimately pays?" },
+    { id: "q6", title: "6. Rent control",
+      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. What is the same under all three rules, and what differs? Why does consumer surplus depend on who gets the flats? Which rule do you think describes real rent control best? Use the Winners and losers tab to say who would support the policy." },
+    { id: "q7", title: "7. A capacity shock",
+      prompt: "Before you run it, write down your guess: if a fifth of the sellers' capacity is destroyed, who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened. Then make supply large and flat: put the capacity back to 100%, change the supply Quantity to 400, and pin this market with capacity at 100% and at 75%. What happens to the sellers' surplus, and what does that say about cartels such as OPEC?" },
+    { id: "q8", title: "8. A tariff to protect home producers",
+      prompt: "In this market Home has a fifth of the world's sellers and two fifths of its buyers, so it imports. An import tariff of 20 works like a tax of 20 on Home buyers together with a subsidy of 20 to Home sellers, so that home-made goods sold at home are not taxed: in Regional experiments set the tax on Home buyers to 20 and the tax on Home sellers to minus 20, and pin. Compare with the Baseline column, which is free trade. What happens to the surplus of Home buyers and of Home sellers, and what does the government collect? Is Home better off in total? Who gains and who loses abroad?",
+      start: { supply: [["Home sellers", 20, 0, 100], ["Foreign sellers", 80, 0, 100]], demand: [["Home buyers", 40, 0, 100], ["Foreign buyers", 60, 0, 100]] } },
+    { id: "q9", title: "9. The best tariff for a large country",
+      prompt: "Here Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Roughly which tariff is best for Home? Why does a tariff help Home here when it hurt Home in question 8? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?",
+      start: { supply: [["Foreign sellers", 100, 0, 100]], demand: [["Home buyers", 100, 0, 100]] } },
+    { id: "q10", title: "10. Pollution: the tax or permit cap that puts the market right",
+      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?",
+      start: "ext" },
     { id: "own", title: "Your own experiments",
       prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
-  var EXT_QUESTION = 5;
+  var EXT_QUESTION = 9;
   function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
   var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
@@ -1356,17 +1399,20 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       '</div><div id="lab-results"></div></div><div id="lab-pin-wrap"></div>';
     $("lab-supply-wrap").innerHTML = specTable("lab-supply", S.lab.supply, M.SUPPLY);
     $("lab-demand-wrap").innerHTML = specTable("lab-demand", S.lab.demand, M.DEMAND);
-    var tab = $("tab-lab");
-    bindSpec(tab, "lab-supply", function () { return S.lab.supply; }, function (r) { S.lab.supply = r; }, function (rebuild) { if (rebuild) $("lab-supply-wrap").innerHTML = specTable("lab-supply", S.lab.supply, M.SUPPLY); renderLab(); });
-    bindSpec(tab, "lab-demand", function () { return S.lab.demand; }, function (r) { S.lab.demand = r; }, function (rebuild) { if (rebuild) $("lab-demand-wrap").innerHTML = specTable("lab-demand", S.lab.demand, M.DEMAND); renderLab(); });
+    // The tab element outlives a rebuild (Reset market, Reset experiments, the set-up button of a question), so its own
+    // listeners are bound once; bound again on every rebuild, one click on Pin would pin two, then three columns.
+    var tab = $("tab-lab"), first = !tab.getAttribute("data-bound");
+    tab.setAttribute("data-bound", "1");
+    if (first) bindSpec(tab, "lab-supply", function () { return S.lab.supply; }, function (r) { S.lab.supply = r; }, function (rebuild) { if (rebuild) $("lab-supply-wrap").innerHTML = specTable("lab-supply", S.lab.supply, M.SUPPLY); renderLab(); });
+    if (first) bindSpec(tab, "lab-demand", function () { return S.lab.demand; }, function (r) { S.lab.demand = r; }, function (rebuild) { if (rebuild) $("lab-demand-wrap").innerHTML = specTable("lab-demand", S.lab.demand, M.DEMAND); renderLab(); });
     $("lab-reset-market").onclick = function () { S.lab = freshLab(); buildLab(); renderLab(); };
     $("lab-reset-exp").onclick = function () { S.lab.policy = freshPolicy(); buildLab(); renderLab(); };
     ["lab-cost", "lab-boost", "lab-tax-s", "lab-tax-d", "lab-control-value"].forEach(function (id) { $(id).addEventListener("change", readLabInputs); });
     $("lab-control").addEventListener("change", readLabInputs);
     $("lab-rationing").addEventListener("change", readLabInputs);
     $("lab-rent").addEventListener("change", readLabInputs);
-    tab.addEventListener("change", function (ev) { if (ev.target.closest && ev.target.closest("#lab-regional")) readRegional(ev); });
-    tab.addEventListener("click", function (ev) {
+    if (first) tab.addEventListener("change", function (ev) { if (ev.target.closest && ev.target.closest("#lab-regional")) readRegional(ev); });
+    if (first) tab.addEventListener("click", function (ev) {
       var t = ev.target;
       if (t.id === "lab-pin") { var r = computeLab(); if (r.err) return; doPin("lab", M.describeLab(r.policy), M.measuresLab(r.out), M.measuresLab(r.base), labState(r)); renderLab(); }
       else if (t.classList.contains("legend-item") && t.closest("#lab-results")) { var n = t.getAttribute("data-name"); S.hidden.lab[n] = !(S.hidden.lab[n] !== undefined ? S.hidden.lab[n] : t.classList.contains("off")); renderLab(); }
@@ -1538,13 +1584,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       '</div><div id="ext-results"></div></div><div id="ext-pin-wrap"></div>';
     $("ext-supply-wrap").innerHTML = specTable("ext-supply", S.ext.supply, M.SUPPLY);
     $("ext-demand-wrap").innerHTML = specTable("ext-demand", S.ext.demand, M.DEMAND);
-    var tab = $("tab-ext");
-    bindSpec(tab, "ext-supply", function () { return S.ext.supply; }, function (r) { S.ext.supply = r; }, function (rb) { if (rb) $("ext-supply-wrap").innerHTML = specTable("ext-supply", S.ext.supply, M.SUPPLY); renderExt(); });
-    bindSpec(tab, "ext-demand", function () { return S.ext.demand; }, function (r) { S.ext.demand = r; }, function (rb) { if (rb) $("ext-demand-wrap").innerHTML = specTable("ext-demand", S.ext.demand, M.DEMAND); renderExt(); });
+    var tab = $("tab-ext"), first = !tab.getAttribute("data-bound");      // bound once: see buildLab
+    tab.setAttribute("data-bound", "1");
+    if (first) bindSpec(tab, "ext-supply", function () { return S.ext.supply; }, function (r) { S.ext.supply = r; }, function (rb) { if (rb) $("ext-supply-wrap").innerHTML = specTable("ext-supply", S.ext.supply, M.SUPPLY); renderExt(); });
+    if (first) bindSpec(tab, "ext-demand", function () { return S.ext.demand; }, function (r) { S.ext.demand = r; }, function (rb) { if (rb) $("ext-demand-wrap").innerHTML = specTable("ext-demand", S.ext.demand, M.DEMAND); renderExt(); });
     $("ext-reset-all").onclick = function () { S.ext = freshExt(); buildExt(); renderExt(); };
     $("ext-reset-pol").onclick = function () { S.ext.tax_supply = 0; S.ext.tax_demand = 0; S.ext.cap = 0; buildExt(); renderExt(); };
     ["ext-harm", "ext-tax-s", "ext-tax-d", "ext-cap"].forEach(function (id) { $(id).addEventListener("change", readExtInputs); });
-    tab.addEventListener("click", function (ev) {
+    if (first) tab.addEventListener("click", function (ev) {
       var t = ev.target;
       if (t.id === "ext-pin") { var r = computeExt(); if (r.err) return; doPin("ext", M.describeExt(r.policy, r.harm), M.measuresSocial(r.soc), M.measuresSocial(r.base), extState(r)); renderExt(); }
       else if (t.classList.contains("legend-item") && t.closest("#ext-results")) { var n = t.getAttribute("data-name"); S.hidden.ext[n] = !(S.hidden.ext[n] !== undefined ? S.hidden.ext[n] : t.classList.contains("off")); renderExt(); }
@@ -1626,7 +1673,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
       cols.push([label, e.measures, e.id]);
     });
-    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); });
+    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); })
+                .concat(M.extraMeasures(cols.map(function (c) { return c[1]; })));
     var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
       return '<th>' + (c[2] ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">\u2715</button>' : "") + esc(c[0]) + '</th>';
     }).join("") + '</tr></thead><tbody>';
@@ -1635,19 +1683,37 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
     return h;
   }
+  // Start a question from a clean slate: its market (the default one unless the question names another), no
+  // experiments, the right tab, and the pin panel already filed under this question.
+  function startQuestion(qid) {
+    var q = QUESTIONS.filter(function (x) { return x.id === qid; })[0];
+    if (!q) return;
+    var ext = q.start === "ext", fresh;
+    if (ext) fresh = freshExt();
+    else { fresh = freshLab(); if (q.start) { fresh.supply = clone(q.start.supply); fresh.demand = clone(q.start.demand); } }
+    var changes = JSON.stringify(ext ? S.ext : S.lab) !== JSON.stringify(fresh);
+    if (changes && !window.confirm("This replaces the market and clears the experiments on the " + (ext ? "Externalities" : "Laboratory") + " tab. Your lab book is not affected. Continue?")) return;
+    var which = ext ? "ext" : "lab";
+    if (ext) { S.ext = fresh; buildExt(); } else { S.lab = fresh; buildLab(); }
+    S.lastQ[which] = q.title; S.pinMsg[which] = "";
+    showTab(which);
+    if (ext) renderExt(); else renderLab();
+    window.scrollTo(0, 0);
+  }
   var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
   function renderBook() {
     var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
             'Work through the questions in order: each builds on the one before. ' +
-            'Pin from the Laboratory or Externalities tab, choosing the section as you pin; the \u2715 on a column removes it. Everything is saved as you go.</p>';
+            'The button under each question sets up the market it starts from and files your pins under that question; the \u2715 on a column removes it. Everything is saved as you go.</p>';
     if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
     QUESTIONS.forEach(function (q) {
       var mine = S.book.filter(function (e) { return sectionOf(e) === q.id; });
       var answered = (S.answers[q.id] || "").trim().length > 0;
       h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " \u00b7 answered" : "") + '</span></h2>' +
-           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
+           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>' +
+           (q.id === "own" ? "" : '<div class="row start-row"><button type="button" class="small start-q" data-q="' + q.id + '">Set up the ' + (q.start === "ext" ? "Externalities tab" : "Laboratory") + ' for this question</button></div>');
       if (mine.length) h += bookTable(mine);
       else h += '<p class="caption">Nothing pinned here yet.</p>';
       h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
@@ -1663,6 +1729,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
         S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook();
       };
     });
+    el.querySelectorAll(".start-q").forEach(function (btn) { btn.onclick = function () { startQuestion(btn.getAttribute("data-q")); }; });
     el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
       var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
       ta.addEventListener("input", upd); ta.addEventListener("change", upd);

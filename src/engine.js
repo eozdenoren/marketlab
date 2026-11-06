@@ -526,7 +526,25 @@ var MarketLab = (function () {
     m["Socially optimal quantity"] = null; m["Consumer surplus"] = out.consumer_surplus; m["Producer surplus"] = out.producer_surplus;
     m["Government revenue"] = Math.abs(gov) > 1e-9 ? gov : 0; m["Third parties"] = null; m["Total surplus"] = out.total_surplus;
     m["Deadweight loss"] = out.deadweight_loss;
+    regionMeasures(out, m);
     return m;
+  }
+  // With several regions on a side of the market: what each of them trades and earns (a tax on one region,
+  // a tariff). Rows named "Quantity: North", "Surplus: North"; nothing is added for a side with one region.
+  function regionMeasures(out, m) {
+    var rs = [];
+    [SUPPLY, DEMAND].forEach(function (side) {
+      var mine = out.regions.filter(function (r) { return r.side === side; });
+      if (mine.length > 1) rs = rs.concat(mine);
+    });
+    rs.forEach(function (r) { m["Quantity: " + r.name] = r.quantity; });
+    rs.forEach(function (r) { m["Surplus: " + r.name] = r.surplus; });
+  }
+  function extraMeasures(columns) {
+    // the regional rows present in any of these measure sets, in first-seen order (after the fixed MEASURES)
+    var seen = {}, out = [];
+    columns.forEach(function (c) { Object.keys(c || {}).forEach(function (k) { if (MEASURES.indexOf(k) < 0 && !seen[k] && /^(Quantity|Surplus): /.test(k)) { seen[k] = 1; out.push(k); } }); });
+    return out.filter(function (k) { return /^Quantity: /.test(k); }).concat(out.filter(function (k) { return /^Surplus: /.test(k); }));
   }
   function measuresSocial(soc) {
     var m = measuresLab(soc.out);
@@ -551,7 +569,7 @@ var MarketLab = (function () {
       var rp = regionPolicy(policy, name);
       if (Math.abs(rp.scale - 1) > 1e-9) bits.push(name + " capacity " + Math.round(100 * rp.scale) + "%");
       if (rp.shift) bits.push(name + " shift " + num(rp.shift));
-      if (rp.tax > 0) bits.push(name + " tariff " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
+      if (rp.tax > 0) bits.push(name + " tax " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
       if (rp.cap != null) bits.push(name + " cap " + num(rp.cap));
     });
     var rule = { efficient: "", random: ", lottery", inefficient: ", worst served" }[policy.rationing] || "";
@@ -574,7 +592,7 @@ var MarketLab = (function () {
   return { SUPPLY: SUPPLY, DEMAND: DEMAND, RULES: RULES, CONTROLS: CONTROLS, MEASURES: MEASURES,
            defaultPolicy: defaultPolicy, stripped: stripped, regionPolicy: regionPolicy, Curves: Curves, solve: solve, compare: compare,
            curvePoints: curvePoints, servedCurvePoints: servedCurvePoints, solveSocial: solveSocial, buildMarket: buildMarket,
-           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, describeLab: describeLab,
+           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, extraMeasures: extraMeasures, describeLab: describeLab,
            describeExt: describeExt, num: num };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = MarketLab;

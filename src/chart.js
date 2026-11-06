@@ -68,8 +68,17 @@ var MLChart = (function () {
         line(traces, sServed, COLORS.supply, 1.5, "dot", "Costs of the sellers actually selling");
       }
     }
-    if (Math.abs(policy.tax_supply) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", "Supply plus tax");
-    if (Math.abs(policy.tax_demand) > 1e-12 || regionalTax) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", "Demand minus tax");
+    // The shifted curve is drawn only for a side that is actually taxed or subsidised (everyone, or one of its regions),
+    // and named after what was done to it.
+    var shifted = function (side, all, plus, minus, both) {
+      var taxes = out.regions.filter(function (r) { return r.side === side; }).map(function (r) { return M.regionPolicy(policy, r.name).tax || 0; }).concat([all || 0]);
+      var up = taxes.some(function (t) { return t > 1e-12; }), down = taxes.some(function (t) { return t < -1e-12; });
+      return up && down ? both : up ? plus : down ? minus : null;
+    };
+    var sName = shifted(M.SUPPLY, policy.tax_supply, "Supply plus tax", "Supply minus subsidy", "Supply after taxes and subsidies");
+    var dName = shifted(M.DEMAND, policy.tax_demand, "Demand minus tax", "Demand plus subsidy", "Demand after taxes and subsidies");
+    if (sName) line(traces, M.curvePoints(eff, M.SUPPLY, pMax), COLORS.supply, 1.5, "dash", sName);
+    if (dName) line(traces, M.curvePoints(eff, M.DEMAND, pMax), COLORS.demand, 1.5, "dash", dName);
     line(traces, sPts, COLORS.supply, 2.5, null, "Supply");
     line(traces, dPts, COLORS.demand, 2.5, null, "Demand");
     var hlines = [], vlines = [], markers = [];
