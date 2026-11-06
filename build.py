@@ -12,6 +12,10 @@ if "--config" in sys.argv:
     cfg_path = sys.argv[sys.argv.index("--config") + 1]
 out_path = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else None
 cfg = json.load(open(cfg_path)) if cfg_path else {}
+# Only what the page itself needs goes into the page: everyone who opens it can read it.
+# config.json also holds the admin token of the instructor view, which must never be inlined.
+PUBLIC_KEYS = ("endpoint", "token")
+cfg = {k: cfg[k] for k in PUBLIC_KEYS if k in cfg}
 html = open(os.path.join(SRC, "index.html")).read()
 style = "<style>\n" + open(os.path.join(SRC, "style.css")).read() + "\n</style>"
 scripts = ""
