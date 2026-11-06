@@ -340,20 +340,18 @@
     }
     return '<div class="metric"><div class="label">' + esc(label) + (opts.help ? ' <span title="' + esc(opts.help) + '">ⓘ</span>' : "") + '</div><div class="value">' + fmt(value, opts.decimals) + '</div>' + delta + '</div>';
   }
-  function table3(rows, head) {
+  function table3(rows, head, mark) {
+    // mark: [row, column] of one cell to outline in red (the change in total surplus, which is the deadweight loss)
     var h = '<table class="grid"><thead><tr><th></th><th class="num">' + esc(head[0]) + '</th><th class="num">' + esc(head[1]) + '</th><th class="num">' + esc(head[2]) + '</th></tr></thead><tbody>';
-    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td><td class="num">' + r[3] + '</td></tr>'; });
+    rows.forEach(function (r, i) {
+      h += '<tr><td>' + esc(r[0]) + '</td>' + [1, 2, 3].map(function (c) { return '<td class="num' + (mark && mark[0] === i && mark[1] === c ? " marked" : "") + '">' + r[c] + '</td>'; }).join("") + '</tr>';
+    });
     return h + '</tbody></table>';
   }
   function innerTabs(which, items) {
     return '<div class="tabs inner" data-which="' + which + '">' + items.map(function (it) {
       return '<button type="button" data-inner="' + it[0] + '" class="' + (S.inner[which] === it[0] ? "active" : "") + '">' + esc(it[1]) + '</button>';
     }).join("") + '</div>';
-  }
-  // The Change column: signed, except that a loss is a magnitude, so its row reads "100.0 worse" rather than "+100.0".
-  function changeCell(name, delta) {
-    if (!/loss|rationing rule/i.test(name)) return fmt(delta, 1, true);
-    return Math.abs(delta) < 5e-10 ? fmt(0) : fmt(Math.abs(delta)) + (delta > 0 ? " worse" : " better");
   }
   function uniformPrice(out, side) {
     var vals = out.regions.filter(function (r) { return r.side === side && r.quantity > 0; }).map(function (r) { return r.net_price; });
@@ -560,10 +558,18 @@
     rows.push(["Consumer surplus", base.consumer_surplus, out.consumer_surplus], ["Producer surplus", base.producer_surplus, out.producer_surplus]);
     if (Math.abs(out.tax_revenue) > 1e-9 || Math.abs(base.tax_revenue) > 1e-9) rows.push(["Tax revenue", base.tax_revenue, out.tax_revenue]);
     if (Math.abs(out.licence_rent) > 1e-9) rows.push(["Licence rent (government)", base.licence_rent, out.licence_rent]);
-    rows.push(["Total surplus", base.total_surplus, out.total_surplus], ["Deadweight loss", base.deadweight_loss, out.deadweight_loss]);
-    if (out.rationing_loss > 1e-9) rows.push(["  of which caused by the rationing rule", 0, out.rationing_loss]);
-    var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), changeCell(x[0], x[2] - x[1])]; });
-    var h = table3(t, ["Baseline", "Experiment", "Change"]);
+    rows.push(["Total surplus", base.total_surplus, out.total_surplus]);
+    var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; });
+    // The deadweight loss is the fall in total surplus, so it gets no row of its own: the change cell is outlined and
+    // named under the table. It differs from the fall only when a shock to costs or capacity moves the baseline too.
+    var dTS = out.total_surplus - base.total_surplus, dwl = out.deadweight_loss, rl = out.rationing_loss > 1e-9 ? out.rationing_loss : 0;
+    var same = dwl > 1e-9 && Math.abs(dwl + dTS) < 1e-6, whole = function (x) { return fmt(x, Math.abs(x - Math.round(x)) < 0.05 ? 0 : 1); };
+    var h = table3(t, ["Baseline", "Experiment", "Change"], same ? [rows.length - 1, 3] : null);
+    if (same) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b>, the fall in total surplus' +
+      (rl ? ': ' + whole(dwl - rl) + ' from lost trades and ' + whole(rl) + ' from giving units to the wrong people' : '') + '.</p>';
+    else if (dwl > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b> against the market with the same shock but no tax or control' +
+      (rl ? ' (' + whole(rl) + ' of it from giving units to the wrong people)' : '') + '; total surplus changed by ' + fmt(dTS, 1, true) + ' in all, the rest being the shock itself.</p>';
+    else if (Math.abs(dTS) > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = 0</b>: the change in total surplus comes from the shock to costs or capacity, not from a distortion.</p>';
     if (r.policy.cost_shock) h += '<p class="caption">Pass-through of the cost shock to the market price: ' + pct((out.price - base.price) / r.policy.cost_shock) + '.</p>';
     if (r.policy.benefit_boost) h += '<p class="caption">Share of the benefit boost showing up in the price: ' + pct((out.price - base.price) / r.policy.benefit_boost) + '.</p>';
     return h;
@@ -670,7 +676,7 @@
     rows.push(["Buyers, sellers and government together", base.private_surplus, soc.private_surplus]);
     if (harm >= 0) rows.push(["Harm to third parties", -base.third_party, -soc.third_party]); else rows.push(["Benefit to third parties", base.third_party, soc.third_party]);
     rows.push(["Social surplus (everyone, third parties included)", base.social_surplus, soc.social_surplus], ["Deadweight loss (against the social optimum)", base.deadweight_loss, soc.deadweight_loss]);
-    return table3(rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), changeCell(x[0], x[2] - x[1])]; }), ["Baseline (no policy)", "Experiment", "Change"]) +
+    return table3(rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; }), ["Baseline (no policy)", "Experiment", "Change"]) +
            '<p class="caption">Baseline: the market with the externality and no policy. Social surplus is what buyers, sellers and the government get, less the harm to third parties.</p>';
   }
 
