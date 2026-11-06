@@ -209,19 +209,6 @@ var MLChart = (function () {
     }).join("") + "</div>";
   }
 
-  function winnersHtml(rows) {
-    rows = rows.filter(function (r) { return Math.abs(r[1]) > 1e-9; });
-    if (!rows.length) return "";
-    var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1]); })) || 1;
-    return '<div class="bars">' + rows.map(function (r) {
-      var pct = Math.abs(r[1]) / maxAbs * 42, pos = r[1] >= 0, w = pct.toFixed(1);
-      var valPos = pos ? "left:calc(50% + " + w + "% + 4px)" : "left:max(2px, calc(50% - " + w + "% - 48px))";
-      return '<div class="bar-row"><div class="bar-label">' + esc(r[0]) + '</div><div class="bar-track">' +
-             '<div class="bar ' + (pos ? "gain" : "loss") + '" style="' + (pos ? "left:50%;" : "right:50%;") + 'width:' + w + '%"></div>' +
-             '<span class="bar-val" style="' + valPos + '">' + (r[1] >= 0 ? "+" : "") + Math.round(r[1]).toLocaleString() + '</span></div></div>';
-    }).join("") + "</div>";
-  }
-
-  return { COLORS: COLORS, marketFigure: marketFigure, externalityFigure: externalityFigure, render: render, legendHtml: legendHtml, winnersHtml: winnersHtml, clipPath: clipPath };
+  return { COLORS: COLORS, marketFigure: marketFigure, externalityFigure: externalityFigure, render: render, legendHtml: legendHtml, clipPath: clipPath };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = MLChart;

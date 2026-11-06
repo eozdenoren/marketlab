@@ -83,7 +83,7 @@ def run(page, base_url, tag):
         pinned = False
     check(pinned, tag + " a tax typed and pinned straight away is pinned, under the chosen section")
     page.locator("#lab-pin-q").select_option("0")
-    # ceiling 40, random lottery, winners tab
+    # ceiling 40, random lottery
     set_num(page, "Tax on sellers (per unit)", 0)
     page.get_by_label("Market control").select_option("ceiling")
     set_num(page, "Ceiling price", 40)
@@ -91,9 +91,8 @@ def run(page, base_url, tag):
     page.wait_for_timeout(200)
     check("Shortage: 60.0 buyers" in page.locator("#lab-results").inner_text(), tag + " shortage note")
     check(metric(page, "Deadweight loss") == "500", tag + " ceiling random DWL: " + metric(page, "Deadweight loss"))
-    page.locator("#lab-results button[data-inner='winners']").click()
-    check("Government" not in page.locator("#lab-results table").inner_text() and "buyers who no longer buy" in page.locator("#lab-results").inner_text(), tag + " winners table")
-    shot(page, tag + "_03_ceiling_winners")
+    check(page.locator("#lab-results [data-inner]").count() == 2 and "Winners and losers" not in page.locator("#lab-results").inner_text(), tag + " two inner tabs: outcomes and by region")
+    shot(page, tag + "_03_ceiling")
     page.locator("#lab-pin-q").select_option("5")  # file under "6. Rent control"
     page.locator("#lab-pin-label").fill("Rent control 40, lottery")
     page.locator("#lab-pin").click()
@@ -120,8 +119,7 @@ def run(page, base_url, tag):
     check(metric(page, "Socially optimal quantity") == "40.0" and metric(page, "Deadweight loss") == "100", tag + " ext default")
     set_num(page, "Tax on sellers (per unit)", 20)
     check(metric(page, "Deadweight loss") == "0", tag + " pigou tax")
-    page.locator("#ext-results button[data-inner='winners']").click()
-    check("People outside the market" in page.locator("#ext-results").inner_text(), tag + " third parties row")
+    check(page.locator("#ext-results [data-inner]").count() == 0 and "third parties" in page.locator("#ext-results").inner_text(), tag + " externality outcomes without inner tabs")
     shot(page, tag + "_04_externality")
     page.locator("#ext-pin").click()
     page.get_by_text("Pinned as 'Harm 20: tax 20 on sellers'", exact=False).wait_for()

@@ -933,20 +933,7 @@ var MLChart = (function () {
     }).join("") + "</div>";
   }
 
-  function winnersHtml(rows) {
-    rows = rows.filter(function (r) { return Math.abs(r[1]) > 1e-9; });
-    if (!rows.length) return "";
-    var maxAbs = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1]); })) || 1;
-    return '<div class="bars">' + rows.map(function (r) {
-      var pct = Math.abs(r[1]) / maxAbs * 42, pos = r[1] >= 0, w = pct.toFixed(1);
-      var valPos = pos ? "left:calc(50% + " + w + "% + 4px)" : "left:max(2px, calc(50% - " + w + "% - 48px))";
-      return '<div class="bar-row"><div class="bar-label">' + esc(r[0]) + '</div><div class="bar-track">' +
-             '<div class="bar ' + (pos ? "gain" : "loss") + '" style="' + (pos ? "left:50%;" : "right:50%;") + 'width:' + w + '%"></div>' +
-             '<span class="bar-val" style="' + valPos + '">' + (r[1] >= 0 ? "+" : "") + Math.round(r[1]).toLocaleString() + '</span></div></div>';
-    }).join("") + "</div>";
-  }
-
-  return { COLORS: COLORS, marketFigure: marketFigure, externalityFigure: externalityFigure, render: render, legendHtml: legendHtml, winnersHtml: winnersHtml, clipPath: clipPath };
+  return { COLORS: COLORS, marketFigure: marketFigure, externalityFigure: externalityFigure, render: render, legendHtml: legendHtml, clipPath: clipPath };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
 
@@ -976,7 +963,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     { id: "q5", title: "5. A subsidy",
       prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Both sides of the market are better off, so why does total surplus fall, and who ultimately pays?" },
     { id: "q6", title: "6. Rent control",
-      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. What is the same under all three rules, and what differs? Why does consumer surplus depend on who gets the flats? Which rule do you think describes real rent control best? Use the Winners and losers tab to say who would support the policy." },
+      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. What is the same under all three rules, and what differs? Why does consumer surplus depend on who gets the flats? Which rule do you think describes real rent control best? Who would support the policy, and who would oppose it?" },
     { id: "q7", title: "7. A capacity shock",
       prompt: "Before you run it, write down your guess: if a fifth of the sellers' capacity is destroyed, who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened. Then make supply large and flat: put the capacity back to 100%, change the supply Quantity to 400, and pin this market with capacity at 100% and at 75%. What happens to the sellers' surplus, and what does that say about cartels such as OPEC?" },
     { id: "q8", title: "8. A tariff to protect home producers",
@@ -1309,27 +1296,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       return '<button type="button" data-inner="' + it[0] + '" class="' + (S.inner[which] === it[0] ? "active" : "") + '">' + esc(it[1]) + '</button>';
     }).join("") + '</div>';
   }
-  function groupLabel(g) {
-    var kind = g.side === M.DEMAND ? { kept: "buyers who keep buying", lost: "buyers who no longer buy", "new": "buyers who newly buy" }[g.kind]
-                                   : { kept: "sellers who keep selling", lost: "sellers who stop selling", "new": "new sellers" }[g.kind];
-    return g.region + ": " + kind;
-  }
-  function winnersHtml(out, base, groups, extra) {
-    var order = { demand: 0, supply: 1 }, ko = { kept: 0, lost: 1, "new": 2 };
-    groups = groups.slice().sort(function (a, b) { return (order[a.side] - order[b.side]) || (a.region < b.region ? -1 : a.region > b.region ? 1 : 0) || (ko[a.kind] - ko[b.kind]); });
-    var rows = groups.map(function (g) { return [groupLabel(g), fmt(g.mass), fmt(g.change, 1, true)]; });
-    var bars = groups.map(function (g) { return [groupLabel(g), g.change]; });
-    var gov = out.government_revenue - base.government_revenue;
-    if (Math.abs(gov) > 1e-9) { rows.push(["Government (tax, permit and licence revenue)", "", fmt(gov, 1, true)]); bars.push(["Government", gov]); }
-    (extra || []).forEach(function (x) { if (Math.abs(x[1]) > 1e-9) { rows.push([x[0], "", fmt(x[1], 1, true)]); bars.push([x[0], x[1]]); } });
-    var total = groups.reduce(function (a, g) { return a + g.change; }, 0) + gov + (extra || []).reduce(function (a, x) { return a + x[1]; }, 0);
-    rows.push(["Everyone together", "", fmt(total, 1, true)]);
-    if (!groups.length && Math.abs(gov) < 1e-9 && !(extra || []).some(function (x) { return Math.abs(x[1]) > 1e-9; }))
-      return '<p class="caption">Nothing has changed yet. Run an experiment to see who gains and who loses.</p>';
-    var h = CH.winnersHtml(bars) + '<table class="grid"><thead><tr><th>Who</th><th class="num">How many</th><th class="num">Total</th></tr></thead><tbody>';
-    rows.forEach(function (r) { h += '<tr><td>' + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + r[2] + '</td></tr>'; });
-    return h + '</tbody></table><p class="caption">Compared with the baseline market. Under a random lottery the counts are expected numbers: every willing trader faces the same odds.</p>';
-  }
   function uniformPrice(out, side) {
     var vals = out.regions.filter(function (r) { return r.side === side && r.quantity > 0; }).map(function (r) { return r.net_price; });
     if (!vals.length) return null;
@@ -1518,10 +1484,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
         h += '<div class="note">' + esc(rg.name) + ' is capped at ' + fmt(rg.quantity) + ' although ' + fmt(rg.willing) + ' would sell at this price; ' + esc(how2) + '.</div>';
       }
     });
-    h += innerTabs("lab", [["outcomes", "Outcomes"], ["regions", "By region"], ["winners", "Winners and losers"]]);
-    if (S.inner.lab === "outcomes") h += labOutcomes(r);
-    else if (S.inner.lab === "regions") h += regionTable(out, base);
-    else h += winnersHtml(out, base, r.groups);
+    h += innerTabs("lab", [["outcomes", "Outcomes"], ["regions", "By region"]]);
+    if (S.inner.lab === "regions") h += regionTable(out, base);
+    else h += labOutcomes(r);
     el.innerHTML = h;
     pinPanel("lab", M.describeLab(r.policy), 0);
     saveLocal();
@@ -1629,9 +1594,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     if (out.flags.no_trade) h += '<div class="error">No trade: one side of the market is empty.</div>';
     if (out.flags.indeterminate_price) h += '<div class="info">Any price between ' + fmt(out.flags.price_interval[0]) + ' and ' + fmt(out.flags.price_interval[1]) + ' clears the market; the midpoint is shown.</div>';
     if (r.policy.control === "quota" && !out.control_binding && out.quantity > 0) h += '<p class="caption">The permit cap does not bind at these settings.</p>';
-    h += innerTabs("ext", [["outcomes", "Outcomes"], ["winners", "Winners and losers"]]);
-    if (S.inner.ext === "outcomes") h += extOutcomes(r);
-    else h += winnersHtml(out, base.out, M.compare(base.out, out), [["People outside the market (third parties)", soc.third_party - base.third_party]]);
+    h += extOutcomes(r);
     el.innerHTML = h;
     pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION);
     saveLocal();
