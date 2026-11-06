@@ -8,7 +8,7 @@
 
   var QUESTIONS = [
     { id: "q1", title: "1. Who really pays a tax?",
-      prompt: "Use the default market. Put a tax of 20 per unit on sellers, then remove it and put the same tax on buyers. For both cases report the market price, the price buyers actually pay, the price sellers actually receive, the quantity traded and the tax revenue. Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
+      prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different and what is the same? Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
     { id: "q2", title: "2. Elasticity and the burden of a tax",
       prompt: "Change the supply table so that sellers' costs run from 0 to 200 (Pmax = 200) and apply a tax of 20 on sellers. Report how much of the tax buyers pay and how much sellers absorb, and the two elasticities shown at the bottom of the Outcomes table. Then build a market in which buyers bear at least three quarters of a tax of 20, report its specification (the supply and demand rows) and explain why it works." },
     { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
@@ -676,6 +676,7 @@
     var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
+            'Work through the questions in order: each builds on the one before. ' +
             'Pin from the Laboratory or Externalities tab, choosing the section as you pin; the \u2715 on a column removes it. Everything is saved as you go.</p>';
     if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
     QUESTIONS.forEach(function (q) {
@@ -686,7 +687,7 @@
       if (mine.length) h += bookTable(mine);
       else h += '<p class="caption">Nothing pinned here yet.</p>';
       h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
-           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="Numbers from the lab book, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></section>';
+           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="What you see in the table above, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></section>';
     });
     h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>' +
          '<div id="book-status" class="status"></div>';
