@@ -1004,6 +1004,28 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     if (d.lastQ && typeof d.lastQ === "object") S.lastQ = d.lastQ;
   }
 
+  // ---- redrawing after an input changes ---------------------------------------------
+  // A click only counts if the mouse goes down and up on the same element. Typing a number and clicking a button
+  // straight away (a tax, then "Pin to lab book") fires the box's "change" between the two, and redrawing the tab at
+  // that moment replaces the button, so the browser drops the click. While the mouse is down the redraw therefore
+  // waits until the click has been delivered. The settings themselves are stored at once, so the click sees them.
+  var pointerIsDown = false, pendingRedraws = [], redrawTimer = null;
+  function runPendingRedraws() {
+    clearTimeout(redrawTimer); pointerIsDown = false;
+    var fns = pendingRedraws; pendingRedraws = [];
+    fns.forEach(function (f) { f(); });
+  }
+  document.addEventListener("pointerdown", function () { pointerIsDown = true; }, true);
+  ["pointerup", "pointercancel"].forEach(function (name) {
+    document.addEventListener(name, function () { setTimeout(runPendingRedraws, 0); }, true);   // after the click itself
+  });
+  function redraw(fn, ev) {
+    var t = ev && ev.target, typed = t && (t.tagName === "INPUT" && t.type !== "radio" && t.type !== "checkbox");
+    if (!pointerIsDown || !typed) { fn(); return; }       // menus and radio buttons change under the mouse itself: draw now
+    if (pendingRedraws.indexOf(fn) < 0) pendingRedraws.push(fn);
+    clearTimeout(redrawTimer); redrawTimer = setTimeout(runPendingRedraws, 1500);   // in case the release is never seen
+  }
+
   // ---- class record (save queue) --------------------------------------------------
   var queue = loadStored("marketlab:queue") || [], flushing = false, retryTimer = null;
   function persistQueue() { try { localStorage.setItem("marketlab:queue", JSON.stringify(queue)); } catch (e) {} }
@@ -1216,7 +1238,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function bindSpec(container, id, get, set, after) {
     container.addEventListener("change", function (ev) {
       var t = ev.target; if (!t.closest || !t.closest("#" + id)) return;
-      set(readSpec(id)); after();
+      set(readSpec(id)); redraw(after, ev);
     });
     container.addEventListener("click", function (ev) {
       var t = ev.target;
@@ -1272,12 +1294,27 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     return vals[0];
   }
   function pinPanel(which, suggestion, qIndex) {
-    var dis = S.group ? "" : " disabled";
-    return '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" placeholder="' + esc(suggestion) + '" title="Leave blank to use the suggested label."></div>' +
-      '<div><label for="' + which + '-pin-q">Lab book section</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '"' + ((S.lastQ[which] ? S.lastQ[which] === q.title : i === qIndex) ? " selected" : "") + '>' + esc(q.title) + '</option>'; }).join("") + '</select></div>' +
-      '<div><button type="button" class="primary" id="' + which + '-pin" style="width:100%"' + dis + '>Pin to lab book</button></div></div>' +
-      (S.group ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
-      (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "") + '</div>';
+    // Drawn once per tab and then only updated (see below): a redraw of the tab must not wipe the label being typed
+    // or put the section back to the previous one, or the next pin lands under the wrong question.
+    var wrap = $(which + "-pin-wrap");
+    if (!$(which + "-pin")) {
+      wrap.innerHTML = '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" title="Leave blank to use the suggested label."></div>' +
+        '<div><label for="' + which + '-pin-q">Lab book section</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '">' + esc(q.title) + '</option>'; }).join("") + '</select></div>' +
+        '<div><button type="button" class="primary" id="' + which + '-pin" style="width:100%">Pin to lab book</button></div></div>' +
+        '<div id="' + which + '-pin-info"></div></div>';
+    }
+    $(which + "-pin-label").placeholder = suggestion;
+    $(which + "-pin").disabled = !S.group;
+    // the section follows the last pin (or the tab's default) only when that changes, not on every redraw
+    var sel = $(which + "-pin-q"), want = S.lastQ[which] || "";
+    if (sel.getAttribute("data-last") !== want) {
+      sel.setAttribute("data-last", want);
+      var idx = qIndex;
+      QUESTIONS.forEach(function (q, i) { if (want && q.title === want) idx = i; });
+      sel.value = String(idx);
+    }
+    $(which + "-pin-info").innerHTML = (S.group ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
+      (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "");
   }
   function doPin(which, suggestion, measures, baseline, state) {
     var labelEl = $(which + "-pin-label"), label = (labelEl.value || "").trim() || suggestion;
@@ -1328,7 +1365,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     $("lab-control").addEventListener("change", readLabInputs);
     $("lab-rationing").addEventListener("change", readLabInputs);
     $("lab-rent").addEventListener("change", readLabInputs);
-    tab.addEventListener("change", function (ev) { if (ev.target.closest && ev.target.closest("#lab-regional")) readRegional(); });
+    tab.addEventListener("change", function (ev) { if (ev.target.closest && ev.target.closest("#lab-regional")) readRegional(ev); });
     tab.addEventListener("click", function (ev) {
       var t = ev.target;
       if (t.id === "lab-pin") { var r = computeLab(); if (r.err) return; doPin("lab", M.describeLab(r.policy), M.measuresLab(r.out), M.measuresLab(r.base), labState(r)); renderLab(); }
@@ -1336,14 +1373,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       else if (t.getAttribute && t.getAttribute("data-inner") && t.closest("#lab-results")) { S.inner.lab = t.getAttribute("data-inner"); renderLab(); }
     });
   }
-  function readLabInputs() {
+  function readLabInputs(ev) {
     var p = S.lab.policy;
     p.cost_shock = num($("lab-cost").value, 0); p.benefit_boost = num($("lab-boost").value, 0);
     p.tax_supply = num($("lab-tax-s").value, 0); p.tax_demand = num($("lab-tax-d").value, 0);
     p.control = $("lab-control").value; p.control_value = num($("lab-control-value").value, 0);
     var r = document.querySelector('input[name="lab-rationing"]:checked'); p.rationing = r ? r.value : "efficient";
     var t = document.querySelector('input[name="lab-rent"]:checked'); p.rent_to = t ? t.value : "sellers";
-    renderLab();
+    redraw(renderLab, ev);
   }
   function regionNames() { var m = rowsToMarket(S.lab.supply, S.lab.demand); return { supply: m.regions.filter(function (r) { return r.side === M.SUPPLY; }).map(function (r) { return r.name; }), demand: m.regions.filter(function (r) { return r.side === M.DEMAND; }).map(function (r) { return r.name; }) }; }
   function renderRegional(names) {
@@ -1364,13 +1401,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     });
     $("lab-regional").innerHTML = h;
   }
-  function readRegional() {
+  function renderLabKeepRegional() { renderLab(false); }
+  function readRegional(ev) {
     Array.prototype.forEach.call($("lab-regional").querySelectorAll("tr[data-region]"), function (tr) {
       var n = tr.getAttribute("data-region"), rp = { scale: 100, shift: 0, tax: 0, cap: 0 };
       Array.prototype.forEach.call(tr.querySelectorAll("input"), function (inp) { rp[inp.getAttribute("data-f")] = num(inp.value, rp[inp.getAttribute("data-f")]); });
       S.lab.policy.regional[n] = rp;
     });
-    renderLab(false);
+    redraw(renderLabKeepRegional, ev);
   }
   function labPolicy(names) {
     var p = S.lab.policy, regional = {};
@@ -1406,7 +1444,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     var anyCap = r.names.supply.some(function (n) { return S.lab.policy.regional[n] && num(S.lab.policy.regional[n].cap, 0) > 0; });
     $("lab-rent-wrap").hidden = !(p.control === "quota" || anyCap);
     var el = $("lab-results");
-    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; $("lab-pin-wrap").innerHTML = pinPanel("lab", M.describeLab(r.policy), 0); return; }
+    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; pinPanel("lab", M.describeLab(r.policy), 0); return; }
     var out = r.out, base = r.base, bench = r.bench;
     var h = '<div class="metrics">' + metric("Market price", out.price, base.price) + metric("Quantity traded", out.quantity, base.quantity) +
             metric("Total surplus", out.total_surplus, base.total_surplus, { decimals: 0 }) +
@@ -1439,7 +1477,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     else if (S.inner.lab === "regions") h += regionTable(out, base);
     else h += winnersHtml(out, base, r.groups);
     el.innerHTML = h;
-    $("lab-pin-wrap").innerHTML = pinPanel("lab", M.describeLab(r.policy), 0);
+    pinPanel("lab", M.describeLab(r.policy), 0);
     saveLocal();
   }
   function labOutcomes(r) {
@@ -1513,9 +1551,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       else if (t.getAttribute && t.getAttribute("data-inner") && t.closest("#ext-results")) { S.inner.ext = t.getAttribute("data-inner"); renderExt(); }
     });
   }
-  function readExtInputs() {
+  function readExtInputs(ev) {
     S.ext.harm = num($("ext-harm").value, 0); S.ext.tax_supply = num($("ext-tax-s").value, 0); S.ext.tax_demand = num($("ext-tax-d").value, 0); S.ext.cap = num($("ext-cap").value, 0);
-    renderExt();
+    redraw(renderExt, ev);
   }
   function extPolicy() {
     var cap = num(S.ext.cap, 0);
@@ -1536,7 +1574,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function renderExt() {
     if (!$("ext-results")) return;
     var r = computeExt(), el = $("ext-results");
-    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; $("ext-pin-wrap").innerHTML = pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION); return; }
+    if (r.err) { el.innerHTML = '<div class="error">' + esc(r.err) + '</div>'; pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION); return; }
     var soc = r.soc, out = soc.out, base = r.base;
     var h = '<div class="metrics">' + metric("Market price", out.price, base.out.price) + metric("Quantity traded", out.quantity, base.out.quantity) +
             metric("Socially optimal quantity", soc.opt_quantity, null, { help: "The quantity that makes everyone together, third parties included, best off: where the gap between buyers' values and sellers' costs equals the harm per unit." }) +
@@ -1550,7 +1588,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     if (S.inner.ext === "outcomes") h += extOutcomes(r);
     else h += winnersHtml(out, base.out, M.compare(base.out, out), [["People outside the market (third parties)", soc.third_party - base.third_party]]);
     el.innerHTML = h;
-    $("ext-pin-wrap").innerHTML = pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION);
+    pinPanel("ext", M.describeExt(r.policy, r.harm), EXT_QUESTION);
     saveLocal();
   }
   function extOutcomes(r) {

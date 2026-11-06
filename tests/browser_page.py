@@ -61,6 +61,28 @@ def run(page, base_url, tag):
     shot(page, tag + "_02_tax")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Tax 20 on sellers'", exact=False).wait_for()
+    # Typed like a person. (1) Choose the section, then type a tax and leave the box: the redraw must keep the section
+    # and the label being typed. (2) Type a tax and click Pin straight away: the box's "change" fires between mouse-down
+    # and mouse-up, and the redraw must not swallow the click.
+    page.locator("#lab-pin-q").select_option("2")            # "3. Tax rates, revenue and deadweight loss"
+    page.locator("#lab-pin-label").fill("Typed label")
+    page.locator("#lab-tax-s").click(click_count=3)
+    page.keyboard.type("30")
+    page.keyboard.press("Tab")
+    page.wait_for_timeout(200)
+    check(page.locator("#lab-pin-q").input_value() == "2" and page.locator("#lab-pin-label").input_value() == "Typed label",
+          tag + " section and label survive a change of the tax")
+    page.locator("#lab-pin-label").fill("")
+    page.locator("#lab-tax-s").click(click_count=3)
+    page.keyboard.type("35")
+    page.locator("#lab-pin").click()
+    try:
+        page.get_by_text("Pinned as 'Tax 35 on sellers' under '3. Tax rates", exact=False).wait_for(timeout=3000)
+        pinned = True
+    except Exception:
+        pinned = False
+    check(pinned, tag + " a tax typed and pinned straight away is pinned, under the chosen section")
+    page.locator("#lab-pin-q").select_option("0")
     # ceiling 40, random lottery, winners tab
     set_num(page, "Tax on sellers (per unit)", 0)
     page.get_by_label("Market control").select_option("ceiling")
