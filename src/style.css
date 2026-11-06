@@ -87,7 +87,6 @@ footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
 .qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
-.qsection .start-row { margin: 2px 0 10px; }
 details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
 details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
 details[open].prompt > summary::before { content: "\25BE "; }

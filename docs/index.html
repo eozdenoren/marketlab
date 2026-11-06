@@ -94,7 +94,6 @@ footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
 .qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
-.qsection .start-row { margin: 2px 0 10px; }
 details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
 details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
 details[open].prompt > summary::before { content: "\25BE "; }
@@ -948,7 +947,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
 
   // The lab book sections: the class questions, in the order they build on each other, and a section for the group's own
-  // experiments. `start` is the market a question begins from (the default one when absent) or "ext" for the Externalities tab.
   // Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks it).
   var QUESTIONS = [
     { id: "q1", title: "1. Who really pays a tax?",
@@ -958,8 +956,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
       prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the fall in quantity, to the tax revenue and to the deadweight loss? Use the chart to explain why the loss grows faster than the tax. Then find the tax that raises the most revenue and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
     { id: "q4", title: "4. Broad base or high rate?",
-      prompt: "This market has the same sellers as the default one, split into two regions, North and South. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Buyers pay the same in both cases. Compare the tax revenue, the deadweight loss and what each region sells. Why does the narrow tax raise less and waste more? Who would lobby for it?",
-      start: { supply: [["North", 50, 0, 100], ["South", 50, 0, 100]], demand: [["West", 100, 0, 100]] } },
+      prompt: "Split the sellers into two regions: in the Supply table change North's Quantity to 50 and add a row, South, with 50 units and costs from 0 to 100. The market should still clear at price 50 and quantity 50. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Buyers pay the same in both cases. Compare the tax revenue, the deadweight loss and what each region sells. Why does the narrow tax raise less and waste more? Who would lobby for it?" },
     { id: "q5", title: "5. A subsidy",
       prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Both sides of the market are better off, so why does total surplus fall, and who ultimately pays?" },
     { id: "q6", title: "6. Rent control",
@@ -967,14 +964,11 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     { id: "q7", title: "7. A capacity shock",
       prompt: "Before you run it, write down your guess: if a fifth of the sellers' capacity is destroyed, who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened. Then make supply large and flat: put the capacity back to 100%, change the supply Quantity to 400, and pin this market with capacity at 100% and at 75%. What happens to the sellers' surplus, and what does that say about cartels such as OPEC?" },
     { id: "q8", title: "8. A tariff to protect home producers",
-      prompt: "In this market Home has a fifth of the world's sellers and two fifths of its buyers, so it imports. An import tariff of 20 works like a tax of 20 on Home buyers together with a subsidy of 20 to Home sellers, so that home-made goods sold at home are not taxed: in Regional experiments set the tax on Home buyers to 20 and the tax on Home sellers to minus 20, and pin. Compare with the Baseline column, which is free trade. What happens to the surplus of Home buyers and of Home sellers, and what does the government collect? Is Home better off in total? Who gains and who loses abroad?",
-      start: { supply: [["Home sellers", 20, 0, 100], ["Foreign sellers", 80, 0, 100]], demand: [["Home buyers", 40, 0, 100], ["Foreign buyers", 60, 0, 100]] } },
+      prompt: "Reset the market, then build the world market: in the Supply table two rows, Home sellers with 20 units and Foreign sellers with 80; in the Demand table two rows, Home buyers with 40 units and Foreign buyers with 60; costs and values from 0 to 100 throughout. Home has a fifth of the sellers and two fifths of the buyers, so it imports; the market still clears at 50 and 50. An import tariff of 20 is a tax of 20 on Home buyers with a subsidy of 20 to Home sellers, so that home-made goods sold at home are not taxed: under Regional experiments set those two and pin. The Baseline column is free trade. What happens to the surplus of Home buyers and of Home sellers, and to the government's revenue? Is Home better off in total? Who gains and who loses abroad?" },
     { id: "q9", title: "9. The best tariff for a large country",
-      prompt: "Here Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Roughly which tariff is best for Home? Why does a tariff help Home here when it hurt Home in question 8? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?",
-      start: { supply: [["Foreign sellers", 100, 0, 100]], demand: [["Home buyers", 100, 0, 100]] } },
+      prompt: "Reset the market and think of all the buyers as Home and all the sellers as foreign: Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Roughly which tariff is best for Home? Why does a tariff help Home here when it hurt Home in question 8? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?" },
     { id: "q10", title: "10. Pollution: the tax or permit cap that puts the market right",
-      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?",
-      start: "ext" },
+      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?" },
     { id: "own", title: "Your own experiments",
       prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
   var EXT_QUESTION = 9;
@@ -1644,37 +1638,19 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
     return h;
   }
-  // Start a question from a clean slate: its market (the default one unless the question names another), no
-  // experiments, the right tab, and the pin panel already filed under this question.
-  function startQuestion(qid) {
-    var q = QUESTIONS.filter(function (x) { return x.id === qid; })[0];
-    if (!q) return;
-    var ext = q.start === "ext", fresh;
-    if (ext) fresh = freshExt();
-    else { fresh = freshLab(); if (q.start) { fresh.supply = clone(q.start.supply); fresh.demand = clone(q.start.demand); } }
-    var changes = JSON.stringify(ext ? S.ext : S.lab) !== JSON.stringify(fresh);
-    if (changes && !window.confirm("This replaces the market and clears the experiments on the " + (ext ? "Externalities" : "Laboratory") + " tab. Your lab book is not affected. Continue?")) return;
-    var which = ext ? "ext" : "lab";
-    if (ext) { S.ext = fresh; buildExt(); } else { S.lab = fresh; buildLab(); }
-    S.lastQ[which] = q.title; S.pinMsg[which] = "";
-    showTab(which);
-    if (ext) renderExt(); else renderLab();
-    window.scrollTo(0, 0);
-  }
   var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
   function renderBook() {
     var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
             'Work through the questions in order: each builds on the one before. ' +
-            'The button under each question sets up the market it starts from and files your pins under that question; the \u2715 on a column removes it. Everything is saved as you go.</p>';
+            'Pin from the Laboratory or Externalities tab, choosing the section as you pin; the \u2715 on a column removes it. Reset market and Reset experiments on the Laboratory tab take you back to the default market between questions. Everything is saved as you go.</p>';
     if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
     QUESTIONS.forEach(function (q) {
       var mine = S.book.filter(function (e) { return sectionOf(e) === q.id; });
       var answered = (S.answers[q.id] || "").trim().length > 0;
       h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " \u00b7 answered" : "") + '</span></h2>' +
-           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>' +
-           (q.id === "own" ? "" : '<div class="row start-row"><button type="button" class="small start-q" data-q="' + q.id + '">Set up the ' + (q.start === "ext" ? "Externalities tab" : "Laboratory") + ' for this question</button></div>');
+           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
       if (mine.length) h += bookTable(mine);
       else h += '<p class="caption">Nothing pinned here yet.</p>';
       h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
@@ -1690,7 +1666,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
         S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook();
       };
     });
-    el.querySelectorAll(".start-q").forEach(function (btn) { btn.onclick = function () { startQuestion(btn.getAttribute("data-q")); }; });
     el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
       var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
       ta.addEventListener("input", upd); ta.addEventListener("change", upd);

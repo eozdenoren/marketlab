@@ -149,19 +149,27 @@ def run(page, base_url, tag):
     check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 10")
     sec4 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
     check("Rent control 40, lottery" in sec4, tag + " rent control pin under question 6")
-    # The button under a question sets up the tab it starts from. Question 4 has its own market (two supply regions):
-    # declined, nothing changes; accepted, the Laboratory opens on that market with the pin panel filed under question 4,
-    # and the lab book shows what each region sells and earns.
-    q4 = "#tab-book .qsection[data-q='q4']"
-    page.once("dialog", lambda d: d.dismiss())
-    page.locator(q4 + " .start-q").click()
-    check(not page.locator("#tab-book").is_hidden(), tag + " set-up declined: still in the lab book")
-    page.once("dialog", lambda d: d.accept())
-    page.locator(q4 + " .start-q").click()
-    page.wait_for_timeout(300)
+    # Question 4 the way students do it: reset, then split the sellers into North 50 and South 50 in the Supply table.
+    page.locator("#main-tabs button[data-tab='lab']").click()
+    page.locator("#lab-reset-market").click()
+    page.locator("#lab-reset-exp").click()
+    page.wait_for_timeout(200)
+    q = page.locator("#lab-supply tbody tr").first.locator("input[aria-label='Quantity']")
+    q.fill("50")
+    q.press("Enter")
+    page.locator("button.add-row[data-table='lab-supply']").click()
+    page.wait_for_timeout(200)
+    new_row = page.locator("#lab-supply tbody tr").nth(1)
+    for field, value in (("Region", "South"), ("Quantity", "50"), ("Pmin", "0"), ("Pmax", "100")):
+        cell = new_row.locator("input[aria-label='%s']" % field)
+        cell.fill(value)
+        cell.press("Enter")
+    page.wait_for_timeout(200)
     names = [i.input_value() for i in page.locator("#lab-supply tbody tr td:first-child input").all()]
-    check(not page.locator("#tab-lab").is_hidden() and names == ["North", "South"], tag + " set-up loads the two-region market in the Laboratory")
-    check(page.locator("#lab-pin-q").input_value() == "3" and metric(page, "Market price") == "50.0", tag + " set-up files pins under question 4, no experiment left")
+    check(names == ["North", "South"] and metric(page, "Market price") == "50.0" and metric(page, "Quantity traded") == "50.0",
+          tag + " two selling regions built by hand still clear at 50 and 50")
+    page.locator("#lab-pin-q").select_option("3")            # "4. Broad base or high rate?"
+    q4 = "#tab-book .qsection[data-q='q4']"
     set_num(page, "Tax on sellers (per unit)", 20)
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Tax 20 on sellers' under '4. Broad base", exact=False).wait_for()
@@ -177,7 +185,7 @@ def run(page, base_url, tag):
     for tr in page.locator(q4 + " table.labbook tbody tr").all():
         cells = [c.strip() for c in tr.locator("td").all_inner_texts()]
         rows[cells[0]] = cells[1:]
-    # (by now the tab has been rebuilt several times, by the two reset buttons and by the set-up button: one click on
+    # (by now the tab has been rebuilt several times by the reset buttons: one click on
     # Pin must still give exactly one column, so three columns here: the baseline and the two pins)
     check(all(len(v) == 3 for v in rows.values()), tag + " one click on Pin gives one column, also after resets")
     check(rows.get("Government revenue") == ["0.0", "800.0", "400.0"] and rows.get("Deadweight loss") == ["0.0", "100.0", "300.0"]
@@ -185,17 +193,7 @@ def run(page, base_url, tag):
     check(rows.get("Quantity: North") == ["25.0", "20.0", "10.0"] and rows.get("Quantity: South") == ["25.0", "20.0", "30.0"]
           and rows.get("Surplus: South") == ["625.0", "400.0", "900.0"], tag + " question 4: regional rows in the lab book")
     check("Quantity: North" not in page.locator("#tab-book .qsection[data-q='q1']").inner_text(), tag + " no regional rows for a one-region market")
-    # a question on the default market: the set-up puts the default market back and files pins under it
-    page.once("dialog", lambda d: d.accept())
-    page.locator("#tab-book .qsection[data-q='q5'] .start-q").click()
-    page.wait_for_timeout(300)
-    names = [i.input_value() for i in page.locator("#lab-supply tbody tr td:first-child input").all()]
-    check(names == ["North"] and page.locator("#lab-pin-q").input_value() == "4", tag + " set-up for question 5: default market, pins filed under it")
-    page.once("dialog", lambda d: d.accept())
-    page.locator("#main-tabs button[data-tab='book']").click()
-    page.locator("#tab-book .qsection[data-q='q10'] .start-q").click()
-    page.wait_for_timeout(300)
-    check(not page.locator("#tab-ext").is_hidden() and page.locator("#ext-pin-q").input_value() == "9", tag + " set-up for question 10 opens the Externalities tab")
+    check(page.locator("#tab-book .start-q").count() == 0, tag + " no set-up buttons in the lab book")
     page.locator("#main-tabs button[data-tab='book']").click()
     page.locator("#book-notes").fill("Equal slopes, equal split.")
     page.locator("#book-notes").blur()
