@@ -808,6 +808,13 @@ var MLChart = (function () {
     if ((policy.control === "ceiling" || policy.control === "floor") && policy.control_value != null) hlines.push({ y: policy.control_value, label: cap1(policy.control) });
     if (policy.control === "quota" && policy.control_value != null && out.control_binding) vlines.push({ x: policy.control_value, label: "Quota" });
     if (out.quantity > 0) markers.push({ q: out.quantity, p: out.price, color: COLORS.black, name: "Market outcome", guides: "both", hollow: false });
+    // When a control leaves willing traders out, show how many wanted to trade at that price: a hollow dot on the
+    // rationed side's curve at the willing quantity, so a lottery reads as "70 wanted one, 30 were drawn".
+    if (out.control_binding && out.rationed_side && out.shortage > 1e-9) {
+      var willing = out.quantity + out.shortage, dem = out.rationed_side === M.DEMAND;
+      markers.push({ q: willing, p: out.price, color: dem ? COLORS.demand : COLORS.supply,
+                     name: (dem ? "Buyers who want to buy at this price: " : "Sellers who want to sell at this price: ") + M.num(willing), guides: "vertical", hollow: true });
+    }
     return { traces: traces, hlines: hlines, vlines: vlines, markers: markers, qMax: qMax, pMax: pMax };
   }
 
