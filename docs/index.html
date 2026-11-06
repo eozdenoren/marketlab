@@ -782,31 +782,43 @@ var MLChart = (function () {
       var Q = out.quantity;
       // A lottery: everyone willing has the same chance, so the side's surplus is a share of the whole triangle it would
       // get if all of them traded. Draw that triangle, dotted, and say what share of it is won; the other side as usual.
-      var lottery = policy.rationing === "random" && out.control_binding && out.rationed_side && out.shortage > 1e-9;
+      var rationed = out.control_binding && out.rationed_side && out.shortage > 1e-9;
+      var lottery = rationed && policy.rationing === "random", worst = rationed && policy.rationing === "inefficient";
       var willing = Q + out.shortage;
       if (lottery && out.rationed_side === M.DEMAND) {
         var tri = clipPath(dPts, 0, willing), top = tri.length ? tri[0][1] : buyerPrice;
         area(traces, tri, buyerPrice, COLORS.demand, 0.12, "Consumer surplus: a " + M.num(Q) + "-in-" + M.num(willing) + " share of the dotted triangle", ".");
         notes.push({ q: willing * 0.85, p: buyerPrice + 0.8 * (top - buyerPrice), to: [willing * 0.3, buyerPrice + 0.3 * (top - buyerPrice)],
                      text: "Consumer surplus = " + M.num(Q) + "/" + M.num(willing) + " of this triangle = " + thousands(out.consumer_surplus) });
+      } else if (worst && out.rationed_side === M.DEMAND) {
+        // lowest values first: the buyers served are the last Q of the willing ones along the demand curve
+        area(traces, clipPath(dPts, willing - Q, willing), buyerPrice, COLORS.demand, 0.25, "Consumer surplus: the " + M.num(Q) + " lowest-value buyers of the " + M.num(willing) + " who want one");
+        var triW = clipPath(dPts, willing - Q, willing), topW = triW.length ? triW[0][1] : buyerPrice;
+        notes.push({ q: Math.min(willing * 0.95, qMax * 0.78), p: buyerPrice + 1.9 * (topW - buyerPrice), to: [willing - Q * 0.4, buyerPrice + 0.3 * (topW - buyerPrice)],
+                     text: "Consumer surplus = the " + M.num(Q) + " lowest-value buyers of the " + M.num(willing) + " = " + thousands(out.consumer_surplus) });
       } else area(traces, clipPath(dServed, 0, Q), buyerPrice, COLORS.demand, 0.25, "Consumer surplus");
       if (lottery && out.rationed_side === M.SUPPLY) {
         var triS = clipPath(sPts, 0, willing), bottom = triS.length ? triS[0][1] : sellerPrice;
         area(traces, triS, sellerPrice, COLORS.supply, 0.12, "Producer surplus: a " + M.num(Q) + "-in-" + M.num(willing) + " share of the dotted triangle", ".");
         notes.push({ q: willing * 0.85, p: sellerPrice - 0.8 * (sellerPrice - bottom), to: [willing * 0.3, sellerPrice - 0.3 * (sellerPrice - bottom)],
                      text: "Producer surplus = " + M.num(Q) + "/" + M.num(willing) + " of this triangle = " + thousands(out.producer_surplus) });
+      } else if (worst && out.rationed_side === M.SUPPLY) {
+        area(traces, clipPath(sPts, willing - Q, willing), sellerPrice, COLORS.supply, 0.25, "Producer surplus: the " + M.num(Q) + " highest-cost sellers of the " + M.num(willing) + " who want to sell");
+        var triWS = clipPath(sPts, willing - Q, willing), botW = triWS.length ? triWS[0][1] : sellerPrice;
+        notes.push({ q: Math.min(willing * 0.95, qMax * 0.78), p: sellerPrice - 1.9 * (sellerPrice - botW), to: [willing - Q * 0.4, sellerPrice - 0.3 * (sellerPrice - botW)],
+                     text: "Producer surplus = the " + M.num(Q) + " highest-cost sellers of the " + M.num(willing) + " = " + thousands(out.producer_surplus) });
       } else area(traces, clipPath(sServed, 0, Q), sellerPrice, COLORS.supply, 0.25, "Producer surplus");
       if (buyerPrice - sellerPrice > 1e-9 && out.government_revenue > 1e-9)
         area(traces, [[0, buyerPrice], [Q, buyerPrice]], sellerPrice, COLORS.gov, 0.30, out.licence_rent > out.tax_revenue ? "Licence rent" : "Tax revenue");
       // Under a lottery the lost trades are not a definite set of buyers, so the usual triangle is not drawn: the dotted
       // triangle and its note carry the story, and the loss is read from the Outcomes table.
-      if (benchOut.quantity > Q + 1e-9 && !lottery)
+      if (benchOut.quantity > Q + 1e-9 && !lottery && !worst)
         area(traces, clipPath(dPts, Q, benchOut.quantity), clipPath(sPts, Q, benchOut.quantity), COLORS.dwl, 0.35, "Deadweight loss: lost trades", "/");
-      if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND && !lottery) {
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.DEMAND && !lottery && !worst) {
         area(traces, clipPath(dPts, 0, Q), clipPath(dServed, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
         line(traces, dServed, COLORS.demand, 1.5, "dot", "Values of the buyers actually served");
       }
-      if (out.rationing_loss > 1e-9 && out.rationed_side === M.SUPPLY && !lottery) {
+      if (out.rationing_loss > 1e-9 && out.rationed_side === M.SUPPLY && !lottery && !worst) {
         area(traces, clipPath(sServed, 0, Q), clipPath(sPts, 0, Q), COLORS.dwl, 0.35, "Deadweight loss: rationing", "\\");
         line(traces, sServed, COLORS.supply, 1.5, "dot", "Costs of the sellers actually selling");
       }
@@ -1012,9 +1024,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
   var EXT_QUESTION = 9;
   function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
-  var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
+  var RULES = [["efficient", "Efficient: highest values are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
-               ["inefficient", "Inefficient: lowest values (or highest costs) are served first"]];
+               ["inefficient", "Inefficient: lowest values are served first"]];
   var CONTROLS = [["none", "None"], ["ceiling", "Price ceiling"], ["floor", "Price floor"], ["quota", "Quota (cap on quantity traded)"]];
   var CONTROL_VALUE_LABEL = { ceiling: "Ceiling price", floor: "Floor price", quota: "Quota (units)" };
   var RENTS = [["sellers", "Sellers (licences given away)"], ["government", "Government (licences auctioned)"]];

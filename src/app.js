@@ -33,9 +33,9 @@
       prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
   var EXT_QUESTION = 9;
   function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
-  var RULES = [["efficient", "Efficient: highest values (or lowest costs) are served first"],
+  var RULES = [["efficient", "Efficient: highest values are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
-               ["inefficient", "Inefficient: lowest values (or highest costs) are served first"]];
+               ["inefficient", "Inefficient: lowest values are served first"]];
   var CONTROLS = [["none", "None"], ["ceiling", "Price ceiling"], ["floor", "Price floor"], ["quota", "Quota (cap on quantity traded)"]];
   var CONTROL_VALUE_LABEL = { ceiling: "Ceiling price", floor: "Floor price", quota: "Quota (units)" };
   var RENTS = [["sellers", "Sellers (licences given away)"], ["government", "Government (licences auctioned)"]];
