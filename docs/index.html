@@ -1539,8 +1539,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     rows.push(["Total surplus", base.total_surplus, out.total_surplus], ["Deadweight loss", base.deadweight_loss, out.deadweight_loss]);
     if (out.rationing_loss > 1e-9) rows.push(["  of which caused by the rationing rule", 0, out.rationing_loss]);
     var t = rows.map(function (x) { return [x[0], fmt(x[1]), fmt(x[2]), fmt(x[2] - x[1], 1, true)]; });
-    t.push(["Demand elasticity at the outcome", fmt(base.elasticity_demand, 2), fmt(out.elasticity_demand, 2), ""]);
-    t.push(["Supply elasticity at the outcome", fmt(base.elasticity_supply, 2), fmt(out.elasticity_supply, 2), ""]);
     var h = table3(t, ["Baseline", "Experiment", "Change"]);
     if (r.policy.cost_shock) h += '<p class="caption">Pass-through of the cost shock to the market price: ' + pct((out.price - base.price) / r.policy.cost_shock) + '.</p>';
     if (r.policy.benefit_boost) h += '<p class="caption">Share of the benefit boost showing up in the price: ' + pct((out.price - base.price) / r.policy.benefit_boost) + '.</p>';
