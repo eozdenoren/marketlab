@@ -97,7 +97,7 @@ def run(page, base_url, tag):
     page.locator("#lab-pin-label").fill("Rent control 40, lottery")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Rent control 40, lottery'", exact=False).wait_for()
-    page.locator("#lab-pin-q").select_option("10")  # a column to remove later, under "Your own experiments"
+    page.locator("#lab-pin-q").select_option("12")  # a column to remove later, under "Your own experiments"
     page.locator("#lab-pin-label").fill("Throwaway")
     page.locator("#lab-pin").click()
     page.get_by_text("Pinned as 'Throwaway'", exact=False).wait_for()
@@ -174,8 +174,8 @@ def run(page, base_url, tag):
     check("Throwaway" not in page.locator(own).inner_text() and "Nothing pinned here yet" in page.locator(own).inner_text(), tag + " column removed with the x")
     sec1 = page.locator("#tab-book .qsection[data-q='q1']").inner_text()
     check("Tax 20 on sellers" in sec1 and "Rent control 40, lottery" not in sec1, tag + " pins sit in their sections")
-    sec6 = page.locator("#tab-book .qsection[data-q='q10']").inner_text()
-    check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 10")
+    sec6 = page.locator("#tab-book .qsection[data-q='q12']").inner_text()
+    check("Harm 20: tax 20 on sellers" in sec6, tag + " externality pin under question 12")
     sec4 = page.locator("#tab-book .qsection[data-q='q6']").inner_text()
     check("Rent control 40, lottery" in sec4, tag + " rent control pin under question 6")
     # Question 4 the way students do it: reset, then split the sellers into North 50 and South 50 in the Supply table.
