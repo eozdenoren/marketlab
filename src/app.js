@@ -10,9 +10,9 @@
   // Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks it).
   var QUESTIONS = [
     { id: "q1", title: "1. Who really pays a tax?",
-      prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different and what is the same? Who bears the tax in each case, and why does it make no difference who hands the money to the government?" },
+      prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different and what is the same? Who bears the tax in each case, and why does it make no difference who hands the money to the government? Then change the market in any way you like, for instance split the buyers into a high-value segment and a low-value segment (two rows in the Demand table), and pin the two taxes again. Does it still make no difference?" },
     { id: "q2", title: "2. Who bears more of the tax?",
-      prompt: "Change the supply table so that sellers' costs run from 0 to 200 (set Pmax to 200), put a tax of 20 on sellers and pin. How much of the 20 do buyers pay, and how much do sellers absorb? Compare that split with the way the surplus was split between buyers and sellers before the tax (the Baseline column). Then build a market in which buyers bear at least three quarters of a tax of 20. Pin it without the tax and with it, and explain why it works." },
+      prompt: "Make demand steeper: in the Demand table set Pmax to 200, so values run from 0 to 200, and pin a tax of 20 on sellers. Reset the market, make supply steeper instead (Supply Pmax 200) and pin the same tax. In each case, how much of the 20 do buyers pay and how much do sellers lose? Which side bears more, and what is it about the shape of its curve that makes it bear more? Compare the split of the tax with the split of the surplus before the tax (the Baseline column). If you have time, build a market in which buyers bear at least three quarters of the tax." },
     { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
       prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the fall in quantity, to the tax revenue and to the deadweight loss? Use the chart to explain why the loss grows faster than the tax. Then find the tax that raises the most revenue and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
     { id: "q4", title: "4. Broad base or high rate?",
@@ -711,14 +711,17 @@
       var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
       var base = bases[e.tab + "|" + baselineName(e)];
       if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
-      cols.push([label, e.measures, e.id]);
+      cols.push([label, e.measures, e.id, e.baseline]);
     });
     var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); })
                 .concat(M.extraMeasures(cols.map(function (c) { return c[1]; })));
     var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
       return '<th>' + (c[2] ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">\u2715</button>' : "") + esc(c[0]) + '</th>';
     }).join("") + '</tr></thead><tbody>';
-    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + '</td>'; }).join("") + '</tr>'; });
+    // Each pinned value carries its change from that experiment's own baseline, small and grey under the number;
+    // not where the baseline is 0 (revenue, the loss, a shortage), since there the number is the change.
+    var delta = function (c, m) { var v = c[1][m], b = c[3] && c[3][m]; return (c[3] && v != null && b != null && typeof v === "number" && Math.abs(b) > 1e-9 && Math.abs(v - b) > 1e-9) ? '<span class="delta">' + fmt(v - b, 1, true) + '</span>' : ''; };
+    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + delta(c, m) + '</td>'; }).join("") + '</tr>'; });
     h += '</tbody></table></div>';
     foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
     return h;

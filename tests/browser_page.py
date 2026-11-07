@@ -150,6 +150,12 @@ def run(page, base_url, tag):
     page.locator("#main-tabs button[data-tab='book']").click()
     txt = page.locator("#tab-book").inner_text()
     check("Baseline, harm 20" in txt and "Rent control 40, lottery" in txt and "Tax 20 on sellers" in txt, tag + " lab book columns")
+    # each pinned value carries its change from the baseline in small grey text; none where the baseline is 0
+    q1 = page.locator("#tab-book .qsection[data-q='q1'] table.labbook")
+    price_row = q1.locator("tbody tr", has_text="Market price").first
+    check(price_row.locator("td").nth(1).locator(".delta").count() == 0 and price_row.locator("td").nth(2).locator(".delta").inner_text() == "+10.0", tag + " change under the pinned price")
+    rev_row = q1.locator("tbody tr", has_text="Government revenue").first
+    check(rev_row.locator(".delta").count() == 0, tag + " no change shown where the baseline is 0")
     # each section is the table and the answer box only: no label/section/note panel, no Note row
     first_cells = [c.strip() for c in page.locator("#tab-book table.labbook tbody td:first-child").all_inner_texts()]
     check("Labels, sections and notes" not in txt and page.locator("#tab-book input[aria-label='Note']").count() == 0
@@ -206,7 +212,8 @@ def run(page, base_url, tag):
     page.locator("#main-tabs button[data-tab='book']").click()
     rows = {}
     for tr in page.locator(q4 + " table.labbook tbody tr").all():
-        cells = [c.strip() for c in tr.locator("td").all_inner_texts()]
+        # the value only: the small grey change under it is not part of the number
+        cells = [c.strip().split("\n")[0] for c in tr.locator("td").all_inner_texts()]
         rows[cells[0]] = cells[1:]
     # (by now the tab has been rebuilt several times by the reset buttons: one click on
     # Pin must still give exactly one column, so three columns here: the baseline and the two pins)

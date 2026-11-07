@@ -85,6 +85,7 @@ table.grid.labbook td { white-space: nowrap; }
 table.grid.labbook th { white-space: normal; min-width: 120px; }
 table.grid.labbook th .remove-entry { float: right; margin-left: 8px; padding: 0 6px; line-height: 1.5; color: var(--muted); background: #fff; }
 table.grid.labbook th .remove-entry:hover { color: var(--loss); border-color: var(--loss); }
+table.grid.labbook td .delta { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); }
 .question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
 footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
 [hidden] { display: none !important; }
