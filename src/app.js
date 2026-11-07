@@ -524,14 +524,21 @@
     if (out.flags.indeterminate_price) h += '<div class="info">Any price between ' + fmt(out.flags.price_interval[0]) + ' and ' + fmt(out.flags.price_interval[1]) + ' clears the market; the midpoint is shown.</div>';
     if (r.policy.control !== "none" && !out.control_binding && out.quantity > 0) h += '<p class="caption">The ' + (r.policy.control === "quota" ? "quota" : r.policy.control) + ' does not bind at these settings.</p>';
     if (out.control_binding && out.rationed_side) {
-      var side = out.rationed_side === M.DEMAND ? "buyers" : "sellers", willing = out.quantity + out.shortage, rule = r.policy.rationing, how;
-      if (rule === "random") how = "each willing " + side.slice(0, -1) + " trades with probability " + pct(willing ? out.quantity / willing : 0);
-      else if (rule === "efficient") how = "the " + side + " who value the trade most are served";
-      else how = "the " + side + " who value the trade least are served";
-      var lead = out.rationed_side === M.DEMAND ? "Shortage: " + fmt(willing) + " buyers want to buy at this price but only " + fmt(out.quantity) + " units are offered"
-                                                 : "Excess supply: " + fmt(willing) + " sellers want to sell at this price but buyers take only " + fmt(out.quantity) + " units";
-      var split = out.rationing_loss > 1e-9 ? " Deadweight loss " + fmt(out.deadweight_loss, 0) + "; it would be " + fmt(out.deadweight_loss - out.rationing_loss, 0) + " if the units went to the " + side + " who value them most, so the rule costs " + fmt(out.rationing_loss, 0) + "." : "";
+      // The same note for a ceiling (buyers rationed), a floor and a quota whose licences go to sellers (sellers
+      // rationed): who is left out, how the units are allotted, and what the rule costs.
+      var dem = out.rationed_side === M.DEMAND, willing = out.quantity + out.shortage, rule = r.policy.rationing, how;
+      if (rule === "random") how = "each willing " + (dem ? "buyer" : "seller") + " trades with probability " + pct(willing ? out.quantity / willing : 0);
+      else if (rule === "efficient") how = dem ? "the buyers who value the good most are served" : "the lowest-cost sellers sell";
+      else how = dem ? "the buyers who value the good least are served" : "the highest-cost sellers sell";
+      var lead = dem ? "Shortage: " + fmt(willing) + " buyers want to buy at this price but only " + fmt(out.quantity) + " units are offered"
+               : r.policy.control === "quota" ? "Quota: " + fmt(willing) + " sellers would sell at this price but only " + fmt(out.quantity) + " units may be traded"
+               : "Excess supply: " + fmt(willing) + " sellers want to sell at this price but buyers take only " + fmt(out.quantity) + " units";
+      var split = out.rationing_loss > 1e-9 ? " Deadweight loss " + fmt(out.deadweight_loss, 0) + "; it would be " + fmt(out.deadweight_loss - out.rationing_loss, 0) + (dem ? " if the units went to the buyers who value them most" : " if the lowest-cost sellers sold the units") + ", so the rule costs " + fmt(out.rationing_loss, 0) + "." : "";
       h += '<div class="note">' + esc(lead) + '. Rationing: ' + esc(how) + '.' + esc(split) + '</div>';
+    } else if (out.control_binding && r.policy.control === "quota" && out.licence_rent > 1e-9) {
+      var spq = uniformPrice(out, M.SUPPLY);
+      h += '<div class="note">Quota: only ' + fmt(out.quantity) + ' units may be traded. The licences are auctioned, so the lowest-cost sellers buy them and the government keeps the rent' +
+           (spq != null ? ': buyers pay ' + fmt(out.price) + ', sellers keep ' + fmt(spq) + ', and the difference on ' + fmt(out.quantity) + ' units is ' + fmt(out.licence_rent, 0) : '') + '.</div>';
     }
     out.regions.forEach(function (rg) {
       if (rg.capped && rg.willing > rg.quantity + 1e-9) {
@@ -552,7 +559,12 @@
     var out = r.out, base = r.base, rows = [["Market price", base.price, out.price]];
     var bp0 = uniformPrice(base, M.DEMAND), bp1 = uniformPrice(out, M.DEMAND), sp0 = uniformPrice(base, M.SUPPLY), sp1 = uniformPrice(out, M.SUPPLY);
     if (bp1 != null && bp0 != null && (Math.abs(bp1 - out.price) > 1e-9 || Math.abs(bp0 - base.price) > 1e-9)) rows.push(["Buyers pay (with tax)", bp0, bp1]);
-    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - base.price) > 1e-9)) rows.push(["Sellers receive (after tax)", sp0, sp1]);
+    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - base.price) > 1e-9)) {
+      // sellers net of what comes between them and the market price: a tax, a licence fee, or both
+      var sTaxed = [out, base].some(function (o) { return o.regions.some(function (g) { return g.side === M.SUPPLY && Math.abs(g.tax) > 1e-9; }); });
+      var sRent = [out, base].some(function (o) { return o.licence_rent > 1e-9; });
+      rows.push(["Sellers receive" + (sTaxed && sRent ? " (after tax and licence fee)" : sTaxed ? " (after tax)" : sRent ? " (after the licence fee)" : ""), sp0, sp1]);
+    }
     rows.push(["Quantity traded", base.quantity, out.quantity]);
     if (out.control_binding && out.shortage > 1e-9) rows.push([out.rationed_side === M.DEMAND ? "Shortage (excess demand)" : "Excess supply", 0, out.shortage]);
     rows.push(["Consumer surplus", base.consumer_surplus, out.consumer_surplus], ["Producer surplus", base.producer_surplus, out.producer_surplus]);
@@ -565,8 +577,7 @@
     var dTS = out.total_surplus - base.total_surplus, dwl = out.deadweight_loss, rl = out.rationing_loss > 1e-9 ? out.rationing_loss : 0;
     var same = dwl > 1e-9 && Math.abs(dwl + dTS) < 1e-6, whole = function (x) { return fmt(x, Math.abs(x - Math.round(x)) < 0.05 ? 0 : 1); };
     var h = table3(t, ["Baseline", "Experiment", "Change"], same ? [rows.length - 1, 3] : null);
-    var who = out.rationed_side === M.DEMAND ? "buyers" : "sellers";
-    var ruleCost = rl ? ' It would be ' + whole(dwl - rl) + ' if the units went to the ' + who + ' who value them most; the rationing rule costs the other ' + whole(rl) + '.' : '';
+    var ruleCost = rl ? ' It would be ' + whole(dwl - rl) + (out.rationed_side === M.DEMAND ? ' if the units went to the buyers who value them most' : ' if the lowest-cost sellers sold the units') + '; the rationing rule costs the other ' + whole(rl) + '.' : '';
     if (same) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b>, the fall in total surplus.' + ruleCost + '</p>';
     else if (dwl > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = ' + whole(dwl) + '</b> against the market with the same shock but no tax or control; total surplus changed by ' + fmt(dTS, 1, true) + ' in all, the rest being the shock itself.' + ruleCost + '</p>';
     else if (Math.abs(dTS) > 1e-9) h += '<p class="caption dwl-note"><b>Deadweight loss = 0</b>: the change in total surplus comes from the shock to costs or capacity, not from a distortion.</p>';
@@ -668,7 +679,10 @@
     var soc = r.soc, out = soc.out, base = r.base, b = base.out, harm = r.harm, rows = [["Market price", b.price, out.price]];
     var bp0 = uniformPrice(b, M.DEMAND), bp1 = uniformPrice(out, M.DEMAND), sp0 = uniformPrice(b, M.SUPPLY), sp1 = uniformPrice(out, M.SUPPLY);
     if (bp1 != null && bp0 != null && (Math.abs(bp1 - out.price) > 1e-9 || Math.abs(bp0 - b.price) > 1e-9)) rows.push(["Buyers pay (with tax)", bp0, bp1]);
-    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - b.price) > 1e-9)) rows.push(["Sellers receive (after tax)", sp0, sp1]);
+    if (sp1 != null && sp0 != null && (Math.abs(sp1 - out.price) > 1e-9 || Math.abs(sp0 - b.price) > 1e-9)) {
+      var sTaxed = Math.abs(r.policy.tax_supply) > 1e-9, sRent = out.licence_rent > 1e-9;
+      rows.push(["Sellers receive" + (sTaxed && sRent ? " (after tax and permit fee)" : sTaxed ? " (after tax)" : sRent ? " (after the permit fee)" : ""), sp0, sp1]);
+    }
     rows.push(["Quantity traded", b.quantity, out.quantity], ["Socially optimal quantity", base.opt_quantity, soc.opt_quantity],
               ["Consumer surplus", b.consumer_surplus, out.consumer_surplus], ["Producer surplus", b.producer_surplus, out.producer_surplus]);
     if (Math.abs(out.tax_revenue) > 1e-9 || Math.abs(b.tax_revenue) > 1e-9) rows.push([Math.min(out.tax_revenue, b.tax_revenue) < -1e-9 ? "Tax revenue (negative: subsidy paid)" : "Tax revenue", b.tax_revenue, out.tax_revenue]);
