@@ -1,6 +1,7 @@
-"""Build the two single-file pages: python3 build.py [--config config.json] [--out docs/index.html]
+"""Build the single-file pages: python3 build.py [--config config.json] [--out docs/index.html]
     docs/index.html       the class page (students)
     docs/instructor.html  the instructor page, next to it
+    docs/calculator.html  the exam calculator: the class page in calculator mode (no record, nothing stored)
 The config is inlined as window.MARKETLAB_CONFIG, but only the keys each page needs: the class page gets the endpoint
 and the page token, the instructor page the endpoint and the students' address (app_url). The admin token in
 config.json is never inlined (everyone who opens a page can read it). With no config the pages run offline (the exam
@@ -15,7 +16,10 @@ SRC = os.path.join(HERE, "src")
 PAGES = {   # output name: (shell, extra style sheets, scripts in order, config keys that may go in)
     "index.html": ("index.html", [], ("engine.js", "chart.js", "book.js", "questions.js", "app.js"), ("endpoint", "token")),
     "instructor.html": ("instructor.html", ["instructor.css"], ("engine.js", "book.js", "questions.js", "qr.js", "instructor.js"), ("endpoint", "app_url")),
+    # the exam calculator: the class page's code in calculator mode; no endpoint, no token, nothing stored
+    "calculator.html": ("calculator.html", [], ("engine.js", "chart.js", "book.js", "questions.js", "app.js"), ()),
 }
+FIXED = {"calculator.html": {"calculator": True}}
 
 
 def build(shell, styles, scripts, cfg):
@@ -34,6 +38,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     for name, (shell, styles, scripts, keys) in PAGES.items():
         cfg = {k: cfg_all[k] for k in keys if k in cfg_all}
+        cfg.update(FIXED.get(name, {}))
         html = build(shell, styles, scripts, cfg)
         admin = cfg_all.get("admin_token")
         assert not admin or admin not in html, "the admin token must never be in a page"

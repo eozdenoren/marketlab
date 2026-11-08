@@ -103,6 +103,9 @@ details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
 details[open].prompt > summary::before { content: "\25BE "; }
 details.prompt > summary::-webkit-details-marker { display: none; }
 details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem; }
+form.helper { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 6px; }
+form.helper input { width: 86px; padding: 5px 7px; } form.helper input.name { width: 110px; } form.helper select { width: auto; padding: 5px 7px; }
+form.helper span { display: inline-flex; gap: 6px; } form.helper.invalid { border-color: var(--loss); }
 
 </style>
 </head>
@@ -1090,6 +1093,10 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   var M = MarketLab, CH = MLChart, B = MLBook;
   var CONFIG = window.MARKETLAB_CONFIG || {};
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
+  // The exam calculator (calculator.html): the Laboratory and Externalities tabs only, no group, no pinning, no lab
+  // book, nothing read from or written to this browser's storage and nothing sent anywhere; helper forms under the
+  // market tables turn exam notation (a block of capacity at constant MC, a linear demand Q = a - bP) into rows.
+  var CALC = !!CONFIG.calculator;
 
   var RULES = [["efficient", "Efficient: highest values are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
@@ -1125,12 +1132,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
   function storeKey() { return "marketlab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
+    if (CALC) return;
     try {
       localStorage.setItem(storeKey(), JSON.stringify({ lab: S.lab, ext: S.ext, book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab === "assign" ? "book" : S.tab, lastQ: S.lastQ }));
       if (!S.projector) localStorage.setItem("marketlab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) { /* storage full or disabled: the page still works */ }
   }
-  function loadStored(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function loadStored(key) { if (CALC) return null; try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function mergeStored(d) {
     if (!d) return;
     if (d.lab) S.lab = d.lab; if (d.ext) S.ext = d.ext;
@@ -1166,7 +1174,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
 
   // ---- class record (save queue) --------------------------------------------------
   var queue = loadStored("marketlab:queue") || [], flushing = false, retryTimer = null;
-  function persistQueue() { try { localStorage.setItem("marketlab:queue", JSON.stringify(queue)); } catch (e) {} }
+  function persistQueue() { if (CALC) return; try { localStorage.setItem("marketlab:queue", JSON.stringify(queue)); } catch (e) {} }
   function record(question, finding, state) {
     state = state || {};
     state["class"] = S.classCode; state.names = groupNames();
@@ -1241,6 +1249,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   }
   function renderStatus() {
     var el = $("footer-status");
+    if (CALC) { el.textContent = "Calculator: nothing is saved or sent anywhere. Reload the page for a clean start."; return; }
     var parts = [];
     if (S.classCode) parts.push("Class " + esc(S.classCode));
     if (S.group) parts.push(esc(groupKey()));
@@ -1266,6 +1275,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   // ---- group panel -------------------------------------------------------------------
   function renderGroup() {
     var el = $("group-panel");
+    if (!el) return;
     if (S.projector) {
       el.innerHTML = '<div class="group-line"><div><b>Projector</b>' + (S.classCode ? " \u00b7 Class " + esc(S.classCode) : "") +
                      ' \u00b7 pins stay in this browser and nothing is sent to the class record</div>' +
@@ -1354,7 +1364,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   // ---- tabs -------------------------------------------------------------------------
   function showTab(name) {
     S.tab = name;
-    ["lab", "ext", "book"].forEach(function (t) { $("tab-" + t).hidden = t !== name; });
+    ["lab", "ext", "book"].forEach(function (t) { var sec = $("tab-" + t); if (sec) sec.hidden = t !== name; });
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-tab") === name); });
     if (name === "book") renderBook();
     saveLocal();
@@ -1375,7 +1385,31 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
            '<td><input type="number" value="' + esc(r[3]) + '" step="10" aria-label="Pmax"></td>' +
            '<td class="remove"><button type="button" class="small" title="Remove this row" aria-label="Remove row">✕</button></td></tr>';
     });
-    return h + '</tbody></table><button type="button" class="small add-row" data-table="' + id + '">+ Add a row</button>';
+    return h + '</tbody></table><button type="button" class="small add-row" data-table="' + id + '">+ Add a row</button>' + helperForm(id, side);
+  }
+  // Calculator helpers: a supplier block (constant MC up to a capacity), a linear supply Q = b(P - P0) up to Qmax, a
+  // linear demand Q = a - bP or P = a - bQ; each becomes one row of the table.
+  function helperForm(id, side) {
+    if (!CALC) return "";
+    var nameBox = '<input type="text" name="name" placeholder="Region" aria-label="Region" class="name">';
+    if (side === M.SUPPLY)
+      return '<form class="helper" data-table="' + id + '"><select name="kind" aria-label="Supply form"><option value="block">Block: constant MC up to capacity</option><option value="linear">Linear: Q = b (P \u2212 P0), up to Qmax</option></select>' + nameBox +
+             '<span data-kind="block"><input type="number" name="mc" placeholder="MC" aria-label="MC" step="any"><input type="number" name="cap" placeholder="Capacity" aria-label="Capacity" step="any"></span>' +
+             '<span data-kind="linear" hidden><input type="number" name="b" placeholder="b" aria-label="b" step="any"><input type="number" name="p0" placeholder="P0" aria-label="P0" step="any" value="0"><input type="number" name="qmax" placeholder="Qmax" aria-label="Qmax" step="any"></span>' +
+             '<button type="submit" class="small">Add</button></form>';
+    return '<form class="helper" data-table="' + id + '"><select name="kind" aria-label="Demand form"><option value="QofP">Linear: Q = a \u2212 b P</option><option value="PofQ">Linear: P = a \u2212 b Q</option></select>' + nameBox +
+           '<span><input type="number" name="a" placeholder="a" aria-label="a" step="any"><input type="number" name="b" placeholder="b" aria-label="b" step="any"></span>' +
+           '<button type="submit" class="small">Add</button></form>';
+  }
+  function helperRow(f) {
+    var v = function (n) { var el = f.querySelector('[name="' + n + '"]'); return el ? parseFloat(el.value) : NaN; };
+    var kind = f.querySelector('[name="kind"]').value, name = (f.querySelector('[name="name"]').value || "").trim(), row = null;
+    if (kind === "block") { var mc = v("mc"), cap = v("cap"); if (!isNaN(mc) && cap > 0) row = [name || "Sellers", cap, mc, mc]; }
+    else if (kind === "linear") { var b = v("b"), p0 = v("p0"), qmax = v("qmax"); if (isNaN(p0)) p0 = 0; if (b > 0 && qmax > 0) row = [name || "Sellers", qmax, p0, p0 + qmax / b]; }
+    else if (kind === "QofP") { var a1 = v("a"), b1 = v("b"); if (a1 > 0 && b1 > 0) row = [name || "Buyers", a1, 0, a1 / b1]; }
+    else if (kind === "PofQ") { var a2 = v("a"), b2 = v("b"); if (a2 > 0 && b2 > 0) row = [name || "Buyers", a2 / b2, 0, a2]; }
+    if (!row) { f.classList.add("invalid"); setTimeout(function () { f.classList.remove("invalid"); }, 1200); }
+    return row;
   }
   function readSpec(id) {
     var rows = [];
@@ -1387,8 +1421,20 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   }
   function bindSpec(container, id, get, set, after) {
     container.addEventListener("change", function (ev) {
-      var t = ev.target; if (!t.closest || !t.closest("#" + id)) return;
+      var t = ev.target;
+      if (t.name === "kind" && t.closest && t.closest("form.helper") && t.closest("form.helper").getAttribute("data-table") === id) {   // show the fields of the chosen form
+        var f = t.closest("form.helper");
+        Array.prototype.forEach.call(f.querySelectorAll("span[data-kind]"), function (sp) { sp.hidden = sp.getAttribute("data-kind") !== t.value; });
+        return;
+      }
+      if (!t.closest || !t.closest("#" + id)) return;
       set(readSpec(id)); redraw(after, ev);
+    });
+    container.addEventListener("submit", function (ev) {     // the calculator's helper forms add a row
+      var f = ev.target; if (!f.classList || !f.classList.contains("helper") || f.getAttribute("data-table") !== id) return;
+      ev.preventDefault();
+      var row = helperRow(f); if (!row) return;
+      var rows = get().slice(); rows.push(row); set(rows); after(true);
     });
     container.addEventListener("click", function (ev) {
       var t = ev.target;
@@ -1429,6 +1475,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
     // Drawn once per tab and then only updated (see below): a redraw of the tab must not wipe the label being typed
     // or put the section back to the previous one, or the next pin lands under the wrong question.
     var wrap = $(which + "-pin-wrap");
+    if (CALC) { wrap.innerHTML = ""; return; }
     if (!$(which + "-pin")) {
       wrap.innerHTML = '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" title="Leave blank to use the suggested label."></div>' +
         '<div><label for="' + which + '-pin-q">Lab book section</label><select id="' + which + '-pin-q">' + QUESTIONS.map(function (q, i) { return '<option value="' + i + '">' + esc(q.title) + '</option>'; }).join("") + '</select></div>' +
@@ -1763,7 +1810,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
   // ---- Lab book tab ------------------------------------------------------------------
   var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
   function renderBook() {
-    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : (S.projector ? "the projector" : "");
+    var el = $("tab-book"); if (!el) return;
+    var who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : (S.projector ? "the projector" : "");
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
             'Work through the questions in order: each builds on the one before. ' +
@@ -1827,7 +1875,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { QUESTION
     S.classCode = (qs.get("class") || "").trim();
     S.projector = qs.get("projector") === "1";
     S.lab = freshLab(); S.ext = freshExt();
-    var last = S.projector ? null : loadStored("marketlab:" + S.classCode + ":last");
+    var last = (S.projector || CALC) ? null : loadStored("marketlab:" + S.classCode + ":last");
     if (last && last.number) S.group = last;
     mergeStored(loadStored(storeKey()));
     if (!S.lab.policy) S.lab = freshLab();
