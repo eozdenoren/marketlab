@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Marketplace Laboratory: instructor view</title>
+<!--STYLE-->
+</head>
+<body>
+<div class="wrap">
+  <div class="row between">
+    <div><h1>Marketplace Laboratory: instructor view</h1><p class="caption" id="subtitle">The groups' lab books, straight from the class record.</p></div>
+    <div id="topbar" class="row"></div>
+  </div>
+  <div id="signin"></div>
+  <div id="main" hidden>
+    <div id="class-bar" class="panel shaded"></div>
+    <details id="setup" class="panel"><summary>Class set-up: link and QR code, new classes, registered groups</summary><div id="setup-body"></div></details>
+    <nav class="tabs" id="views">
+      <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="experiment">By experiment</button>
+      <button type="button" data-view="group">One group</button>
+    </nav>
+    <section id="view-overview"></section>
+    <section id="view-experiment" hidden></section>
+    <section id="view-group" hidden></section>
+  </div>
+  <footer><span id="footer-status"></span></footer>
+</div>
+<!--CONFIG-->
+<!--SCRIPTS-->
+</body>
+</html>

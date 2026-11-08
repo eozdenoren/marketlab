@@ -1,8 +1,13 @@
 /* Marketplace Laboratory: class record endpoint (Google Apps Script, bound to the Google Sheet).
 
    Two tokens: TOKEN is baked into the student page (anyone can read it); ADMIN_TOKEN is
-   known only to the instructor view. Groups register their own PIN the first time a group
-   number is used in a class (first come, first served); the instructor can reset a group.
+   known only to the instructor view. The instructor page (instructor.html) signs in with
+   either the admin token or the instructor password, which lives in the script's
+   properties (Project settings > Script properties > INSTRUCTOR_PASSWORD), not in this
+   file. Wrong credentials are counted; after LOCK_AFTER of them within LOCK_MINUTES the
+   password answers "locked" until the window passes (the admin token still works). Groups register their own PIN
+   the first time a group number is used in a class (first come, first served); the
+   instructor can reset a group.
 
    Tabs: "findings" (ts | group | question | finding | state) and "groups" (class | group | pin | names | registered).
 
@@ -15,7 +20,8 @@
         {token:<admin>, action:"reset", class, group}  -> clears that group's registration */
 var FINDINGS = "findings", GROUPS = "groups";
 var TOKEN = "PAGE-TOKEN";          // same value as "token" in the page's build config
-var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor view only (app/.streamlit/secrets.toml)
+var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor view only (app/.streamlit/secrets.toml, html/config.json)
+var LOCK_AFTER = 10, LOCK_MINUTES = 15;
 
 function sheet(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -25,6 +31,21 @@ function sheet(name, header) {
 }
 function findingsSheet() { return sheet(FINDINGS, ["ts", "group", "question", "finding", "state"]); }
 function groupsSheet() { return sheet(GROUPS, ["class", "group", "pin", "names", "registered"]); }
+
+// Is this credential the admin's? The admin token always is (it is long and random, so it cannot be guessed and is
+// never locked out). The instructor password from the script properties is too, unless LOCK_AFTER wrong credentials
+// have arrived within LOCK_MINUTES: then the password side answers "locked" until the window passes, which stops
+// guessing. The page token and an empty token are simply "no" and are never counted.
+function adminStatus(token) {
+  if (token === undefined || token === null || token === "" || token === TOKEN) return "no";
+  if (token === ADMIN_TOKEN) return "yes";
+  var cache = CacheService.getScriptCache(), fails = Number(cache.get("admin-fails") || 0);
+  if (fails >= LOCK_AFTER) return "locked";
+  var password = PropertiesService.getScriptProperties().getProperty("INSTRUCTOR_PASSWORD");
+  if (password && token === password) return "yes";
+  cache.put("admin-fails", String(fails + 1), LOCK_MINUTES * 60);
+  return "no";
+}
 
 function findGroup(cls, group) {
   var values = groupsSheet().getDataRange().getValues();
@@ -53,7 +74,8 @@ function groupRecords(cls, group) {
 
 function doGet(e) {
   var p = e.parameter || {};
-  var admin = p.token === ADMIN_TOKEN;
+  var status = adminStatus(p.token), admin = status === "yes";
+  if (status === "locked") return reply({ ok: false, error: "locked" });
   if (!admin && p.token !== TOKEN) return reply({ ok: false, error: "bad token" });
   if (admin) {
     if (p.action === "groups") {
@@ -77,7 +99,8 @@ function doPost(e) {
   var data;
   try { data = JSON.parse(e.postData.contents); } catch (err) { return reply({ ok: false, error: "bad JSON" }); }
   if (!data) return reply({ ok: false, error: "bad JSON" });
-  var admin = data.token === ADMIN_TOKEN;
+  var status = adminStatus(data.token), admin = status === "yes";
+  if (status === "locked") return reply({ ok: false, error: "locked" });
   if (!admin && data.token !== TOKEN) return reply({ ok: false, error: "bad token" });
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);

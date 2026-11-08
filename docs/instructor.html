@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Marketplace Laboratory: instructor view</title>
+<style>
+:root { --text: #1f1e1c; --muted: #52514e; --line: #e4e3df; --panel: #f6f5f3; --primary: #2a78d6; --primary-dark: #1f5fae;
+        --accent: #eb6834; --gain: #2a78d6; --loss: #e34948; --radius: 8px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+       color: var(--text); background: #fff; font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 24px 60px; }
+h1 { font-size: 1.7rem; margin: 0 0 2px; }
+h2 { font-size: 1.1rem; margin: 18px 0 8px; }
+.caption, .small { color: var(--muted); font-size: 0.86rem; }
+.note { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 12px; color: var(--muted); font-size: 0.92rem; }
+.info { background: #e7f1fb; color: #1f5fae; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.error { background: #fbebeb; color: #9b1c1c; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.success { background: #e5f4e4; color: #1f6b2a; padding: 8px 12px; border-radius: var(--radius); margin: 8px 0; font-size: 0.92rem; }
+.panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; background: #fff; }
+.panel.shaded { background: var(--panel); }
+details.panel > summary { cursor: pointer; font-weight: 600; list-style: none; }
+details.panel > summary::before { content: "▸ "; color: var(--muted); font-size: 0.8em; }
+details[open].panel > summary::before { content: "▾ "; }
+details.panel > summary::-webkit-details-marker { display: none; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cols-4-8 { display: grid; grid-template-columns: 4fr 8fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .cols, .cols-4-8 { grid-template-columns: 1fr; } }
+label { display: block; font-size: 0.9rem; color: var(--text); margin: 8px 0 3px; }
+input[type=number], input[type=text], select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); width: 100%; }
+input[type=number]:focus, input[type=text]:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: var(--primary); background: #fff; }
+textarea { min-height: 110px; resize: vertical; }
+.radio label { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; font-weight: 400; }
+.radio input { margin-top: 4px; }
+button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--text); }
+button:hover { border-color: var(--primary); color: var(--primary); }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover { background: var(--primary-dark); color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.small { padding: 3px 9px; font-size: 0.85rem; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; margin-bottom: -1px; color: var(--muted); }
+.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tabs.inner { margin: 6px 0 8px; }
+table.grid { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+table.grid th, table.grid td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: middle; }
+table.grid th { background: var(--panel); font-weight: 600; color: var(--muted); }
+table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid input { padding: 4px 6px; background: #fff; }
+table.grid input[type=number] { text-align: right; }
+table.spec td:first-child input { min-width: 90px; }
+table.grid td.remove { width: 32px; text-align: center; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+.metric .label { color: var(--muted); font-size: 0.86rem; }
+.metric .value { font-size: 1.9rem; font-weight: 400; line-height: 1.15; }
+.metric .delta { font-size: 0.86rem; display: inline-block; padding: 1px 8px; border-radius: 10px; margin-top: 3px; }
+.metric .delta.up { background: #e5f4e4; color: #1f6b2a; } .metric .delta.down { background: #fbebeb; color: #9b1c1c; }
+.metric .delta.up.inverse { background: #fbebeb; color: #9b1c1c; } .metric .delta.down.inverse { background: #e5f4e4; color: #1f6b2a; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .tick { font-size: 11px; fill: var(--muted); } .chart .axis { font-size: 12px; fill: var(--muted); }
+.chart .note-text { font-size: 13px; font-weight: 600; }
+table.grid td.marked { box-shadow: inset 0 0 0 2px #c8102e; border-radius: 3px; }
+.dwl-note { margin-top: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 6px; }
+.legend-item { border: none; background: none; padding: 2px 4px; font-size: 0.82rem; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+.legend-item.off { color: #b5b4ae; text-decoration: line-through; }
+.legend-item:disabled { color: var(--text); opacity: 1; cursor: default; }
+.sw { display: inline-block; width: 18px; height: 10px; } .sw.line { height: 0; } .sw.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid; background: #fff; }
+.bars { margin: 6px 0 10px; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 0.86rem; }
+.bar-label { width: 36%; text-align: right; color: var(--muted); }
+.bar-track { position: relative; flex: 1; height: 22px; background: var(--panel); }
+.bar-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid #b5b4ae; }
+.bar { position: absolute; top: 2px; bottom: 2px; } .bar.gain { background: var(--gain); } .bar.loss { background: var(--loss); }
+.bar-val { position: absolute; top: 2px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; width: 44px; text-align: right; }
+.bar-val:not([style*='max']) { text-align: left; }
+.pin { display: grid; grid-template-columns: 3fr 3.5fr 1.6fr; gap: 10px; align-items: end; }
+@media (max-width: 900px) { .pin { grid-template-columns: 1fr; } }
+.group-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.group-form { display: grid; grid-template-columns: 1.6fr 6fr 1.3fr; gap: 10px; align-items: end; }
+.group-form.with-pin { grid-template-columns: 1.4fr 1.2fr 5fr 1.3fr; }
+@media (max-width: 900px) { .group-form { grid-template-columns: 1fr; } }
+.status { color: var(--muted); font-size: 0.86rem; margin-top: 8px; }
+.status.err { color: #9b1c1c; }
+.badge { display: inline-block; font-size: 0.78rem; padding: 1px 8px; border-radius: 10px; background: var(--panel); color: var(--muted); margin-left: 8px; }
+.labbook-wrap { overflow-x: auto; }
+table.grid.labbook td { white-space: nowrap; }
+table.grid.labbook th { white-space: normal; min-width: 120px; }
+table.grid.labbook th .remove-entry { float: right; margin-left: 8px; padding: 0 6px; line-height: 1.5; color: var(--muted); background: #fff; }
+table.grid.labbook th .remove-entry:hover { color: var(--loss); border-color: var(--loss); }
+table.grid.labbook td .delta { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); }
+.question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
+footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
+[hidden] { display: none !important; }
+.qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
+details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
+details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
+details[open].prompt > summary::before { content: "\25BE "; }
+details.prompt > summary::-webkit-details-marker { display: none; }
+details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem; }
+
+/* Instructor page: on top of style.css */
+.signin { display: grid; grid-template-columns: 2fr 1.6fr 1fr; gap: 12px; align-items: end; max-width: 760px; }
+@media (max-width: 900px) { .signin { grid-template-columns: 1fr; } }
+.signin label.check { display: flex; gap: 8px; align-items: center; margin-bottom: 9px; }
+.signin label.check input { width: auto; }
+.class-bar { display: grid; grid-template-columns: 2fr 3fr auto; gap: 14px; align-items: end; }
+.class-bar .projector { text-align: center; } .class-bar .projector .caption { font-size: 0.78rem; margin-top: 4px; max-width: 260px; }
+@media (max-width: 900px) { .class-bar { grid-template-columns: 1fr; } }
+.class-bar .summary { color: var(--muted); font-size: 0.9rem; padding-bottom: 8px; }
+.wide { overflow-x: auto; }
+table.grid.sticky th:first-child, table.grid.sticky td:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+table.grid.sticky th:first-child { background: var(--panel); }
+table.grid td.tick { text-align: center; white-space: nowrap; }
+table.grid td.ok { color: #1f6b2a; } table.grid td.bad { color: #9b1c1c; } table.grid td.unk { color: var(--muted); }
+.links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+@media (max-width: 900px) { .links { grid-template-columns: 1fr 1fr; } }
+a.button { display: inline-block; text-align: center; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); text-decoration: none; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.button:hover { border-color: var(--primary); color: var(--primary); }
+a.button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-size: 1rem; padding: 10px 16px; }
+a.button.primary:hover { background: var(--primary-dark); }
+.answer { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin: 8px 0; white-space: pre-wrap; }
+.answer .who { font-weight: 600; margin-bottom: 4px; }
+.setup-grid { display: grid; grid-template-columns: 3fr 1.2fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .setup-grid { grid-template-columns: 1fr; } }
+.linkbox { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
+.qr { display: block; width: 200px; height: 200px; border: 1px solid var(--line); }
+.form-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 12px; align-items: end; }
+.form-row.three { grid-template-columns: 2fr 2fr 1.3fr; }
+@media (max-width: 900px) { .form-row, .form-row.three { grid-template-columns: 1fr; } }
+hr.sep { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+.qblock { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin: 10px 0; }
+.qblock h3 { margin: 0 0 6px; font-size: 1rem; }
+.section-title { font-weight: 600; margin: 10px 0 6px; }
+.err-text { color: #9b1c1c; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row between">
+    <div><h1>Marketplace Laboratory: instructor view</h1><p class="caption" id="subtitle">The groups' lab books, straight from the class record.</p></div>
+    <div id="topbar" class="row"></div>
+  </div>
+  <div id="signin"></div>
+  <div id="main" hidden>
+    <div id="class-bar" class="panel shaded"></div>
+    <details id="setup" class="panel"><summary>Class set-up: link and QR code, new classes, registered groups</summary><div id="setup-body"></div></details>
+    <nav class="tabs" id="views">
+      <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="experiment">By experiment</button>
+      <button type="button" data-view="group">One group</button>
+    </nav>
+    <section id="view-overview"></section>
+    <section id="view-experiment" hidden></section>
+    <section id="view-group" hidden></section>
+  </div>
+  <footer><span id="footer-status"></span></footer>
+</div>
+<script>window.MARKETLAB_CONFIG = {"endpoint": "https://script.google.com/macros/s/AKfycbwW81B0dE2LprFnKPKBrGQhMi8r1JiZkeWoPOj4zGk6sepwOcdNyhMr_lhTNBFZus7r5A/exec", "app_url": "https://eozdenoren.github.io/marketlab"};</script>
+<script>
+/* Marketplace Laboratory engine: a line-by-line port of app/engine.py,
+   app/externality.py and the measures/labels of app/labbook.py.
+   Plain script: defines MarketLab (browser) and exports it for Node tests. */
+var MarketLab = (function () {
+  "use strict";
+  var SUPPLY = "supply", DEMAND = "demand";
+  var RULES = ["efficient", "random", "inefficient"];
+  var CONTROLS = ["none", "ceiling", "floor", "quota"];
+
+  function clip(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+  function normSeg(s) {
+    var lo = Math.min(+s.pmin, +s.pmax), hi = Math.max(+s.pmin, +s.pmax);
+    return { quantity: Math.max(0, +s.quantity), pmin: lo, pmax: hi };
+  }
+  function supplyRegions(m) { return m.regions.filter(function (r) { return r.side === SUPPLY; }); }
+  function demandRegions(m) { return m.regions.filter(function (r) { return r.side === DEMAND; }); }
+
+  // ---- policy -------------------------------------------------------------
+  function defaultPolicy(over) {
+    var p = { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none",
+              control_value: null, rationing: "efficient", rent_to: "sellers", regional: {} };
+    if (over) for (var k in over) if (Object.prototype.hasOwnProperty.call(over, k) && over[k] !== undefined) p[k] = over[k];
+    if (!p.regional) p.regional = {};
+    return p;
+  }
+  function regionPolicy(policy, name) {
+    var rp = (policy.regional || {})[name] || {};
+    return { scale: rp.scale == null ? 1 : +rp.scale, shift: +(rp.shift || 0), tax: +(rp.tax || 0),
+             cap: rp.cap == null ? null : +rp.cap };
+  }
+  function stripped(policy) {
+    var reg = {};
+    for (var k in policy.regional || {}) {
+      var v = regionPolicy(policy, k);
+      reg[k] = { scale: v.scale, shift: v.shift, tax: 0, cap: null };
+    }
+    return defaultPolicy({ cost_shock: policy.cost_shock, benefit_boost: policy.benefit_boost, regional: reg });
+  }
+
+  // ---- effective segments and curves ---------------------------------------
+  function effBlock(e) { return e.hi - e.lo <= 0; }
+  function effDensity(e) { return effBlock(e) ? Infinity : e.mass / (e.hi - e.lo); }
+  function effQ(e, p, limit) {
+    if (e.mass <= 0) return 0;
+    if (e.side === SUPPLY) {
+      if (effBlock(e)) { if (p > e.lo) return e.mass; if (p < e.lo) return 0; return limit === "right" ? e.mass : 0; }
+      return e.mass * clip((p - e.lo) / (e.hi - e.lo));
+    }
+    if (effBlock(e)) { if (p < e.hi) return e.mass; if (p > e.hi) return 0; return limit === "left" ? e.mass : 0; }
+    return e.mass * clip((e.hi - p) / (e.hi - e.lo));
+  }
+  function buildEffective(market, policy) {
+    var out = [];
+    market.regions.forEach(function (r) {
+      var rp = regionPolicy(policy, r.name);
+      r.segments.forEach(function (s0, i) {
+        var s = normSeg(s0), shift, tax, offset;
+        if (r.side === SUPPLY) { shift = rp.shift + policy.cost_shock; tax = rp.tax + policy.tax_supply; offset = shift + tax; }
+        else { shift = rp.shift + policy.benefit_boost; tax = rp.tax + policy.tax_demand; offset = shift - tax; }
+        out.push({ region: r.name, side: r.side, index: i, mass: s.quantity * Math.max(0, rp.scale),
+                   lo: s.pmin + offset, hi: s.pmax + offset, offset: offset, shift: shift, tax: tax });
+      });
+    });
+    return out;
+  }
+
+  function Curves(market, policy) {
+    this.market = market; this.policy = policy; this.effs = buildEffective(market, policy);
+    this.caps = {};
+    var self = this;
+    supplyRegions(market).forEach(function (r) { var rp = regionPolicy(policy, r.name); if (rp.cap != null) self.caps[r.name] = rp.cap; });
+    this.tol = 1e-9 * Math.max(1, this.effs.reduce(function (a, e) { return a + e.mass; }, 0));
+  }
+  Curves.prototype.supplyRegion = function (name, p, limit) {
+    limit = limit || "right"; var q = 0;
+    for (var i = 0; i < this.effs.length; i++) { var e = this.effs[i]; if (e.region === name && e.side === SUPPLY) q += effQ(e, p, limit); }
+    var cap = this.caps[name]; return cap == null ? q : Math.min(q, Math.max(0, cap));
+  };
+  Curves.prototype.supply = function (p, limit) {
+    limit = limit || "right"; var s = 0, regs = supplyRegions(this.market);
+    for (var i = 0; i < regs.length; i++) s += this.supplyRegion(regs[i].name, p, limit);
+    return s;
+  };
+  Curves.prototype.demand = function (p, limit) {
+    limit = limit || "left"; var d = 0;
+    for (var i = 0; i < this.effs.length; i++) if (this.effs[i].side === DEMAND) d += effQ(this.effs[i], p, limit);
+    return d;
+  };
+  Curves.prototype.excess = function (p, limit) { return this.supply(p, limit) - this.demand(p, limit); };
+  Curves.prototype.totalSupplyMass = function () {
+    var t = 0, self = this;
+    supplyRegions(this.market).forEach(function (r) {
+      var m = 0; self.effs.forEach(function (e) { if (e.region === r.name) m += e.mass; });
+      var cap = self.caps[r.name]; t += cap == null ? m : Math.min(cap, m);
+    });
+    return t;
+  };
+  Curves.prototype.totalDemandMass = function () { var t = 0; this.effs.forEach(function (e) { if (e.side === DEMAND) t += e.mass; }); return t; };
+  Curves.prototype.breakpoints = function () {
+    var pts = {}, self = this;
+    this.effs.forEach(function (e) { if (e.mass > 0) { pts[e.lo] = e.lo; pts[e.hi] = e.hi; } });
+    Object.keys(this.caps).forEach(function (name) { var p = self.regionInverseSupply(name, self.caps[name]); if (p != null) pts[p] = p; });
+    return Object.keys(pts).map(function (k) { return pts[k]; }).sort(function (a, b) { return a - b; });
+  };
+  Curves.prototype.regionInverseSupply = function (name, q) {
+    var segs = this.effs.filter(function (e) { return e.region === name && e.side === SUPPLY && e.mass > 0; });
+    return inverseQuantity(segs, q, SUPPLY);
+  };
+  Curves.prototype.clear = function () {
+    var flags = { indeterminate_price: false, no_trade: false };
+    var S = this.totalSupplyMass(), D = this.totalDemandMass(), bps = this.breakpoints();
+    if (S <= this.tol || D <= this.tol || !bps.length) { flags.no_trade = true; return [bps.length ? bps[0] : 0, 0, flags]; }
+    var tol = this.tol, n = bps.length, self = this;
+    var eRight = bps.map(function (b) { return self.excess(b, "right"); });
+    var eLeft = [-D].concat(bps.slice(1).map(function (b) { return self.excess(b, "left"); }));
+    for (var i = 0; i < n; i++) {
+      var eL = eLeft[i], eR = eRight[i];
+      if (eL <= tol && eR >= -tol && (eL < -tol || eR > tol)) {
+        var p = bps[i], q = Math.min(this.supply(p, "right"), this.demand(p, "left"));
+        return this.flatAdjust(p, q, i, bps, eRight, eLeft, flags);
+      }
+      if (i < n - 1 && eR < -tol && eLeft[i + 1] > tol) {
+        var a = bps[i], b = bps[i + 1], pp = a + (b - a) * (-eR) / (eLeft[i + 1] - eR);
+        return [pp, this.supply(pp, "right"), flags];
+      }
+    }
+    var pl = bps[n - 1];
+    return [pl, Math.min(this.supply(pl, "right"), this.demand(pl, "left")), flags];
+  };
+  Curves.prototype.flatAdjust = function (p, q, i, bps, eRight, eLeft, flags) {
+    var tol = this.tol; if (Math.abs(eRight[i]) > tol) return [p, q, flags];
+    var j = i, n = bps.length;
+    while (j < n - 1 && Math.abs(eRight[j]) <= tol && Math.abs(eLeft[j + 1]) <= tol) j++;
+    if (j > i) { var pHi = bps[j]; flags.indeterminate_price = true; flags.price_interval = [p, pHi];
+                 var mid = 0.5 * (p + pHi); return [mid, this.supply(mid, "right"), flags]; }
+    return [p, q, flags];
+  };
+  Curves.prototype.inverseDemand = function (q) {
+    var bps = this.breakpoints(), self = this;
+    if (q <= this.tol) return bps.length ? bps[bps.length - 1] : 0;
+    var p = inverseDemandFn(function (x, l) { return self.demand(x, l); }, bps, q, this.tol);
+    return p != null ? p : (bps.length ? bps[0] : 0);
+  };
+  Curves.prototype.inverseSupply = function (q) {
+    var bps = this.breakpoints(), self = this;
+    if (q <= this.tol) return bps.length ? bps[0] : 0;
+    var p = inverseSupplyFn(function (x, l) { return self.supply(x, l); }, bps, q, this.tol);
+    return p != null ? p : (bps.length ? bps[bps.length - 1] : 0);
+  };
+
+  function inverseSupplyFn(S, bps, q, tol) {
+    if (!bps.length) return null;
+    if (S(bps[0], "right") >= q - tol) return bps[0];
+    for (var i = 0; i < bps.length - 1; i++) {
+      var a = bps[i], b = bps[i + 1], sa = S(a, "right"), sb = S(b, "left");
+      if (sb >= q - tol) { if (sb <= sa + tol) return a; return a + (b - a) * clip((q - sa) / (sb - sa)); }
+      if (S(b, "right") >= q - tol) return b;
+    }
+    return null;
+  }
+  function inverseDemandFn(D, bps, q, tol) {
+    if (!bps.length) return null;
+    var top = bps[bps.length - 1];
+    if (D(top, "left") >= q - tol) return top;
+    for (var i = bps.length - 1; i >= 1; i--) {
+      var b = bps[i], a = bps[i - 1], da = D(a, "right"), db = D(b, "left");
+      if (da >= q - tol) { if (da <= db + tol) return b; return a + (b - a) * clip((da - q) / (da - db)); }
+      if (D(a, "left") >= q - tol) return a;
+    }
+    return null;
+  }
+  function inverseQuantity(segs, q, side) {
+    segs = segs.filter(function (e) { return e.mass > 0; });
+    if (!segs.length) return null;
+    var total = segs.reduce(function (a, e) { return a + e.mass; }, 0), tol = 1e-9 * Math.max(1, total);
+    if (q > total + tol) return null;
+    var set = {}; segs.forEach(function (e) { set[e.lo] = e.lo; set[e.hi] = e.hi; });
+    var bps = Object.keys(set).map(function (k) { return set[k]; }).sort(function (a, b) { return a - b; });
+    if (q <= tol) return side === DEMAND ? bps[bps.length - 1] : bps[0];
+    var f = function (p, lim) { return segs.reduce(function (a, e) { return a + effQ(e, p, lim); }, 0); };
+    return side === DEMAND ? inverseDemandFn(f, bps, q, tol) : inverseSupplyFn(f, bps, q, tol);
+  }
+
+  // ---- allocations --------------------------------------------------------
+  function allocQuantity(a) {
+    var e = a.eff;
+    if (effBlock(e)) return a.pieces.reduce(function (s, p) { return s + p.prob * e.mass; }, 0);
+    var d = effDensity(e); return a.pieces.reduce(function (s, p) { return s + p.prob * d * (p.hi - p.lo); }, 0);
+  }
+  function allocSurplus(a) {
+    var e = a.eff, tot = 0;
+    a.pieces.forEach(function (p) {
+      var m, t;
+      if (effBlock(e)) { m = p.prob * e.mass; t = e.lo; } else { m = p.prob * effDensity(e) * (p.hi - p.lo); t = 0.5 * (p.lo + p.hi); }
+      tot += m * (e.side === SUPPLY ? (a.price_eff - t) : (t - a.price_eff));
+    });
+    return tot;
+  }
+  function allocTax(a) { return a.eff.tax * allocQuantity(a); }
+  function willingPieces(e, p) {
+    if (e.mass <= 0) return [];
+    if (e.side === SUPPLY) {
+      if (effBlock(e)) return e.lo <= p ? [{ lo: e.lo, hi: e.lo, prob: 1 }] : [];
+      if (p <= e.lo) return [];
+      return [{ lo: e.lo, hi: Math.min(e.hi, p), prob: 1 }];
+    }
+    if (effBlock(e)) return e.hi >= p ? [{ lo: e.hi, hi: e.hi, prob: 1 }] : [];
+    if (p >= e.hi) return [];
+    return [{ lo: Math.max(e.lo, p), hi: e.hi, prob: 1 }];
+  }
+  function pieceMass(e, pc) { return pc.prob * (effBlock(e) ? e.mass : effDensity(e) * (pc.hi - pc.lo)); }
+  function willingMass(segs, willing) {
+    var W = 0; willing.forEach(function (ps, k) { ps.forEach(function (pc) { W += pieceMass(segs[k], pc); }); }); return W;
+  }
+  function serveBest(segs, target, side) {
+    var out = segs.map(function () { return []; });
+    var total = segs.reduce(function (a, e) { return a + e.mass; }, 0), tol = 1e-9 * Math.max(1, total);
+    if (target <= tol) return out;
+    target = Math.min(target, total);
+    var thr = inverseQuantity(segs, target, side);
+    if (thr == null) return out;
+    var strict = 0, ties = [];
+    segs.forEach(function (e, k) {
+      if (e.mass <= 0) return;
+      if (side === DEMAND) {
+        if (effBlock(e)) { if (e.lo > thr + tol) { out[k].push({ lo: e.lo, hi: e.lo, prob: 1 }); strict += e.mass; } else if (Math.abs(e.lo - thr) <= tol) ties.push(k); }
+        else { var lo = Math.max(e.lo, thr); if (e.hi > lo + tol) { out[k].push({ lo: lo, hi: e.hi, prob: 1 }); strict += effDensity(e) * (e.hi - lo); } }
+      } else {
+        if (effBlock(e)) { if (e.lo < thr - tol) { out[k].push({ lo: e.lo, hi: e.lo, prob: 1 }); strict += e.mass; } else if (Math.abs(e.lo - thr) <= tol) ties.push(k); }
+        else { var hi = Math.min(e.hi, thr); if (hi > e.lo + tol) { out[k].push({ lo: e.lo, hi: hi, prob: 1 }); strict += effDensity(e) * (hi - e.lo); } }
+      }
+    });
+    var rem = target - strict;
+    if (ties.length && rem > tol) {
+      var tieMass = ties.reduce(function (a, k) { return a + segs[k].mass; }, 0), f = clip(rem / tieMass);
+      ties.forEach(function (k) { out[k].push({ lo: segs[k].lo, hi: segs[k].lo, prob: f }); });
+    }
+    return out;
+  }
+  function serveWorst(segs, target, price, side) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing), tol = 1e-9 * Math.max(1, W);
+    var out = segs.map(function () { return []; });
+    if (target <= tol) return out;
+    if (target >= W - tol) return willing;
+    var best = serveBest(segs, W - target, side);
+    segs.forEach(function (e, k) {
+      willing[k].forEach(function (wp) {
+        if (effBlock(e)) { var pb = best[k].reduce(function (a, b) { return a + b.prob; }, 0); if (1 - pb > tol) out[k].push({ lo: e.lo, hi: e.lo, prob: 1 - pb }); }
+        else {
+          var lo, hi;
+          if (best[k].length) { var b = best[k][0]; if (side === DEMAND) { lo = wp.lo; hi = b.lo; } else { lo = b.hi; hi = wp.hi; } }
+          else { lo = wp.lo; hi = wp.hi; }
+          if (hi > lo + tol) out[k].push({ lo: lo, hi: hi, prob: 1 });
+        }
+      });
+    });
+    return out;
+  }
+  function serveRandom(segs, target, price) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing);
+    if (W <= 0) return segs.map(function () { return []; });
+    var f = clip(target / W);
+    return willing.map(function (ps) { return ps.map(function (pc) { return { lo: pc.lo, hi: pc.hi, prob: pc.prob * f }; }); });
+  }
+  function ration(segs, target, price, side, rule) {
+    var willing = segs.map(function (e) { return willingPieces(e, price); });
+    var W = willingMass(segs, willing), tol = 1e-9 * Math.max(1, W);
+    if (target >= W - tol) return willing;
+    if (rule === "random") return serveRandom(segs, target, price);
+    if (rule === "inefficient") return serveWorst(segs, target, price, side);
+    return serveBest(segs, target, side);
+  }
+
+  // ---- solve --------------------------------------------------------------
+  function solve(market, policy, withBenchmark) {
+    if (withBenchmark === undefined) withBenchmark = true;
+    policy = defaultPolicy(policy);
+    if (RULES.indexOf(policy.rationing) < 0) throw new Error("unknown rationing rule " + policy.rationing);
+    if (CONTROLS.indexOf(policy.control) < 0) throw new Error("unknown control " + policy.control);
+    var cur = new Curves(market, policy), effs = cur.effs;
+    var cl = cur.clear(), pStar = cl[0], qStar = cl[1], flags = cl[2];
+    var price = pStar, quantity = qStar, rationedSide = null, shortage = 0, binding = false, sellerPrice = null;
+    var ctrl = policy.control, val = policy.control_value;
+    if (ctrl === "ceiling" && val != null && val < pStar - cur.tol && qStar > 0) {
+      price = +val; quantity = cur.supply(price, "right"); shortage = cur.demand(price, "left") - quantity; rationedSide = DEMAND; binding = true;
+    } else if (ctrl === "floor" && val != null && val > pStar + cur.tol && qStar > 0) {
+      price = +val; quantity = cur.demand(price, "left"); shortage = cur.supply(price, "right") - quantity; rationedSide = SUPPLY; binding = true;
+    } else if (ctrl === "quota" && val != null && val < qStar - cur.tol) {
+      if (Object.keys(cur.caps).length) throw new Error("a market-wide quota cannot be combined with regional caps");
+      quantity = Math.max(0, +val); price = cur.inverseDemand(quantity); binding = true;
+      if (policy.rent_to === "government") sellerPrice = cur.inverseSupply(quantity);
+      else { rationedSide = SUPPLY; shortage = cur.supply(price, "right") - quantity; }
+    }
+    var allocs = [];
+    var dSegs = effs.filter(function (e) { return e.side === DEMAND; });
+    var dPieces = ration(dSegs, quantity, price, DEMAND, rationedSide === DEMAND ? policy.rationing : "efficient");
+    dSegs.forEach(function (e, k) { allocs.push({ eff: e, pieces: dPieces[k], price_eff: price }); });
+    var sRegions = supplyRegions(market), pooled = [], pooledTarget = quantity, regionRent = {}, regionCapped = {};
+    sRegions.forEach(function (r) {
+      var segs = effs.filter(function (e) { return e.region === r.name && e.side === SUPPLY; });
+      var cap = cur.caps[r.name];
+      var raw = segs.reduce(function (a, e) { return a + effQ(e, price, "right"); }, 0);
+      if (cap != null && raw > cap + cur.tol && quantity > cur.tol) {
+        regionCapped[r.name] = true;
+        var take = Math.min(cap, quantity); pooledTarget -= take;
+        if (policy.rent_to === "government") {
+          var pr = cur.regionInverseSupply(r.name, take); pr = pr == null ? price : Math.min(pr, price);
+          var pcs = serveBest(segs, take, SUPPLY); regionRent[r.name] = (price - pr) * take;
+          segs.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcs[k], price_eff: pr }); });
+        } else {
+          var pcs2 = ration(segs, take, price, SUPPLY, policy.rationing);
+          segs.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcs2[k], price_eff: price }); });
+        }
+      } else { regionCapped[r.name] = false; segs.forEach(function (e) { pooled.push(e); }); }
+    });
+    if (sellerPrice != null) {
+      var pcsP = serveBest(pooled, pooledTarget, SUPPLY), rentTotal = (price - sellerPrice) * pooledTarget;
+      pooled.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcsP[k], price_eff: sellerPrice }); });
+      var qs = {}, totQ = 0;
+      sRegions.forEach(function (r) { qs[r.name] = allocs.filter(function (a) { return a.eff.region === r.name; }).reduce(function (a, x) { return a + allocQuantity(x); }, 0); totQ += qs[r.name]; });
+      totQ = totQ || 1;
+      sRegions.forEach(function (r) { regionRent[r.name] = (regionRent[r.name] || 0) + rentTotal * qs[r.name] / totQ; });
+    } else {
+      var rule = rationedSide === SUPPLY ? policy.rationing : "efficient";
+      var pcsQ = ration(pooled, Math.max(0, pooledTarget), price, SUPPLY, rule);
+      pooled.forEach(function (e, k) { allocs.push({ eff: e, pieces: pcsQ[k], price_eff: price }); });
+    }
+    var regionsOut = [], cs = 0, ps = 0, tax = 0, rent = 0;
+    market.regions.forEach(function (r) {
+      var mine = allocs.filter(function (a) { return a.eff.region === r.name; });
+      var q = mine.reduce(function (a, x) { return a + allocQuantity(x); }, 0);
+      var s = mine.reduce(function (a, x) { return a + allocSurplus(x); }, 0);
+      var t = mine.reduce(function (a, x) { return a + allocTax(x); }, 0);
+      var rp = regionPolicy(policy, r.name), net, willing;
+      if (r.side === SUPPLY) {
+        var taxUnit = rp.tax + policy.tax_supply, priceEff = mine.length ? mine[0].price_eff : price;
+        net = priceEff - taxUnit;
+        willing = effs.filter(function (e) { return e.region === r.name; }).reduce(function (a, e) { return a + effQ(e, price, "right"); }, 0);
+      } else {
+        net = price + rp.tax + policy.tax_demand;
+        willing = effs.filter(function (e) { return e.region === r.name; }).reduce(function (a, e) { return a + effQ(e, price, "left"); }, 0);
+      }
+      var rr = regionRent[r.name] || 0;
+      regionsOut.push({ name: r.name, side: r.side, quantity: q, surplus: s, tax: t, rent: rr, net_price: net, willing: willing, capped: !!regionCapped[r.name] });
+      if (r.side === SUPPLY) ps += s; else cs += s;
+      tax += t; rent += rr;
+    });
+    var out = { price: price, quantity: quantity, allocs: allocs, regions: regionsOut, consumer_surplus: cs, producer_surplus: ps,
+                tax_revenue: tax, licence_rent: rent, government_revenue: tax + rent, total_surplus: cs + ps + tax + rent,
+                rationed_side: rationedSide, shortage: shortage, flags: flags, control_binding: binding,
+                benchmark_surplus: NaN, deadweight_loss: NaN, rationing_loss: NaN, elasticity_demand: NaN, elasticity_supply: NaN };
+    var el = elasticities(cur, price, quantity); out.elasticity_demand = el[0]; out.elasticity_supply = el[1];
+    if (withBenchmark) {
+      var bench = solve(market, stripped(policy), false);
+      out.benchmark_surplus = bench.total_surplus; out.deadweight_loss = bench.total_surplus - out.total_surplus;
+      var licensed = Object.keys(regionCapped).some(function (k) { return regionCapped[k]; }) && policy.rent_to === "sellers";
+      if ((rationedSide != null || licensed) && policy.rationing !== "efficient") {
+        var p2 = defaultPolicy(policy); p2.rationing = "efficient";
+        out.rationing_loss = solve(market, p2, false).total_surplus - out.total_surplus;
+      } else out.rationing_loss = 0;
+    }
+    return out;
+  }
+  function elasticities(cur, p, q) {
+    if (q <= cur.tol || p <= 0) return [NaN, NaN];
+    var h = 1e-6 * Math.max(1, Math.abs(p));
+    var dD = (cur.demand(p + h, "right") - cur.demand(p - h, "left")) / (2 * h);
+    var dS = (cur.supply(p + h, "right") - cur.supply(p - h, "left")) / (2 * h);
+    return [-dD * p / q, dS * p / q];
+  }
+
+  // ---- winners and losers ----------------------------------------------------
+  function probAt(pieces, x, block) {
+    if (block) return pieces.reduce(function (a, p) { return a + p.prob; }, 0);
+    for (var i = 0; i < pieces.length; i++) { var p = pieces[i]; if (p.lo - 1e-12 <= x && x <= p.hi + 1e-12) return p.prob; }
+    return 0;
+  }
+  function accumulate(g, region, side, p0, p1, mass, x, s0, s1) {
+    if (mass <= 0) return;
+    var m, gg;
+    if (p0 > 0 && p1 > 0) { m = mass * p0 * p1; gg = g(region, side, "kept"); gg.mass += m; gg.change += m * (s1(x) - s0(x)); }
+    if (p0 > 0 && p1 < 1) { m = mass * p0 * (1 - p1); gg = g(region, side, "lost"); gg.mass += m; gg.change += -m * s0(x); }
+    if (p1 > 0 && p0 < 1) { m = mass * (1 - p0) * p1; gg = g(region, side, "new"); gg.mass += m; gg.change += m * s1(x); }
+  }
+  function compare(before, after) {
+    var groups = {}, order = [];
+    var g = function (region, side, kind) {
+      var key = region + "|" + side + "|" + kind;
+      if (!groups[key]) { groups[key] = { region: region, side: side, kind: kind, mass: 0, change: 0 }; order.push(key); }
+      return groups[key];
+    };
+    var bMap = {}, aMap = {}, keys = {};
+    before.allocs.forEach(function (a) { var k = a.eff.region + "\u0000" + a.eff.index; bMap[k] = a; keys[k] = [a.eff.region, a.eff.index]; });
+    after.allocs.forEach(function (a) { var k = a.eff.region + "\u0000" + a.eff.index; aMap[k] = a; keys[k] = [a.eff.region, a.eff.index]; });
+    var sorted = Object.keys(keys).sort(function (x, y) { var kx = keys[x], ky = keys[y]; if (kx[0] < ky[0]) return -1; if (kx[0] > ky[0]) return 1; return kx[1] - ky[1]; });
+    sorted.forEach(function (key) {
+      var a0 = bMap[key], a1 = aMap[key];
+      var e0 = a0 ? a0.eff : a1.eff, e1 = a1 ? a1.eff : a0.eff, side = e0.side, region = e0.region;
+      var loU = e0.lo - e0.offset, hiU = e0.hi - e0.offset;
+      var m0 = a0 ? a0.eff.mass : 0, m1 = a1 ? a1.eff.mass : 0, block = effBlock(e0), common = Math.min(m0, m1);
+      var s0 = function (x) { return side === SUPPLY ? (a0.price_eff - (x + e0.offset)) : ((x + e0.offset) - a0.price_eff); };
+      var s1 = function (x) { return side === SUPPLY ? (a1.price_eff - (x + e1.offset)) : ((x + e1.offset) - a1.price_eff); };
+      var gg, m;
+      if (block) {
+        var p0 = a0 ? probAt(a0.pieces, e0.lo, true) : 0, p1 = a1 ? probAt(a1.pieces, e1.lo, true) : 0, x = loU;
+        accumulate(g, region, side, p0, p1, common, x, a0 ? s0 : null, a1 ? s1 : null);
+        if (m1 > m0 && a1) { gg = g(region, side, "new"); gg.mass += (m1 - m0) * p1; gg.change += (m1 - m0) * p1 * s1(x); }
+        if (m0 > m1 && a0) { gg = g(region, side, "lost"); gg.mass += (m0 - m1) * p0; gg.change += -(m0 - m1) * p0 * s0(x); }
+        return;
+      }
+      var set = {}; set[loU] = loU; set[hiU] = hiU;
+      if (a0) a0.pieces.forEach(function (pc) { set[pc.lo - e0.offset] = pc.lo - e0.offset; set[pc.hi - e0.offset] = pc.hi - e0.offset; });
+      if (a1) a1.pieces.forEach(function (pc) { set[pc.lo - e1.offset] = pc.lo - e1.offset; set[pc.hi - e1.offset] = pc.hi - e1.offset; });
+      var pts = Object.keys(set).map(function (k) { return set[k]; }).filter(function (v) { return loU - 1e-12 <= v && v <= hiU + 1e-12; }).sort(function (a, b) { return a - b; });
+      var width = hiU - loU;
+      for (var i = 0; i < pts.length - 1; i++) {
+        var x1 = pts[i], x2 = pts[i + 1]; if (x2 - x1 <= 1e-12) continue;
+        var mid = 0.5 * (x1 + x2);
+        var q0 = a0 ? probAt(a0.pieces, mid + e0.offset, false) : 0, q1 = a1 ? probAt(a1.pieces, mid + e1.offset, false) : 0;
+        var share = (x2 - x1) / width;
+        accumulate(g, region, side, q0, q1, common * share, mid, a0 ? s0 : null, a1 ? s1 : null);
+        if (m1 > m0 && a1) { m = (m1 - m0) * share * q1; gg = g(region, side, "new"); gg.mass += m; gg.change += m * s1(mid); }
+        if (m0 > m1 && a0) { m = (m0 - m1) * share * q0; gg = g(region, side, "lost"); gg.mass += m; gg.change += -m * s0(mid); }
+      }
+    });
+    return order.map(function (k) { return groups[k]; }).filter(function (gr) { return gr.mass > 1e-9; })
+      .map(function (gr) { gr.average = gr.mass > 1e-12 ? gr.change / gr.mass : 0; return gr; });
+  }
+
+  // ---- plot helpers ---------------------------------------------------------------
+  function dedupPts(pts) {
+    var out = [];
+    pts.forEach(function (qp) { if (!out.length || Math.abs(out[out.length - 1][0] - qp[0]) > 1e-12 || Math.abs(out[out.length - 1][1] - qp[1]) > 1e-12) out.push(qp); });
+    return out;
+  }
+  function curvePoints(cur, side, pMax) {
+    var bps = cur.breakpoints().filter(function (b) { return 0 < b && b < pMax; });
+    var grid = [0].concat(bps, [pMax]), pts = [];
+    var f = side === SUPPLY ? function (b, l) { return cur.supply(b, l); } : function (b, l) { return cur.demand(b, l); };
+    grid.forEach(function (b) { pts.push([f(b, "left"), b]); pts.push([f(b, "right"), b]); });
+    if (side === DEMAND) pts.reverse();
+    var out = dedupPts(pts);
+    if (side === DEMAND) while (out.length > 1 && out[0][0] <= 1e-12 && out[1][0] <= 1e-12) out.shift();
+    return out;
+  }
+  function servedCurvePoints(out, side, offset) {
+    offset = offset || 0;
+    var pieces = [];
+    out.allocs.forEach(function (a) {
+      var e = a.eff; if (e.side !== side) return;
+      a.pieces.forEach(function (pc) {
+        if (effBlock(e)) pieces.push([e.lo + offset, e.lo + offset, pc.prob * e.mass, null]);
+        else if (pc.hi > pc.lo) pieces.push([pc.lo + offset, pc.hi + offset, null, pc.prob * effDensity(e)]);
+      });
+    });
+    if (!pieces.length) return [];
+    var set = {}; pieces.forEach(function (p) { set[p[0]] = p[0]; set[p[1]] = p[1]; });
+    var bps = Object.keys(set).map(function (k) { return set[k]; }).sort(function (a, b) { return a - b; });
+    var qAt = function (p, limit) {
+      var tot = 0;
+      pieces.forEach(function (pc) {
+        var lo = pc[0], hi = pc[1], m = pc[2], d = pc[3];
+        if (m != null) {
+          if (side === DEMAND) tot += (lo > p || (lo === p && limit === "left")) ? m : 0;
+          else tot += (lo < p || (lo === p && limit === "right")) ? m : 0;
+        } else if (side === DEMAND) tot += d * Math.max(0, hi - Math.max(lo, p));
+        else tot += d * Math.max(0, Math.min(hi, p) - lo);
+      });
+      return tot;
+    };
+    var pts = [];
+    bps.forEach(function (b) { pts.push([qAt(b, "left"), b]); pts.push([qAt(b, "right"), b]); });
+    if (side === DEMAND) pts.reverse();
+    return dedupPts(pts);
+  }
+
+  // ---- externality ----------------------------------------------------------------
+  function privateSurplus(out) { return out.consumer_surplus + out.producer_surplus + out.tax_revenue + out.licence_rent; }
+  function socialOptimum(market, policy, harm) { var p = stripped(policy); p.tax_supply = +harm; return solve(market, p, false); }
+  function solveSocial(market, policy, harm) {
+    harm = +harm; policy = defaultPolicy(policy);
+    var out = solve(market, policy, false), opt = socialOptimum(market, policy, harm);
+    var priv = privateSurplus(out), third = -harm * out.quantity, w = priv + third;
+    var wOpt = privateSurplus(opt) - harm * opt.quantity, dwl = wOpt - w;
+    if (dwl < 0 && dwl > -1e-9 * Math.max(1, Math.abs(wOpt))) dwl = 0;
+    return { out: out, harm_per_unit: harm, third_party: third, private_surplus: priv, social_surplus: w, opt: opt,
+             opt_quantity: opt.quantity, opt_buyer_price: opt.price, opt_seller_price: opt.price - harm, opt_surplus: wOpt, deadweight_loss: dwl };
+  }
+
+  // ---- market from rows (scenarios.group_regions) ------------------------------------
+  function groupRegions(rows, side, taken) {
+    taken = taken || {}; var order = [], segs = {};
+    rows.forEach(function (r) {
+      var name = r[0] || "Unnamed"; if (taken[name]) name = name + " (" + side + ")";
+      if (!segs[name]) { order.push(name); segs[name] = []; }
+      segs[name].push({ quantity: +r[1], pmin: +r[2], pmax: +r[3] });
+    });
+    return order.map(function (n) { return { name: n, side: side, segments: segs[n] }; });
+  }
+  function buildMarket(supRows, demRows) {
+    var sup = groupRegions(supRows, SUPPLY), taken = {};
+    sup.forEach(function (r) { taken[r.name] = true; });
+    var dem = groupRegions(demRows, DEMAND, taken);
+    return { regions: sup.concat(dem) };
+  }
+
+  // ---- measures and labels (labbook.py) -------------------------------------------------
+  var MEASURES = ["Market price", "Buyers pay", "Sellers receive", "Quantity traded", "Shortage or excess supply",
+                  "Socially optimal quantity", "Consumer surplus", "Producer surplus", "Government revenue",
+                  "Third parties", "Total surplus", "Deadweight loss"];
+  function uniform(vals) {
+    if (!vals.length) return null;
+    for (var i = 1; i < vals.length; i++) if (Math.abs(vals[i] - vals[0]) >= 1e-9) return null;
+    return vals[0];
+  }
+  function measuresLab(out) {
+    var bp = uniform(out.regions.filter(function (r) { return r.side === DEMAND && r.quantity > 0; }).map(function (r) { return r.net_price; }));
+    var sp = uniform(out.regions.filter(function (r) { return r.side === SUPPLY && r.quantity > 0; }).map(function (r) { return r.net_price; }));
+    var gov = out.government_revenue;
+    var m = {};
+    m["Market price"] = out.price; m["Buyers pay"] = bp != null ? bp : out.price; m["Sellers receive"] = sp != null ? sp : out.price;
+    m["Quantity traded"] = out.quantity;
+    m["Shortage or excess supply"] = (out.control_binding && out.shortage > 1e-9) ? out.shortage : null;
+    m["Socially optimal quantity"] = null; m["Consumer surplus"] = out.consumer_surplus; m["Producer surplus"] = out.producer_surplus;
+    m["Government revenue"] = Math.abs(gov) > 1e-9 ? gov : 0; m["Third parties"] = null; m["Total surplus"] = out.total_surplus;
+    m["Deadweight loss"] = out.deadweight_loss;
+    regionMeasures(out, m);
+    return m;
+  }
+  // With several regions on a side of the market: what each of them trades and earns (a tax on one region,
+  // a tariff). Rows named "Quantity: North", "Surplus: North"; nothing is added for a side with one region.
+  function regionMeasures(out, m) {
+    var rs = [];
+    [SUPPLY, DEMAND].forEach(function (side) {
+      var mine = out.regions.filter(function (r) { return r.side === side; });
+      if (mine.length > 1) rs = rs.concat(mine);
+    });
+    rs.forEach(function (r) { m["Quantity: " + r.name] = r.quantity; });
+    rs.forEach(function (r) { m["Surplus: " + r.name] = r.surplus; });
+  }
+  function extraMeasures(columns) {
+    // the regional rows present in any of these measure sets, in first-seen order (after the fixed MEASURES)
+    var seen = {}, out = [];
+    columns.forEach(function (c) { Object.keys(c || {}).forEach(function (k) { if (MEASURES.indexOf(k) < 0 && !seen[k] && /^(Quantity|Surplus): /.test(k)) { seen[k] = 1; out.push(k); } }); });
+    return out.filter(function (k) { return /^Quantity: /.test(k); }).concat(out.filter(function (k) { return /^Surplus: /.test(k); }));
+  }
+  function measuresSocial(soc) {
+    var m = measuresLab(soc.out);
+    m["Socially optimal quantity"] = soc.opt_quantity; m["Third parties"] = soc.third_party;
+    m["Total surplus"] = soc.social_surplus; m["Deadweight loss"] = soc.deadweight_loss;
+    return m;
+  }
+  function num(x) { var s = (+x).toFixed(1); return s.slice(-2) === ".0" ? s.slice(0, -2) : s; }
+  function taxBits(ts, td) {
+    var bits = [];
+    if (ts > 0) bits.push("tax " + num(ts) + " on sellers"); else if (ts < 0) bits.push("subsidy " + num(-ts) + " to sellers");
+    if (td > 0) bits.push("tax " + num(td) + " on buyers"); else if (td < 0) bits.push("subsidy " + num(-td) + " to buyers");
+    return bits;
+  }
+  function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function describeLab(policy) {
+    policy = defaultPolicy(policy); var bits = [];
+    if (policy.cost_shock) bits.push("cost shock " + num(policy.cost_shock));
+    if (policy.benefit_boost) bits.push("benefit boost " + num(policy.benefit_boost));
+    bits = bits.concat(taxBits(policy.tax_supply, policy.tax_demand));
+    Object.keys(policy.regional || {}).forEach(function (name) {
+      var rp = regionPolicy(policy, name);
+      if (Math.abs(rp.scale - 1) > 1e-9) bits.push(name + " capacity " + Math.round(100 * rp.scale) + "%");
+      if (rp.shift) bits.push(name + " shift " + num(rp.shift));
+      if (rp.tax > 0) bits.push(name + " tax " + num(rp.tax)); else if (rp.tax < 0) bits.push(name + " subsidy " + num(-rp.tax));
+      if (rp.cap != null) bits.push(name + " cap " + num(rp.cap));
+    });
+    var rule = { efficient: "", random: ", lottery", inefficient: ", worst served" }[policy.rationing] || "";
+    if (policy.control === "ceiling" && policy.control_value != null) bits.push("ceiling " + num(policy.control_value) + rule);
+    else if (policy.control === "floor" && policy.control_value != null) bits.push("floor " + num(policy.control_value) + rule);
+    else if (policy.control === "quota" && policy.control_value != null) {
+      var who = policy.rent_to === "government" ? "auctioned" : "given away" + rule;
+      bits.push("quota " + num(policy.control_value) + ", licences " + who);
+    }
+    return bits.length ? cap1(bits.join("; ")) : "No experiment";
+  }
+  function describeExt(policy, harm) {
+    policy = defaultPolicy(policy);
+    var head = harm >= 0 ? "Harm " + num(harm) : "Benefit " + num(-harm);
+    var bits = taxBits(policy.tax_supply, policy.tax_demand);
+    if (policy.control === "quota" && policy.control_value != null) bits.push("permit cap " + num(policy.control_value));
+    return head + ": " + (bits.length ? bits.join("; ") : "no policy");
+  }
+
+  return { SUPPLY: SUPPLY, DEMAND: DEMAND, RULES: RULES, CONTROLS: CONTROLS, MEASURES: MEASURES,
+           defaultPolicy: defaultPolicy, stripped: stripped, regionPolicy: regionPolicy, Curves: Curves, solve: solve, compare: compare,
+           curvePoints: curvePoints, servedCurvePoints: servedCurvePoints, solveSocial: solveSocial, buildMarket: buildMarket,
+           groupRegions: groupRegions, measuresLab: measuresLab, measuresSocial: measuresSocial, extraMeasures: extraMeasures, describeLab: describeLab,
+           describeExt: describeExt, num: num };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MarketLab;
+
+</script>
+<script>
+/* Marketplace Laboratory: the lab-book table (pinned experiments side by side with their baselines), shared by the
+   class page (app.js) and the instructor page (instructor.js). Depends on MarketLab (engine.js). */
+var MLBook = (function () {
+  "use strict";
+  var M = MarketLab;
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function fmt(x, d, signed) {
+    if (x == null || (typeof x === "number" && isNaN(x))) return "–";
+    if (d === undefined) d = 1;
+    if (Math.abs(x) < 5e-10) x = 0;
+    var s = Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+    return (x < 0 ? "-" : (signed ? "+" : "")) + s;
+  }
+  function cell(x) { return x == null ? "–" : (typeof x === "string" ? x : fmt(x)); }
+  function sameMarket(a, b) {
+    return ["Market price", "Quantity traded"].every(function (k) { return a[k] != null && b[k] != null && Math.abs(a[k] - b[k]) <= 1e-6; });
+  }
+  function baselineName(e) {
+    if (e.tab !== "externality") return "Baseline";
+    var h = +(((e.state || {}).policy || {}).harm || 0);
+    return "Baseline, " + (h >= 0 ? "harm " : "benefit ") + M.num(Math.abs(h));
+  }
+  // The table: rows are the measures present in any column; columns are the baselines (one per tab and harm) and then
+  // the pinned experiments in order. Each pinned value carries its change from that experiment's own baseline, small
+  // and grey under the number; not where the baseline is 0 (revenue, the loss, a shortage), since there the number is
+  // the change. opts.removable adds the ✕ button per pinned column (the class page); opts.mark is {id: html} put in
+  // front of a column's label (the instructor page's verification mark).
+  function table(entries, opts) {
+    opts = opts || {};
+    var cols = [], foot = [], seen = {}, bases = {};
+    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, null]); } });
+    entries.forEach(function (e) {
+      var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
+      var base = bases[e.tab + "|" + baselineName(e)];
+      if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
+      cols.push([label, e.measures, e.id, e.baseline]);
+    });
+    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); })
+                .concat(M.extraMeasures(cols.map(function (c) { return c[1]; })));
+    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
+      var mark = c[2] && opts.mark && opts.mark[c[2]] ? opts.mark[c[2]] + " " : "";
+      var btn = c[2] && opts.removable ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">✕</button>' : "";
+      return '<th>' + btn + mark + esc(c[0]) + '</th>';
+    }).join("") + '</tr></thead><tbody>';
+    var delta = function (c, m) { var v = c[1][m], b = c[3] && c[3][m]; return (c[3] && v != null && b != null && typeof v === "number" && Math.abs(b) > 1e-9 && Math.abs(v - b) > 1e-9) ? '<span class="delta">' + fmt(v - b, 1, true) + '</span>' : ''; };
+    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + delta(c, m) + '</td>'; }).join("") + '</tr>'; });
+    h += '</tbody></table></div>';
+    foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
+    return h;
+  }
+  return { esc: esc, fmt: fmt, cell: cell, sameMarket: sameMarket, baselineName: baselineName, table: table };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MLBook;
+
+</script>
+<script>
+/* Marketplace Laboratory: the lab-book sections, shared by the class page (app.js) and the instructor page
+   (instructor.js). The class questions in the order they build on each other, then a section for the group's own
+   experiments. Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks
+   it). Pins are filed under the question TITLE (sectionOf); answers under the question id. */
+var QUESTIONS = [
+  { id: "q1", title: "1. Who really pays a tax?",
+    prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different, what is the same, and who ends up paying the tax in each case? Then change the market in any way you like, for instance split the buyers into a high-value segment and a low-value segment (two rows in the Demand table), and pin the two taxes again. What, if anything, changes in the comparison?" },
+  { id: "q2", title: "2. Who bears more of the tax?",
+    prompt: "Make demand steeper: in the Demand table set Pmax to 200, so values run from 0 to 200, and pin a tax of 20 on sellers. Reset the market, make supply steeper instead (Supply Pmax 200) and pin the same tax. In each case, how much of the 20 do buyers pay and how much do sellers lose? What decides which side bears more? Look also at how the surplus was divided between buyers and sellers before the tax (the Baseline column): is there a pattern? If you have time, build a market in which buyers bear at least three quarters of the tax." },
+  { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
+    prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the quantity traded, to the tax revenue and to the deadweight loss? Which of them move in step with the tax, and which do not? Use the chart to explain the pattern you find. Then keep raising the tax: what happens to the revenue? Find the tax that raises the most and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
+  { id: "q4", title: "4. Broad base or high rate?",
+    prompt: "Split the sellers into two regions: in the Supply table change North's Quantity to 50 and add a row, South, with 50 units and costs from 0 to 100. The market should still clear at price 50 and quantity 50. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Compare the two columns: what buyers pay, the quantity traded, the tax revenue, the deadweight loss, and what each region sells. Which tax would the Treasury prefer, and why? Who would prefer the other one?" },
+  { id: "q5", title: "5. A subsidy",
+    prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Add it all up: is the market as a whole better or worse off than before, and by how much? Use the chart to explain, and say who ultimately pays for the subsidy." },
+  { id: "q6", title: "6. Rent control",
+    prompt: "Think of the sellers as landlords and the buyers as tenants. On the default market set a price ceiling of 40, a rent cap. At that rent more tenants want a flat than landlords offer, so something other than the price decides who gets one. The app offers three rules: the tenants who value a flat most get one, a lottery, or the tenants who value a flat least get one. Before you pin, write down your guess: does it matter which rule applies, and to whom? Pin the outcome under each rule. What is the same under all three, and what differs? Use the chart to explain the differences. Think about how rent-controlled flats are actually handed out (who gets one in New York or Berlin?): which of the three rules comes closest? Who would support the policy, and who would oppose it?" },
+  { id: "q7", title: "7. A flood",
+    prompt: "Before you run it, write down your guess: a flood destroys a fifth of the sellers' capacity. Who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened." },
+  { id: "q8", title: "8. A frost in one region",
+    prompt: "Build a market with two growing regions: in the Supply table change North's Quantity to 400 and add a row, South, with 100 units, costs 0 to 100 in both, and pin it. A frost destroys a quarter of North's crop: under Regional experiments set North's capacity to 75% and pin. What happens to the price, to what each region sells and earns, and to buyers? Before you run the next one, guess: if the frost had hit South instead, would South come out the same way North did? Put North back to 100%, set South's capacity to 75% and pin. What makes the difference?" },
+  { id: "q9", title: "9. A tariff to protect home producers",
+    prompt: "Reset the market, then build the world market: in the Supply table two rows, Home sellers with 20 units and Foreign sellers with 80; in the Demand table two rows, Home buyers with 40 units and Foreign buyers with 60; costs and values from 0 to 100 throughout. Home has a fifth of the sellers and two fifths of the buyers, so it imports; the market still clears at 50 and 50. Suppose the government introduces an import tariff of 20: it collects 20 on each unit sold at home that was made by foreign sellers. In the app, set this up as a tax of 20 on all Home buyers and a subsidy of 20 to all Home sellers (a tax of minus 20), both under Regional experiments. A home-made unit sold at home is then taxed 20 and subsidised 20, so nothing is collected on it; only the imported units are taxed, and the price inside Home ends up 20 above the world price. Pin it; the Baseline column is free trade. What happens to the surplus of Home buyers and of Home sellers, and to the government's revenue? Is Home better off in total? Who gains and who loses abroad?" },
+  { id: "q10", title: "10. A tariff when Home is the only buyer",
+    prompt: "Reset the market and think of all the buyers as Home and all the sellers as foreign: Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Is Home better or worse off with a tariff, and roughly which tariff is best for it? If the answer differs from question 9, what is different about the two situations? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?" },
+  { id: "q11", title: "11. A tariff when Home is a small buyer",
+    prompt: "Reset the market and split the buyers: in the Demand table two rows, Home buyers with 15 units and Foreign buyers with 85, values 0 to 100; all the sellers are foreign. Pin the market. Under Regional experiments put a tax of 20 on Home buyers, the tariff, and pin. Work out Home's gain as in question 10, consumer surplus plus revenue. Is Home better off? Who pays the tariff, and who gains from it? Is there any tariff that makes Home better off, and by how much? What is different from question 10?" },
+  { id: "q12", title: "12. Pollution",
+    prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?" },
+  { id: "own", title: "Your own experiments",
+    prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
+var EXT_QUESTION = 11;
+function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
+if (typeof module !== "undefined" && module.exports) module.exports = { QUESTIONS: QUESTIONS, EXT_QUESTION: EXT_QUESTION, sectionOf: sectionOf };
+
+</script>
+<script>
+/* Marketplace Laboratory: QR codes for the class link, in the page itself (no library, no network). Byte mode, error
+   correction level M, versions 1 to 10, so up to 213 bytes of text. MLQR.matrix(text) gives the modules as rows of
+   0/1 without the quiet zone; MLQR.svg(text, size) the picture. tests/check_qr.py compares the modules with segno's. */
+var MLQR = (function () {
+  "use strict";
+  // Level M, versions 1..10: [data codewords per block and blocks in group 1, the same for group 2, EC codewords per block]
+  var BLOCKS = [[16, 1, 0, 0, 10], [28, 1, 0, 0, 16], [44, 1, 0, 0, 26], [32, 2, 0, 0, 18], [43, 2, 0, 0, 24],
+                [27, 4, 0, 0, 16], [31, 4, 0, 0, 18], [38, 2, 39, 2, 22], [36, 3, 37, 2, 22], [43, 4, 44, 1, 26]];
+  var ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+  var VERSION_INFO = { 7: 0x07C94, 8: 0x085BC, 9: 0x09A99, 10: 0x0A4D3 };
+  var MASKS = [
+    function (r, c) { return (r + c) % 2 === 0; },
+    function (r, c) { return r % 2 === 0; },
+    function (r, c) { return c % 3 === 0; },
+    function (r, c) { return (r + c) % 3 === 0; },
+    function (r, c) { return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0; },
+    function (r, c) { return (r * c) % 2 + (r * c) % 3 === 0; },
+    function (r, c) { return ((r * c) % 2 + (r * c) % 3) % 2 === 0; },
+    function (r, c) { return ((r + c) % 2 + (r * c) % 3) % 2 === 0; }];
+
+  // GF(256) with the QR primitive polynomial x^8 + x^4 + x^3 + x^2 + 1
+  var EXP = [], LOG = [];
+  (function () {
+    var x = 1;
+    for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+    for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255];
+  })();
+  function mul(a, b) { return a && b ? EXP[LOG[a] + LOG[b]] : 0; }
+  function generator(n) {       // coefficients of the degree-n generator polynomial, highest power first
+    var g = [1];
+    for (var i = 0; i < n; i++) {
+      var ng = []; for (var k = 0; k <= g.length; k++) ng.push(0);
+      for (var j = 0; j < g.length; j++) { ng[j] ^= g[j]; ng[j + 1] ^= mul(g[j], EXP[i]); }
+      g = ng;
+    }
+    return g;
+  }
+  function ecCodewords(data, n) {
+    var g = generator(n), res = [];
+    for (var k = 0; k < n; k++) res.push(0);
+    for (var i = 0; i < data.length; i++) {
+      var f = data[i] ^ res[0];
+      res.shift(); res.push(0);
+      if (f) for (var j = 0; j < n; j++) res[j] ^= mul(g[j + 1], f);
+    }
+    return res;
+  }
+  function toBytes(text) {
+    var s = unescape(encodeURIComponent(String(text))), out = [];
+    for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  }
+  function formatBits(mask) {
+    var data = mask;      // level M is 00, then the three mask bits
+    var val = data << 10;
+    for (var i = 14; i >= 10; i--) if ((val >> i) & 1) val ^= 0x537 << (i - 10);
+    return ((data << 10) | val) ^ 0x5412;
+  }
+  function penalty(m) {
+    var n = m.length, score = 0, r, c, run, dark = 0;
+    for (var pass = 0; pass < 2; pass++) {
+      for (r = 0; r < n; r++) {
+        run = 1;
+        for (c = 1; c <= n; c++) {
+          var cur = c < n ? (pass ? m[c][r] : m[r][c]) : -1, prev = pass ? m[c - 1][r] : m[r][c - 1];
+          if (cur === prev) run++; else { if (run >= 5) score += 3 + run - 5; run = 1; }
+        }
+        for (c = 0; c + 6 < n; c++) {
+          var line = []; for (var k = 0; k < 7; k++) line.push(pass ? m[c + k][r] : m[r][c + k]);
+          if (line.join("") === "1011101") {
+            var before = 0, after = 0;     // the quiet zone outside the symbol counts as light
+            for (k = 1; k <= 4; k++) { if (c - k < 0 || !(pass ? m[c - k][r] : m[r][c - k])) before++; if (c + 6 + k >= n || !(pass ? m[c + 6 + k][r] : m[r][c + 6 + k])) after++; }
+            if (before === 4 || after === 4) { score += 40; c += 6; }   // the next pattern can only start after this one
+          }
+        }
+      }
+    }
+    for (r = 0; r + 1 < n; r++) for (c = 0; c + 1 < n; c++) {
+      var v = m[r][c]; if (m[r][c + 1] === v && m[r + 1][c] === v && m[r + 1][c + 1] === v) score += 3;
+    }
+    for (r = 0; r < n; r++) for (c = 0; c < n; c++) dark += m[r][c];
+    var pct = 100 * dark / (n * n), lo = Math.floor(pct / 5) * 5, hi = lo + 5;
+    score += Math.min(Math.abs(lo - 50), Math.abs(hi - 50)) / 5 * 10;
+    return score;
+  }
+
+  function matrix(text, forceMask) {
+    var bytes = toBytes(text), v = 0, i, j, r, c;
+    for (i = 0; i < BLOCKS.length; i++) {
+      var cap0 = BLOCKS[i][0] * BLOCKS[i][1] + BLOCKS[i][2] * BLOCKS[i][3];
+      if (4 + (i + 1 <= 9 ? 8 : 16) + 8 * bytes.length <= 8 * cap0) { v = i + 1; break; }
+    }
+    if (!v) throw new Error("too long for a QR code (" + bytes.length + " bytes; the limit is 213)");
+    var b = BLOCKS[v - 1], cap = b[0] * b[1] + b[2] * b[3];
+    // the bit stream: mode, count, the bytes, terminator, padding
+    var bits = [];
+    var push = function (val, nbits) { for (var k = nbits - 1; k >= 0; k--) bits.push((val >> k) & 1); };
+    push(4, 4); push(bytes.length, v <= 9 ? 8 : 16);
+    bytes.forEach(function (x) { push(x, 8); });
+    for (i = 0; i < 4 && bits.length < 8 * cap; i++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var data = [];
+    for (i = 0; i < bits.length; i += 8) { var byte = 0; for (j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j]; data.push(byte); }
+    for (i = 0; data.length < cap; i++) data.push(i % 2 ? 0x11 : 0xEC);
+    // blocks, error correction, interleaving
+    var blocks = [], pos = 0;
+    for (i = 0; i < b[1]; i++) { blocks.push(data.slice(pos, pos + b[0])); pos += b[0]; }
+    for (i = 0; i < b[3]; i++) { blocks.push(data.slice(pos, pos + b[2])); pos += b[2]; }
+    var ecs = blocks.map(function (blk) { return ecCodewords(blk, b[4]); });
+    var stream = [], maxK = Math.max(b[0], b[2]);
+    for (i = 0; i < maxK; i++) blocks.forEach(function (blk) { if (i < blk.length) stream.push(blk[i]); });
+    for (i = 0; i < b[4]; i++) ecs.forEach(function (e) { stream.push(e[i]); });
+    // the modules: m holds the bits, fn marks function patterns and reserved areas
+    var n = 17 + 4 * v, m = [], fn = [];
+    for (r = 0; r < n; r++) { var row = [], frow = []; for (c = 0; c < n; c++) { row.push(0); frow.push(false); } m.push(row); fn.push(frow); }
+    var set = function (rr, cc, val) { m[rr][cc] = val ? 1 : 0; fn[rr][cc] = true; };
+    var finder = function (r0, c0) {
+      for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
+        var rr = r0 + dr, cc = c0 + dc; if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+        var inside = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+        set(rr, cc, inside && (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4)));
+      }
+    };
+    finder(0, 0); finder(0, n - 7); finder(n - 7, 0);
+    for (i = 8; i < n - 8; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    var al = ALIGN[v - 1];
+    al.forEach(function (rc) { al.forEach(function (cc) {
+      if ((rc <= 7 && cc <= 7) || (rc <= 7 && cc >= n - 8) || (rc >= n - 8 && cc <= 7)) return;   // would sit on a finder
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++) set(rc + dr, cc + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+    }); });
+    for (i = 0; i <= 8; i++) { fn[8][i] = true; fn[i][8] = true; }                // format information
+    for (i = 0; i < 8; i++) { fn[8][n - 1 - i] = true; fn[n - 1 - i][8] = true; }
+    if (v >= 7) {
+      var vi = VERSION_INFO[v];
+      for (i = 0; i < 18; i++) { var bit = (vi >> i) & 1; set(Math.floor(i / 3), n - 11 + i % 3, bit); set(n - 11 + i % 3, Math.floor(i / 3), bit); }
+    }
+    // the data, in the zigzag from the bottom right, two columns at a time, skipping the timing column
+    var idx = 0, up = true;
+    for (var col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col = 5;
+      for (var step = 0; step < n; step++) {
+        var rr = up ? n - 1 - step : step;
+        for (var dc = 0; dc < 2; dc++) {
+          var cc = col - dc; if (fn[rr][cc]) continue;
+          m[rr][cc] = idx < stream.length * 8 ? (stream[idx >> 3] >> (7 - (idx & 7))) & 1 : 0; idx++;
+        }
+      }
+      up = !up;
+    }
+    // mask and format information: try the eight masks, keep the one with the lowest penalty
+    var placeFormat = function (mm, mask) {
+      var f = formatBits(mask), at = function (k) { return (f >> (14 - k)) & 1; };
+      for (var k = 0; k < 6; k++) { mm[8][k] = at(k); mm[5 - k][8] = at(9 + k); }
+      mm[8][7] = at(6); mm[8][8] = at(7); mm[7][8] = at(8);
+      for (k = 0; k < 7; k++) mm[n - 1 - k][8] = at(k);
+      for (k = 0; k < 8; k++) mm[8][n - 8 + k] = at(7 + k);
+      mm[n - 8][8] = 1;
+    };
+    var masked = function (mask) {
+      var mm = m.map(function (row) { return row.slice(); });
+      for (var rr = 0; rr < n; rr++) for (var cc = 0; cc < n; cc++) if (!fn[rr][cc] && MASKS[mask](rr, cc)) mm[rr][cc] ^= 1;
+      placeFormat(mm, mask);
+      return mm;
+    };
+    if (forceMask != null) return masked(forceMask);
+    var best = null, bestScore = Infinity;
+    for (var k = 0; k < 8; k++) { var cand = masked(k), s = penalty(cand); if (s < bestScore) { best = cand; bestScore = s; } }
+    return best;
+  }
+
+  function svg(text, size) {
+    var m = matrix(text), n = m.length, q = 2, total = n + 2 * q, d = "";
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (m[r][c]) d += "M" + (c + q) + " " + (r + q) + "h1v1h-1z";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + total + ' ' + total + '" width="' + size + '" height="' + size +
+           '" shape-rendering="crispEdges" role="img" aria-label="QR code"><rect width="100%" height="100%" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+  }
+  return { matrix: matrix, svg: svg };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
+
+</script>
+<script>
+/* Marketplace Laboratory instructor page: the groups' lab books read straight from the class record (the Apps Script
+   endpoint), with no server of its own. Sign in with the instructor password (or the admin token); the credential is
+   sent to the script with every request and is kept in this browser only. Three views (Overview, By experiment, One
+   group) and a set-up panel (class link and QR code, new classes, registered groups, the projector button). Depends on
+   MarketLab (engine.js), MLBook (book.js), MLQR (qr.js) and the questions in questions.js. */
+(function () {
+  "use strict";
+  var M = MarketLab, B = MLBook, esc = B.esc, fmt = B.fmt;
+  var CONFIG = window.MARKETLAB_CONFIG || {};
+  var ENDPOINT = (CONFIG.endpoint || "").trim();
+  // the students' page: the configured address, else this page's own folder
+  var APP_URL = (CONFIG.app_url || "").replace(/\/+$/, "") || location.href.replace(/[?#].*$/, "").replace(/\/[^\/]*$/, "");
+  var CRED_KEY = "marketlab:instructor:cred", CLASS_KEY = "marketlab:instructor:class";
+  var NO_CLASS = "(no class code)";
+  var VIEWS = ["overview", "experiment", "group"];
+  var DEFAULT_STATE = { page: "lab", supply: [["North", 100, 0, 100]], demand: [["West", 100, 0, 100]], policy: {} };
+
+  var S = { cred: "", records: null, books: {}, created: {}, classes: [], cls: "", view: "overview", q: QUESTIONS[0].title, group: "",
+            groups: {}, verified: {}, readAt: null, busy: false, error: "" };
+
+  // ---- utilities ---------------------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+  function fmtTime(ts, withDate) {
+    if (!ts) return "";
+    var o = withDate === false ? { hour: "2-digit", minute: "2-digit", second: "2-digit" } : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" };
+    o.timeZone = "Europe/London"; o.hour12 = false;
+    return new Date(ts * 1000).toLocaleString("en-GB", o).replace(",", "");
+  }
+  function lastSaved(ts) {      // the time alone for today, with the date otherwise, so that an older group does not look more recent
+    return fmtTime(ts).slice(0, 6) === fmtTime(Date.now() / 1000).slice(0, 6) ? fmtTime(ts, false) : fmtTime(ts);
+  }
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+  function csvCell(v) { var s = v == null ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function csv(rows) { return rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n") + "\r\n"; }
+  function download(name, text, type) {
+    var a = document.createElement("a"), url = URL.createObjectURL(new Blob([text], { type: type || "text/csv;charset=utf-8" }));
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+  function b64url(obj) { return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+  function classLink(cls) { return APP_URL + "/?class=" + encodeURIComponent(cls); }
+  // the projector links: the class page with this market and these settings loaded, in projector mode (no group,
+  // pins stay in that browser and nothing is sent to the class record)
+  function projectorLink(state, cls) { return APP_URL + "/?class=" + encodeURIComponent(cls || "") + "&projector=1#state=" + b64url(state); }
+  function cleanClassCode(text) { return String(text || "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }
+  function questionIndex(title) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === title) return i; return QUESTIONS.length - 1; }
+  function ticks(n) { return n === 0 ? "" : (n <= 3 ? "✓".repeat(n) : "✓×" + n); }
+  function selectOptions(values, current, labels) {
+    return values.map(function (v, i) { return '<option value="' + esc(v) + '"' + (v === current ? " selected" : "") + '>' + esc(labels ? labels[i] : v) + '</option>'; }).join("");
+  }
+
+  // ---- the class record -------------------------------------------------------------
+  function api(params) {
+    var qs = Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
+    return fetch(ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + qs).then(function (r) { return r.json(); });
+  }
+  function post(body) {
+    return fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+  }
+  function loadRecords(cb) {
+    S.busy = true; renderTop();
+    api({ token: S.cred }).then(function (j) {
+      S.busy = false;
+      if (!j || !j.ok) { cb(j && j.error ? j.error : "no answer from the class record"); return; }
+      S.records = j.records || []; S.readAt = Date.now() / 1000; S.verified = {}; S.groups = {};
+      Object.keys(S.created).forEach(function (code) {     // classes created in this session that the record may not show yet
+        if (!S.records.some(function (f) { return ((f.state || {}).labbook || {}).kind === "class" && (f.state || {})["class"] === code; }))
+          S.records.push(classRecord(code, S.created[code]));
+      });
+      rebuild(); cb(null);
+    }).catch(function (err) { S.busy = false; cb(String(err && err.message || err)); });
+  }
+  function classRecord(code, ts) {
+    return { ts: ts || Date.now() / 1000, group: "", question: "Class created", finding: code, state: { "class": code, labbook: { id: "class", kind: "class" } } };
+  }
+
+  // ---- lab books from the records (labbook.py: books_from_findings, known_classes, classes) ---------------------
+  function booksFromFindings(findings) {
+    var books = {};
+    findings.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (f) {
+      var state = f.state || {}, lbk = state.labbook;
+      if (lbk && lbk.kind === "class") return;
+      var cls = state["class"] || "", key = cls + "\u0000" + (f.group || "");
+      var g = books[key];
+      if (!g) g = books[key] = { "class": cls, group: f.group || "", names: "", entries: {}, order: [], notes: "", answers: {}, last: 0, other: [] };
+      g.last = Math.max(g.last, f.ts || 0);
+      if (state.names) g.names = state.names;
+      if (!lbk) { g.other.push(f); return; }
+      if (lbk.kind === "notes") { g.notes = f.finding || ""; return; }
+      if (lbk.kind === "answers") { g.answers = state.answers || {}; return; }
+      if (lbk.deleted) { delete g.entries[lbk.id]; return; }
+      var sw = {}; Object.keys(state).forEach(function (k) { if (k !== "labbook") sw[k] = state[k]; });
+      if (!g.entries[lbk.id]) g.order.push(lbk.id);
+      g.entries[lbk.id] = { id: lbk.id, ts: f.ts || 0, tab: lbk.tab || "lab", label: lbk.label || "", question: f.question || "", note: f.finding || "",
+                            measures: lbk.measures || {}, baseline: lbk.baseline || {}, state: sw };
+    });
+    return books;
+  }
+  function entriesOf(bk) { return bk.order.filter(function (id) { return bk.entries[id]; }).map(function (id) { return bk.entries[id]; }); }
+  function rebuild() {
+    S.books = booksFromFindings(S.records);
+    var last = {};
+    S.records.forEach(function (f) {
+      var st = f.state || {}; if ((st.labbook || {}).kind === "class" && st["class"]) last[st["class"]] = Math.max(last[st["class"]] || 0, f.ts || 0);
+    });
+    Object.keys(S.books).forEach(function (k) { var bk = S.books[k]; last[bk["class"]] = Math.max(last[bk["class"]] || 0, bk.last); });
+    S.classes = Object.keys(last).sort(function (a, b) { return last[b] - last[a]; });
+    if (S.classes.indexOf(S.cls) < 0) S.cls = S.classes.length ? S.classes[0] : "";
+  }
+  function booksOf(cls) {
+    return Object.keys(S.books).map(function (k) { return S.books[k]; }).filter(function (bk) { return bk["class"] === cls; })
+                 .sort(function (a, b) { return b.last - a.last; });
+  }
+
+  // ---- verification (verify.py): recompute a pinned column from its saved settings --------------------------------
+  function fixRows(rows) {
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var q = parseFloat(r[1]); if (!(q > 0)) return;
+      var lo = parseFloat(r[2]); if (isNaN(lo)) lo = 0;
+      var hi = parseFloat(r[3]); if (isNaN(hi)) hi = lo;
+      out.push([String(r[0] || "").trim(), q, lo, hi]);
+    });
+    return out;
+  }
+  function expectedMeasures(state) {
+    var market = M.buildMarket(fixRows(state.supply), fixRows(state.demand));
+    var sides = market.regions.map(function (r) { return r.side; });
+    if (sides.indexOf(M.SUPPLY) < 0 || sides.indexOf(M.DEMAND) < 0) throw new Error("no usable market rows");
+    var pol = state.policy || {}, policy;
+    if (state.page === "externality") {
+      var cap = +pol.cap || 0;
+      policy = M.defaultPolicy({ tax_supply: +pol.tax_supply || 0, tax_demand: +pol.tax_demand || 0, control: cap > 0 ? "quota" : "none", control_value: cap > 0 ? cap : null, rent_to: "government" });
+      return M.measuresSocial(M.solveSocial(market, policy, +pol.harm || 0));
+    }
+    var regional = {};
+    ["supply", "demand"].forEach(function (side) {
+      Object.keys((pol.regional || {})[side] || {}).forEach(function (name) {
+        var rp = pol.regional[side][name] || {};
+        regional[name] = { scale: rp.scale != null ? +rp.scale : 1, shift: +rp.shift || 0, tax: +rp.tax || 0, cap: rp.cap ? +rp.cap : null };
+      });
+    });
+    var control = pol.control || "none";
+    policy = M.defaultPolicy({ cost_shock: +pol.cost_shock || 0, benefit_boost: +pol.benefit_boost || 0, tax_supply: +pol.tax_supply || 0, tax_demand: +pol.tax_demand || 0,
+                               control: control, control_value: control !== "none" ? (+pol.control_value || 0) : null,
+                               rationing: pol.rationing || "efficient", rent_to: pol.rent_to || "sellers", regional: regional });
+    return M.measuresLab(M.solve(market, policy));
+  }
+  function close(a, b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    a = +a; b = +b; if (isNaN(a) || isNaN(b)) return false;
+    return Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(b));
+  }
+  // {ok: true | false | null (cannot be recomputed), bad: [measure names]}
+  function verifyEntry(e) {
+    if (S.verified[e.id]) return S.verified[e.id];
+    var res;
+    try {
+      var exp = expectedMeasures(e.state || {}), got = e.measures || {};
+      var bad = M.MEASURES.concat(M.extraMeasures([got])).filter(function (m) { return !close(got[m], exp[m]); });
+      res = { ok: !bad.length, bad: bad };
+    } catch (err) { res = { ok: null, bad: [] }; }
+    S.verified[e.id] = res;
+    return res;
+  }
+  function verifiedCounts(entries) {
+    var c = { ok: 0, bad: 0, unknown: 0 };
+    entries.forEach(function (e) { var v = verifyEntry(e); if (v.ok === true) c.ok++; else if (v.ok === false) c.bad++; else c.unknown++; });
+    return c;
+  }
+  function mark(e) { var v = verifyEntry(e); return v.ok === true ? "✓" : (v.ok === false ? "✗" : "?"); }
+  function markClass(e) { var v = verifyEntry(e); return v.ok === true ? "ok" : (v.ok === false ? "bad" : "unk"); }
+
+  // ---- sign-in and the top bar ---------------------------------------------------------
+  function storedCred() { try { return localStorage.getItem(CRED_KEY) || sessionStorage.getItem(CRED_KEY) || ""; } catch (e) { return ""; } }
+  function storeCred(cred, remember) {
+    try { sessionStorage.setItem(CRED_KEY, cred); if (remember) localStorage.setItem(CRED_KEY, cred); else localStorage.removeItem(CRED_KEY); } catch (e) {}
+  }
+  function clearCred() { try { sessionStorage.removeItem(CRED_KEY); localStorage.removeItem(CRED_KEY); } catch (e) {} }
+  function renderSignin(error) {
+    $("main").hidden = true; $("topbar").innerHTML = "";
+    if (!ENDPOINT) {
+      $("signin").innerHTML = '<div class="error">This copy of the instructor page has no class record endpoint. Build it with <code>python3 build.py --config config.json</code>.</div>';
+      return;
+    }
+    $("signin").innerHTML = '<div class="panel"><form id="signin-form" class="signin">' +
+      '<div><label for="pw">Instructor password</label><input type="password" id="pw" autocomplete="current-password" autofocus></div>' +
+      '<div><label class="check"><input type="checkbox" id="remember"> Remember on this computer</label></div>' +
+      '<div><button type="submit" class="primary" id="signin-btn" style="width:100%">Sign in</button></div></form>' +
+      '<p class="caption">The password is checked by the class record, which answers only to it. Leave "Remember" unticked on a shared computer; ' +
+      'Sign out at the top right forgets it.</p><div id="signin-error" class="error"' + (error ? "" : " hidden") + '>' + esc(error || "") + '</div></div>';
+    $("signin-form").onsubmit = function (ev) {
+      ev.preventDefault();
+      var pw = $("pw").value, remember = $("remember").checked, btn = $("signin-btn"), errEl = $("signin-error");
+      if (!pw) { errEl.textContent = "Please type the password."; errEl.hidden = false; return; }
+      btn.disabled = true; btn.textContent = "Checking…";
+      S.cred = pw;
+      loadRecords(function (err) {
+        if (err) {
+          S.cred = ""; btn.disabled = false; btn.textContent = "Sign in";
+          errEl.textContent = /bad token|locked/.test(err) ? (/locked/.test(err) ? "Too many wrong passwords; the class record refuses sign-ins for a while." : "Wrong password.") : "Could not reach the class record (" + err + ").";
+          errEl.hidden = false; return;
+        }
+        storeCred(pw, remember); start();
+      });
+    };
+  }
+  function renderTop() {
+    if (!S.cred) return;
+    $("topbar").innerHTML = '<span class="caption" id="top-status">' + (S.busy ? "Reading the class record…" : (S.readAt ? "Read at " + fmtTime(S.readAt, false) : "")) + '</span>' +
+      '<button type="button" id="refresh"' + (S.busy ? " disabled" : "") + '>Refresh</button><button type="button" id="signout">Sign out</button>';
+    $("refresh").onclick = function () { loadRecords(function (err) { S.error = err || ""; render(); }); };
+    $("signout").onclick = function () { clearCred(); S.cred = ""; S.records = null; renderSignin(); };
+  }
+  function start() {
+    $("signin").innerHTML = ""; $("main").hidden = false;
+    try { var c = localStorage.getItem(CLASS_KEY); if (c != null && S.classes.indexOf(c) >= 0) S.cls = c; } catch (e) {}
+    render();
+  }
+
+  // ---- the page -----------------------------------------------------------------------
+  function render() {
+    renderTop();
+    $("footer-status").textContent = S.records ? plural(S.records.length, "record") + " in the class record, read at " + fmtTime(S.readAt, false) + (S.error ? " · " + S.error : "") : "";
+    renderClassBar();
+    var books = booksOf(S.cls);
+    renderSetup(S.cls, books);
+    $("setup").open = !S.classes.length || !books.length || S.setupOpen;
+    VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== S.view; });
+    Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-view") === S.view); });
+    if (!S.classes.length) {
+      $("views").hidden = true;
+      $("view-" + S.view).innerHTML = "";
+      return;
+    }
+    $("views").hidden = false;
+    if (!books.length) { $("view-" + S.view).innerHTML = '<div class="info">No group has pinned anything in this class yet.</div>'; return; }
+    if (S.view === "overview") renderOverview(books, S.cls);
+    else if (S.view === "experiment") renderByExperiment(books);
+    else renderOneGroup(books);
+  }
+  // The projector button: the class page in a new tab with the default market, in projector mode (no group number,
+  // the Pin button works, the pins stay in that browser, nothing is sent to the class record).
+  function projectorButton(cls) {
+    return '<div class="projector"><a class="button primary" id="projector-open" target="_blank" rel="noopener" href="' + esc(projectorLink(DEFAULT_STATE, cls)) + '">Open the class page on the projector</a>' +
+           '<div class="caption">Default market, projector mode: pin anything, nothing goes to the record</div></div>';
+  }
+  function renderClassBar() {
+    var el = $("class-bar");
+    if (!S.classes.length) {
+      el.innerHTML = '<div class="class-bar"><div class="info" style="margin:0;grid-column:1 / 3">No classes yet. Create one below: you get a link and a QR code for the slide, and the groups’ lab books appear here as they pin experiments.</div>' + projectorButton("") + '</div>';
+      return;
+    }
+    var books = booksOf(S.cls), nPins = 0, last = 0;
+    books.forEach(function (bk) { nPins += entriesOf(bk).length; last = Math.max(last, bk.last); });
+    el.innerHTML = '<div class="class-bar"><div><label for="class-pick">Class</label><select id="class-pick">' +
+      selectOptions(S.classes, S.cls, S.classes.map(function (c) { return c || NO_CLASS; })) + '</select></div>' +
+      '<div class="summary">' + plural(books.length, "group") + ", " + plural(nPins, "pinned experiment") + (books.length ? ", last activity " + fmtTime(last) : "") +
+      '. The class code is the one in the link the students opened; most recently active first.</div>' + projectorButton(S.cls) + '</div>';
+    $("class-pick").onchange = function () { S.cls = this.value; S.group = ""; try { localStorage.setItem(CLASS_KEY, S.cls); } catch (e) {} render(); };
+  }
+
+  // ---- Overview ----------------------------------------------------------------------
+  function labBooksCsv(books) {
+    var rows = [["class", "time", "group", "members", "tab", "label", "question", "note"].concat(M.MEASURES).concat(["state"])];
+    books.forEach(function (bk) {
+      entriesOf(bk).forEach(function (e) {
+        rows.push([bk["class"], fmtTime(e.ts), bk.group, bk.names, e.tab, e.label, e.question, e.note]
+                  .concat(M.MEASURES.map(function (m) { return e.measures[m] == null ? "" : e.measures[m]; })).concat([JSON.stringify(e.state)]));
+      });
+      if (bk.notes) rows.push([bk["class"], fmtTime(bk.last), bk.group, bk.names, "", "Notes for the debrief", "", bk.notes].concat(M.MEASURES.map(function () { return ""; })).concat([""]));
+    });
+    return csv(rows);
+  }
+  function answersCsv(books) {
+    var graded = QUESTIONS.filter(function (q) { return q.id !== "own"; });
+    var rows = [["class", "group", "members", "pins", "last saved"].concat(QUESTIONS.map(function (q) { return q.title; })).concat(["debrief notes"])];
+    books.forEach(function (bk) {
+      rows.push([bk["class"], bk.group, bk.names, entriesOf(bk).length, fmtTime(bk.last)].concat(QUESTIONS.map(function (q) { return bk.answers[q.id] || ""; })).concat([bk.notes || ""]));
+    });
+    void graded;
+    return csv(rows);
+  }
+  function renderOverview(books, cls) {
+    var nq = QUESTIONS.length, graded = QUESTIONS.filter(function (q) { return q.id !== "own"; });
+    var h = '<div class="wide"><table class="grid sticky"><thead><tr><th>Group</th><th>Members</th>';
+    for (var i = 0; i < nq - 1; i++) h += '<th class="tick">' + (i + 1) + '</th>';
+    h += '<th class="tick">Own</th><th class="num">Pins</th><th>Verified</th><th>Answered</th><th>Last saved</th><th>Debrief notes</th></tr></thead><tbody>';
+    books.forEach(function (bk) {
+      var entries = entriesOf(bk), counts = [];
+      for (var k = 0; k < nq; k++) counts.push(0);
+      entries.forEach(function (e) { counts[questionIndex(e.question)]++; });
+      var answered = graded.filter(function (q) { return (bk.answers[q.id] || "").trim(); }).length;
+      var c = verifiedCounts(entries);
+      var verified = !entries.length ? "" : (!c.bad && !c.unknown ? "✓ all" : (c.bad ? "✗ " + c.bad + " differ" : "? " + c.unknown + " unclear"));
+      var note = (bk.notes || "").trim().split(/\r?\n/)[0] || "";
+      h += '<tr><td>' + esc(bk.group) + '</td><td>' + esc(bk.names) + '</td>' +
+           counts.map(function (n) { return '<td class="tick">' + ticks(n) + '</td>'; }).join("") +
+           '<td class="num">' + entries.length + '</td><td class="' + (c.bad ? "bad" : (c.unknown ? "unk" : "ok")) + '">' + verified + '</td>' +
+           '<td>' + (answered ? answered + "/" + graded.length : "") + '</td><td>' + esc(lastSaved(bk.last)) + '</td>' +
+           '<td>' + esc(note.length > 90 ? note.slice(0, 90) + "…" : note) + '</td></tr>';
+    });
+    h += '</tbody></table></div>' +
+         '<p class="caption">One row per group; a tick per pinned experiment under its question number; Own is the group’s own experiments. ' +
+         'Answered counts the questions with an answer. Verified: every pinned column recomputed from its saved settings matches the numbers the group’s page reported. ' +
+         'The full debrief notes are in One group.</p>' +
+         '<div class="row"><button type="button" id="csv-books">Download the lab books as CSV (one row per pinned column)</button>' +
+         '<button type="button" id="csv-answers">Download the answers as CSV (one row per group)</button></div>';
+    $("view-overview").innerHTML = h;
+    var tag = cls || "no_class";
+    $("csv-books").onclick = function () { download("lab_books_" + tag + ".csv", labBooksCsv(books)); };
+    $("csv-answers").onclick = function () { download("answers_" + tag + ".csv", answersCsv(books)); };
+  }
+
+  // ---- By experiment -----------------------------------------------------------------------
+  function linkButtons(items) {    // [[label, href]]
+    return '<div class="links">' + items.map(function (it) { return '<a class="button" target="_blank" rel="noopener" href="' + esc(it[1]) + '" title="' + esc(it[0]) + '">' + esc(it[0]) + '</a>'; }).join("") + '</div>';
+  }
+  function renderByExperiment(books) {
+    var titles = QUESTIONS.map(function (q) { return q.title; });
+    if (titles.indexOf(S.q) < 0) S.q = titles[0];
+    var h = '<label for="q-pick">Experiment</label><select id="q-pick">' + selectOptions(titles, S.q) + '</select>';
+    var pins = [];
+    books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { if (e.question === S.q) pins.push([bk, e]); }); });
+    var qid = QUESTIONS[titles.indexOf(S.q)].id;
+    if (pins.length) {
+      var measures = M.MEASURES.filter(function (m) { return pins.some(function (p) { return p[1].measures[m] != null; }); })
+                      .concat(M.extraMeasures(pins.map(function (p) { return p[1].measures; })));
+      var noted = pins.some(function (p) { return p[1].note; });
+      h += '<div class="wide"><table class="grid sticky"><thead><tr><th>Group</th><th>Experiment</th><th>Verified</th>' +
+           measures.map(function (m) { return '<th class="num">' + esc(m) + '</th>'; }).join("") + (noted ? "<th>Note</th>" : "") + '</tr></thead><tbody>';
+      pins.forEach(function (p) {
+        var bk = p[0], e = p[1], v = verifyEntry(e);
+        h += '<tr><td>' + esc(bk.group) + '</td><td>' + esc(e.label) + '</td><td class="' + markClass(e) + '">' + mark(e) + (v.ok === false ? " " + esc(v.bad.join(", ")) : "") + '</td>' +
+             measures.map(function (m) { return '<td class="num">' + B.cell(e.measures[m]) + '</td>'; }).join("") + (noted ? '<td>' + esc(e.note || "") + '</td>' : "") + '</tr>';
+      });
+      var groups = {}; pins.forEach(function (p) { groups[p[0].group] = 1; });
+      h += '</tbody></table></div><p class="caption">' + plural(pins.length, "pinned column") + " across " + plural(Object.keys(groups).length, "group") +
+           '. Rows that disagree with the rest are the ones to ask about.</p>' +
+           '<div class="section-title">Open on the projector (the class page in a new tab, projector mode: change anything, pin, nothing is sent to the record)</div>' +
+           linkButtons(pins.map(function (p) { return [p[0].group + ": " + p[1].label, projectorLink(p[1].state, p[0]["class"])]; }));
+    } else {
+      h += '<div class="info">No group has pinned anything under this question yet.</div>';
+    }
+    var answered = books.filter(function (bk) { return (bk.answers[qid] || "").trim(); });
+    if (answered.length) {
+      h += '<div class="section-title">Answers to this question</div>';
+      answered.forEach(function (bk) {
+        var n = entriesOf(bk).filter(function (e) { return e.question === S.q; }).length;
+        h += '<div class="answer"><div class="who">' + esc(bk.group) + (bk.names ? " · " + esc(bk.names) : "") + ' <span class="badge">' + n + ' pinned here</span></div>' + esc(bk.answers[qid]) + '</div>';
+      });
+    }
+    $("view-experiment").innerHTML = h;
+    $("q-pick").onchange = function () { S.q = this.value; renderByExperiment(books); };
+  }
+
+  // ---- One group ------------------------------------------------------------------------
+  function renderOneGroup(books) {
+    var names = books.map(function (bk) { return bk.group || "(no group number)"; });
+    if (!S.group || names.indexOf(S.group) < 0) S.group = names[0];
+    var bk = books[names.indexOf(S.group)], entries = entriesOf(bk);
+    var h = '<label for="g-pick">Group</label><select id="g-pick">' + selectOptions(names, S.group) + '</select>' +
+            '<p class="caption">' + (bk.names ? esc(bk.names) + " · " : "") + "Last saved " + fmtTime(bk.last) + " · " + plural(entries.length, "pinned experiment") + '</p>';
+    var byQ = {}, marks = {};
+    entries.forEach(function (e) { var i = questionIndex(e.question); (byQ[i] = byQ[i] || []).push(e); marks[e.id] = '<span class="' + markClass(e) + '">' + mark(e) + '</span>'; });
+    var nothing = [];
+    QUESTIONS.forEach(function (q, i) {
+      var mine = byQ[i] || [], answer = (bk.answers[q.id] || "").trim();
+      if (!mine.length && !answer) { nothing.push(q.title); return; }
+      h += '<div class="qblock"><h3>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned</span></h3>';
+      if (mine.length) {
+        h += B.table(mine, { mark: marks });
+        var bad = mine.filter(function (e) { return verifyEntry(e).ok === false; });
+        if (bad.length) h += '<div class="error">Not matching the saved settings when recomputed: ' + esc(bad.map(function (e) { return e.label + " (" + verifyEntry(e).bad.join(", ") + ")"; }).join("; ")) + '</div>';
+        h += '<p class="caption">Open on the projector (the class page in a new tab, projector mode):</p>' +
+             linkButtons(mine.map(function (e) { return [e.label, projectorLink(e.state, bk["class"])]; }));
+      } else {
+        h += '<p class="caption">Nothing pinned under this question.</p>';
+      }
+      if (answer) h += '<div class="section-title">' + (q.id === "own" ? "What the group learned" : "Answer") + '</div><div class="answer">' + esc(answer) + '</div>';
+      else if (q.id !== "own") h += '<p class="caption">No answer yet.</p>';
+      h += '</div>';
+    });
+    if (nothing.length) h += '<p class="caption">Nothing yet under: ' + esc(nothing.join("; ")) + '.</p>';
+    if (entries.length) {
+      var c = verifiedCounts(entries);
+      h += '<p class="caption">' + (c.bad ? c.bad + " of " + entries.length + " columns do not match their saved settings (marked ✗ above)."
+            : (c.unknown ? plural(c.unknown, "column") + " could not be recomputed from the saved settings."
+            : "All columns verified: recomputing each from its saved settings gives the numbers shown.")) + '</p>';
+    }
+    if (bk.notes) h += '<div class="section-title">Notes for the debrief</div><div class="answer">' + esc(bk.notes) + '</div>';
+    bk.other.forEach(function (f) { h += '<p><i>' + esc(f.question || "") + '</i> · ' + fmtTime(f.ts || 0) + '<br>' + esc(f.finding || "") + '</p>'; });
+    $("view-group").innerHTML = h;
+    $("g-pick").onchange = function () { S.group = this.value; renderOneGroup(books); };
+  }
+
+  // ---- Class set-up ---------------------------------------------------------------------
+  function qrPng(text, scale, border) {
+    var m = MLQR.matrix(text), n = m.length, size = (n + 2 * border) * scale;
+    var cv = document.createElement("canvas"); cv.width = size; cv.height = size;
+    var ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size); ctx.fillStyle = "#000";
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (m[r][c]) ctx.fillRect((c + border) * scale, (r + border) * scale, scale, scale);
+    return cv.toDataURL("image/png");
+  }
+  function renderSetup(cls, books) {
+    var h = "";
+    if (cls) {
+      var link = classLink(cls);
+      h += '<div class="setup-grid"><div><p style="margin:4px 0 6px">Link for class <b>' + esc(cls) + '</b> (put it on the slide; one link and QR code per class):</p>' +
+           '<div class="linkbox" id="class-link">' + esc(link) + '</div>' +
+           '<div class="row" style="margin-top:8px"><button type="button" id="copy-link">Copy the link</button><span class="caption" id="copy-msg"></span></div>' +
+           '<p class="caption">The code appears under the group box on the students’ page and is stamped on everything they pin, so classes never mix.</p></div>' +
+           '<div>' + MLQR.svg(link, 200).replace("<svg ", '<svg class="qr" id="qr-svg" ') + '<button type="button" id="qr-download" style="width:200px;margin-top:8px">Download QR (PNG)</button></div></div><hr class="sep">';
+    }
+    h += '<form id="new-class" class="form-row"><div><label for="new-code">New class code</label><input type="text" id="new-code" placeholder="MIM-A-9Nov" autocomplete="off"></div>' +
+         '<div><button type="submit" class="primary" style="width:100%">Create class</button></div></form>' +
+         '<p class="caption">Letters, digits, dots, dashes; short enough to read off a slide.</p><div id="class-error" class="error" hidden></div>';
+    if (cls) {
+      h += '<hr class="sep"><div class="section-title">Registered groups and PINs for class ' + esc(cls) + '</div>' +
+           '<p class="caption">A group chooses its own PIN the first time it uses its number in this class; after that the number and PIN must match. ' +
+           'If a group registered the wrong number, reset that number here: the right group can then register it, and the group that was reset registers again with a new PIN. Pinned work is never lost.</p>' +
+           '<div id="groups-box"><p class="caption">Reading the registered groups…</p></div>';
+    }
+    $("setup-body").innerHTML = h;
+    $("setup").ontoggle = function () { S.setupOpen = $("setup").open; };
+    if (cls) {
+      $("copy-link").onclick = function () {
+        var done = function () { $("copy-msg").textContent = "Copied."; setTimeout(function () { $("copy-msg").textContent = ""; }, 2000); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(classLink(cls)).then(done, function () { $("copy-msg").textContent = "Select the link and copy it."; });
+        else $("copy-msg").textContent = "Select the link and copy it.";
+      };
+      $("qr-download").onclick = function () {
+        var a = document.createElement("a"); a.href = qrPng(classLink(cls), 10, 2); a.download = "marketlab_" + cls + ".png";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      };
+      renderGroups(cls);
+    }
+    $("new-class").onsubmit = function (ev) {
+      ev.preventDefault();
+      var code = cleanClassCode($("new-code").value), errEl = $("class-error");
+      if (!code) { errEl.textContent = "Please type a short class code, for example MIM-A-9Nov."; errEl.hidden = false; return; }
+      var btn = this.querySelector("button"); btn.disabled = true; btn.textContent = "Creating…";
+      var rec = classRecord(code);
+      post({ token: S.cred, records: [rec] }).then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || "no answer");
+        S.created[code] = rec.ts; S.records.push(rec); rebuild(); S.cls = code; S.group = ""; S.setupOpen = true;
+        try { localStorage.setItem(CLASS_KEY, code); } catch (e) {}
+        render();
+      }).catch(function (err) { btn.disabled = false; btn.textContent = "Create class"; errEl.textContent = "Could not save the class: " + String(err && err.message || err); errEl.hidden = false; });
+    };
+  }
+  function renderGroups(cls, message) {    // message: html shown under the table after a redraw (the reset's outcome)
+    var draw = function (groups) {
+      var box = $("groups-box"); if (!box) return;
+      if (!groups.length) { box.innerHTML = '<div class="info">No group has registered in this class yet.</div>' + (message || ""); return; }
+      var h = '<div class="wide"><table class="grid"><thead><tr><th>Group</th><th>PIN</th><th>Members</th><th>Registered (UTC)</th></tr></thead><tbody>' +
+              groups.map(function (g) { return '<tr><td>' + esc(g.group) + '</td><td>' + esc(g.pin) + '</td><td>' + esc(g.names || "") + '</td><td>' + esc(String(g.registered || "").slice(0, 16).replace("T", " ")) + '</td></tr>'; }).join("") +
+              '</tbody></table></div><div class="form-row three" style="margin-top:8px"><div><button type="button" id="csv-groups" style="width:100%">Download the group list (CSV)</button></div>' +
+              '<div><label for="reset-pick">Group to reset</label><select id="reset-pick">' + selectOptions(groups.map(function (g) { return g.group; }), "") + '</select></div>' +
+              '<div><button type="button" id="reset-btn" style="width:100%">Reset this group’s registration</button></div></div><div id="reset-msg">' + (message || "") + '</div>';
+      box.innerHTML = h;
+      $("csv-groups").onclick = function () {
+        download("groups_" + cls + ".csv", csv([["class", "group", "pin", "members", "registered"]].concat(groups.map(function (g) { return [cls, g.group, g.pin, g.names || "", g.registered || ""]; }))));
+      };
+      $("reset-btn").onclick = function () {
+        var pick = $("reset-pick").value, msg = $("reset-msg");
+        if (!window.confirm("Reset the registration of " + pick + " in class " + cls + "? Its pinned work is kept; it registers again with a new PIN.")) return;
+        post({ token: S.cred, action: "reset", "class": cls, group: pick }).then(function (j) {
+          if (!j || !j.ok) throw new Error((j && j.error) || "no answer");
+          delete S.groups[cls];
+          renderGroups(cls, '<div class="success">' + esc(pick) + ' can register again with a new PIN. Its pinned work is kept.</div>');
+        }).catch(function (err) { msg.innerHTML = '<div class="error">Could not reset: ' + esc(String(err && err.message || err)) + '</div>'; });
+      };
+    };
+    if (S.groups[cls]) { draw(S.groups[cls]); return; }
+    api({ token: S.cred, action: "groups", "class": cls }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || "no answer");
+      S.groups[cls] = j.groups || []; draw(S.groups[cls]);
+    }).catch(function (err) { var box = $("groups-box"); if (box) box.innerHTML = '<div class="error">Could not read the registered groups: ' + esc(String(err && err.message || err)) + '</div>'; });
+  }
+
+  // ---- init -----------------------------------------------------------------------------
+  function init() {
+    Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.onclick = function () { S.view = b.getAttribute("data-view"); render(); }; });
+    var cred = storedCred();
+    if (!cred || !ENDPOINT) { renderSignin(); return; }
+    S.cred = cred;
+    $("signin").innerHTML = '<p class="caption">Reading the class record…</p>';
+    loadRecords(function (err) {
+      if (err) { S.cred = ""; if (/bad token|locked/.test(err)) clearCred(); renderSignin(/bad token/.test(err) ? "The saved password is no longer accepted; sign in again." : "Could not reach the class record (" + err + ")."); return; }
+      start();
+    });
+  }
+  document.addEventListener("DOMContentLoaded", init);
+  window.MarketLabInstructor = { state: S, booksFromFindings: booksFromFindings, verifyEntry: verifyEntry, projectorLink: projectorLink, classLink: classLink };
+})();
+
+</script>
+
+</body>
+</html>

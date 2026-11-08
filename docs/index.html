@@ -990,45 +990,107 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
 
 </script>
 <script>
-/* Marketplace Laboratory page: state, storage, the four tabs. Depends on
-   MarketLab (engine.js) and MLChart (chart.js). */
+/* Marketplace Laboratory: the lab-book table (pinned experiments side by side with their baselines), shared by the
+   class page (app.js) and the instructor page (instructor.js). Depends on MarketLab (engine.js). */
+var MLBook = (function () {
+  "use strict";
+  var M = MarketLab;
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function fmt(x, d, signed) {
+    if (x == null || (typeof x === "number" && isNaN(x))) return "–";
+    if (d === undefined) d = 1;
+    if (Math.abs(x) < 5e-10) x = 0;
+    var s = Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+    return (x < 0 ? "-" : (signed ? "+" : "")) + s;
+  }
+  function cell(x) { return x == null ? "–" : (typeof x === "string" ? x : fmt(x)); }
+  function sameMarket(a, b) {
+    return ["Market price", "Quantity traded"].every(function (k) { return a[k] != null && b[k] != null && Math.abs(a[k] - b[k]) <= 1e-6; });
+  }
+  function baselineName(e) {
+    if (e.tab !== "externality") return "Baseline";
+    var h = +(((e.state || {}).policy || {}).harm || 0);
+    return "Baseline, " + (h >= 0 ? "harm " : "benefit ") + M.num(Math.abs(h));
+  }
+  // The table: rows are the measures present in any column; columns are the baselines (one per tab and harm) and then
+  // the pinned experiments in order. Each pinned value carries its change from that experiment's own baseline, small
+  // and grey under the number; not where the baseline is 0 (revenue, the loss, a shortage), since there the number is
+  // the change. opts.removable adds the ✕ button per pinned column (the class page); opts.mark is {id: html} put in
+  // front of a column's label (the instructor page's verification mark).
+  function table(entries, opts) {
+    opts = opts || {};
+    var cols = [], foot = [], seen = {}, bases = {};
+    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, null]); } });
+    entries.forEach(function (e) {
+      var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
+      var base = bases[e.tab + "|" + baselineName(e)];
+      if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
+      cols.push([label, e.measures, e.id, e.baseline]);
+    });
+    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); })
+                .concat(M.extraMeasures(cols.map(function (c) { return c[1]; })));
+    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
+      var mark = c[2] && opts.mark && opts.mark[c[2]] ? opts.mark[c[2]] + " " : "";
+      var btn = c[2] && opts.removable ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">✕</button>' : "";
+      return '<th>' + btn + mark + esc(c[0]) + '</th>';
+    }).join("") + '</tr></thead><tbody>';
+    var delta = function (c, m) { var v = c[1][m], b = c[3] && c[3][m]; return (c[3] && v != null && b != null && typeof v === "number" && Math.abs(b) > 1e-9 && Math.abs(v - b) > 1e-9) ? '<span class="delta">' + fmt(v - b, 1, true) + '</span>' : ''; };
+    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + delta(c, m) + '</td>'; }).join("") + '</tr>'; });
+    h += '</tbody></table></div>';
+    foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
+    return h;
+  }
+  return { esc: esc, fmt: fmt, cell: cell, sameMarket: sameMarket, baselineName: baselineName, table: table };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MLBook;
+
+</script>
+<script>
+/* Marketplace Laboratory: the lab-book sections, shared by the class page (app.js) and the instructor page
+   (instructor.js). The class questions in the order they build on each other, then a section for the group's own
+   experiments. Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks
+   it). Pins are filed under the question TITLE (sectionOf); answers under the question id. */
+var QUESTIONS = [
+  { id: "q1", title: "1. Who really pays a tax?",
+    prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different, what is the same, and who ends up paying the tax in each case? Then change the market in any way you like, for instance split the buyers into a high-value segment and a low-value segment (two rows in the Demand table), and pin the two taxes again. What, if anything, changes in the comparison?" },
+  { id: "q2", title: "2. Who bears more of the tax?",
+    prompt: "Make demand steeper: in the Demand table set Pmax to 200, so values run from 0 to 200, and pin a tax of 20 on sellers. Reset the market, make supply steeper instead (Supply Pmax 200) and pin the same tax. In each case, how much of the 20 do buyers pay and how much do sellers lose? What decides which side bears more? Look also at how the surplus was divided between buyers and sellers before the tax (the Baseline column): is there a pattern? If you have time, build a market in which buyers bear at least three quarters of the tax." },
+  { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
+    prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the quantity traded, to the tax revenue and to the deadweight loss? Which of them move in step with the tax, and which do not? Use the chart to explain the pattern you find. Then keep raising the tax: what happens to the revenue? Find the tax that raises the most and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
+  { id: "q4", title: "4. Broad base or high rate?",
+    prompt: "Split the sellers into two regions: in the Supply table change North's Quantity to 50 and add a row, South, with 50 units and costs from 0 to 100. The market should still clear at price 50 and quantity 50. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Compare the two columns: what buyers pay, the quantity traded, the tax revenue, the deadweight loss, and what each region sells. Which tax would the Treasury prefer, and why? Who would prefer the other one?" },
+  { id: "q5", title: "5. A subsidy",
+    prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Add it all up: is the market as a whole better or worse off than before, and by how much? Use the chart to explain, and say who ultimately pays for the subsidy." },
+  { id: "q6", title: "6. Rent control",
+    prompt: "Think of the sellers as landlords and the buyers as tenants. On the default market set a price ceiling of 40, a rent cap. At that rent more tenants want a flat than landlords offer, so something other than the price decides who gets one. The app offers three rules: the tenants who value a flat most get one, a lottery, or the tenants who value a flat least get one. Before you pin, write down your guess: does it matter which rule applies, and to whom? Pin the outcome under each rule. What is the same under all three, and what differs? Use the chart to explain the differences. Think about how rent-controlled flats are actually handed out (who gets one in New York or Berlin?): which of the three rules comes closest? Who would support the policy, and who would oppose it?" },
+  { id: "q7", title: "7. A flood",
+    prompt: "Before you run it, write down your guess: a flood destroys a fifth of the sellers' capacity. Who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened." },
+  { id: "q8", title: "8. A frost in one region",
+    prompt: "Build a market with two growing regions: in the Supply table change North's Quantity to 400 and add a row, South, with 100 units, costs 0 to 100 in both, and pin it. A frost destroys a quarter of North's crop: under Regional experiments set North's capacity to 75% and pin. What happens to the price, to what each region sells and earns, and to buyers? Before you run the next one, guess: if the frost had hit South instead, would South come out the same way North did? Put North back to 100%, set South's capacity to 75% and pin. What makes the difference?" },
+  { id: "q9", title: "9. A tariff to protect home producers",
+    prompt: "Reset the market, then build the world market: in the Supply table two rows, Home sellers with 20 units and Foreign sellers with 80; in the Demand table two rows, Home buyers with 40 units and Foreign buyers with 60; costs and values from 0 to 100 throughout. Home has a fifth of the sellers and two fifths of the buyers, so it imports; the market still clears at 50 and 50. Suppose the government introduces an import tariff of 20: it collects 20 on each unit sold at home that was made by foreign sellers. In the app, set this up as a tax of 20 on all Home buyers and a subsidy of 20 to all Home sellers (a tax of minus 20), both under Regional experiments. A home-made unit sold at home is then taxed 20 and subsidised 20, so nothing is collected on it; only the imported units are taxed, and the price inside Home ends up 20 above the world price. Pin it; the Baseline column is free trade. What happens to the surplus of Home buyers and of Home sellers, and to the government's revenue? Is Home better off in total? Who gains and who loses abroad?" },
+  { id: "q10", title: "10. A tariff when Home is the only buyer",
+    prompt: "Reset the market and think of all the buyers as Home and all the sellers as foreign: Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Is Home better or worse off with a tariff, and roughly which tariff is best for it? If the answer differs from question 9, what is different about the two situations? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?" },
+  { id: "q11", title: "11. A tariff when Home is a small buyer",
+    prompt: "Reset the market and split the buyers: in the Demand table two rows, Home buyers with 15 units and Foreign buyers with 85, values 0 to 100; all the sellers are foreign. Pin the market. Under Regional experiments put a tax of 20 on Home buyers, the tariff, and pin. Work out Home's gain as in question 10, consumer surplus plus revenue. Is Home better off? Who pays the tariff, and who gains from it? Is there any tariff that makes Home better off, and by how much? What is different from question 10?" },
+  { id: "q12", title: "12. Pollution",
+    prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?" },
+  { id: "own", title: "Your own experiments",
+    prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
+var EXT_QUESTION = 11;
+function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
+if (typeof module !== "undefined" && module.exports) module.exports = { QUESTIONS: QUESTIONS, EXT_QUESTION: EXT_QUESTION, sectionOf: sectionOf };
+
+</script>
+<script>
+/* Marketplace Laboratory page: state, storage, the tabs. Depends on MarketLab (engine.js), MLChart (chart.js),
+   MLBook (book.js) and the questions in questions.js. */
 (function () {
   "use strict";
-  var M = MarketLab, CH = MLChart;
+  var M = MarketLab, CH = MLChart, B = MLBook;
   var CONFIG = window.MARKETLAB_CONFIG || {};
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
 
-  // The lab book sections: the class questions, in the order they build on each other, and a section for the group's own
-  // Titles and prompts must match ASSIGNMENT in ../app/scenarios.py (app/tests/test_questions.py checks it).
-  var QUESTIONS = [
-    { id: "q1", title: "1. Who really pays a tax?",
-      prompt: "Use the default market. Put a tax of 20 per unit on sellers and pin the outcome. Remove it, put the same tax on buyers and pin again. Compare the two columns in your lab book: what is different, what is the same, and who ends up paying the tax in each case? Then change the market in any way you like, for instance split the buyers into a high-value segment and a low-value segment (two rows in the Demand table), and pin the two taxes again. What, if anything, changes in the comparison?" },
-    { id: "q2", title: "2. Who bears more of the tax?",
-      prompt: "Make demand steeper: in the Demand table set Pmax to 200, so values run from 0 to 200, and pin a tax of 20 on sellers. Reset the market, make supply steeper instead (Supply Pmax 200) and pin the same tax. In each case, how much of the 20 do buyers pay and how much do sellers lose? What decides which side bears more? Look also at how the surplus was divided between buyers and sellers before the tax (the Baseline column): is there a pattern? If you have time, build a market in which buyers bear at least three quarters of the tax." },
-    { id: "q3", title: "3. Tax rates, revenue and deadweight loss",
-      prompt: "On the default market, pin taxes on sellers of 20, 40 and 80 per unit. Each time the tax doubles, what happens to the quantity traded, to the tax revenue and to the deadweight loss? Which of them move in step with the tax, and which do not? Use the chart to explain the pattern you find. Then keep raising the tax: what happens to the revenue? Find the tax that raises the most and pin it. At that tax, what fraction of the original quantity is still traded, and what fraction of the original surplus does the government collect?" },
-    { id: "q4", title: "4. Broad base or high rate?",
-      prompt: "Split the sellers into two regions: in the Supply table change North's Quantity to 50 and add a row, South, with 50 units and costs from 0 to 100. The market should still clear at price 50 and quantity 50. Pin a tax of 20 on all sellers. Remove it, open Regional experiments, put a tax of 40 on North only and pin. Compare the two columns: what buyers pay, the quantity traded, the tax revenue, the deadweight loss, and what each region sells. Which tax would the Treasury prefer, and why? Who would prefer the other one?" },
-    { id: "q5", title: "5. A subsidy",
-      prompt: "On the default market give sellers a subsidy of 20 per unit (a tax on sellers of minus 20) and pin. How much do buyers and sellers each gain, and what does the subsidy cost the government? Add it all up: is the market as a whole better or worse off than before, and by how much? Use the chart to explain, and say who ultimately pays for the subsidy." },
-    { id: "q6", title: "6. Rent control",
-      prompt: "On the default market set a price ceiling of 40 and pin the outcome under each rationing rule: efficient, random lottery and inefficient. What is the same under all three rules, and what differs? Use the chart to explain the differences. Which rule do you think describes real rent control best? Who would support the policy, and who would oppose it?" },
-    { id: "q7", title: "7. A flood",
-      prompt: "Before you run it, write down your guess: a flood destroys a fifth of the sellers' capacity. Who loses more, sellers or buyers? On the default market, open Regional experiments, set the capacity of North to 80% and pin. Were you right? Explain what happened." },
-    { id: "q8", title: "8. A frost in one region",
-      prompt: "Build a market with two growing regions: in the Supply table change North's Quantity to 400 and add a row, South, with 100 units, costs 0 to 100 in both, and pin it. A frost destroys a quarter of North's crop: under Regional experiments set North's capacity to 75% and pin. What happens to the price, to what each region sells and earns, and to buyers? Before you run the next one, guess: if the frost had hit South instead, would South come out the same way North did? Put North back to 100%, set South's capacity to 75% and pin. What makes the difference?" },
-    { id: "q9", title: "9. A tariff to protect home producers",
-      prompt: "Reset the market, then build the world market: in the Supply table two rows, Home sellers with 20 units and Foreign sellers with 80; in the Demand table two rows, Home buyers with 40 units and Foreign buyers with 60; costs and values from 0 to 100 throughout. Home has a fifth of the sellers and two fifths of the buyers, so it imports; the market still clears at 50 and 50. Suppose the government introduces an import tariff of 20: it collects 20 on each unit sold at home that was made by foreign sellers. In the app, set this up as a tax of 20 on all Home buyers and a subsidy of 20 to all Home sellers (a tax of minus 20), both under Regional experiments. A home-made unit sold at home is then taxed 20 and subsidised 20, so nothing is collected on it; only the imported units are taxed, and the price inside Home ends up 20 above the world price. Pin it; the Baseline column is free trade. What happens to the surplus of Home buyers and of Home sellers, and to the government's revenue? Is Home better off in total? Who gains and who loses abroad?" },
-    { id: "q10", title: "10. A tariff when Home is the only buyer",
-      prompt: "Reset the market and think of all the buyers as Home and all the sellers as foreign: Home is the only buyer of a good made entirely abroad, so a tariff is simply a tax on buyers, and Home's gain is its consumer surplus plus the tariff revenue. Pin tariffs of 10, 20, 30 and 40 and work out Home's gain for each. Is Home better or worse off with a tariff, and roughly which tariff is best for it? If the answer differs from question 9, what is different about the two situations? What happens to the foreign sellers and to total surplus, and what would you expect if they answered with a tax of their own?" },
-    { id: "q11", title: "11. A tariff when Home is a small buyer",
-      prompt: "Reset the market and split the buyers: in the Demand table two rows, Home buyers with 15 units and Foreign buyers with 85, values 0 to 100; all the sellers are foreign. Pin the market. Under Regional experiments put a tax of 20 on Home buyers, the tariff, and pin. Work out Home's gain as in question 10, consumer surplus plus revenue. Is Home better off? Who pays the tariff, and who gains from it? Is there any tariff that makes Home better off, and by how much? What is different from question 10?" },
-    { id: "q12", title: "12. Pollution",
-      prompt: "On the Externalities tab, keep the harm of 20 per unit and pin the market with no policy. Find the tax on sellers that brings the deadweight loss to zero and pin it; then try the same tax on buyers, and a permit cap instead, pinning each. Who bears the harm before any policy? How does the right tax relate to the harm, and does the cap do the same job? Who gains and who loses from the policy?" },
-    { id: "own", title: "Your own experiments",
-      prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
-  var EXT_QUESTION = 11;
-  function sectionOf(entry) { for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].title === entry.question) return QUESTIONS[i].id; return "own"; }
   var RULES = [["efficient", "Efficient: highest values are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
                ["inefficient", "Inefficient: lowest values are served first"]];
@@ -1043,13 +1105,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
-  function fmt(x, d, signed) {
-    if (x == null || (typeof x === "number" && isNaN(x))) return "–";
-    if (d === undefined) d = 1;
-    if (Math.abs(x) < 5e-10) x = 0;
-    var s = Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
-    return (x < 0 ? "-" : (signed ? "+" : "")) + s;
-  }
+  var fmt = MLBook.fmt;
   function pct(x) { return x == null || isNaN(x) ? "–" : Math.round(100 * x) + "%"; }
   function num(v, d) { var x = parseFloat(v); return isNaN(x) ? d : x; }
   function timeStr(ts) { var dt = new Date(ts); return dt.toTimeString().slice(0, 8); }
@@ -1057,19 +1113,21 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function debounce(fn, ms) { var t; return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); }; }
 
   // ---- state ----------------------------------------------------------------------
-  var S = { classCode: "", group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab", lastQ: {},
+  // Projector mode (?projector=1, the instructor page's links): no group, pins allowed, nothing sent to the class record.
+  var S = { classCode: "", projector: false, group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab", lastQ: {},
             inner: { lab: "outcomes", ext: "outcomes" }, hidden: { lab: {}, ext: {} }, lastSaved: null, lastError: "", pinMsg: {} };
   function freshPolicy() { return { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none", control_value: 0, rationing: "efficient", rent_to: "sellers", regional: {} }; }
   function freshLab() { return { supply: clone(DEFAULT_LAB.supply), demand: clone(DEFAULT_LAB.demand), policy: freshPolicy() }; }
   function freshExt() { return { supply: clone(DEFAULT_EXT.supply), demand: clone(DEFAULT_EXT.demand), harm: DEFAULT_EXT.harm, tax_supply: 0, tax_demand: 0, cap: 0 }; }
-  function groupKey() { return S.group ? "Group " + S.group.number : "_"; }
+  function groupKey() { return S.group ? "Group " + S.group.number : (S.projector ? "Projector" : "_"); }
+  function canPin() { return !!(S.group || S.projector); }
   function groupPin() { return S.group && S.group.pin ? String(S.group.pin) : ""; }
   function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
   function storeKey() { return "marketlab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
     try {
       localStorage.setItem(storeKey(), JSON.stringify({ lab: S.lab, ext: S.ext, book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab === "assign" ? "book" : S.tab, lastQ: S.lastQ }));
-      localStorage.setItem("marketlab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
+      if (!S.projector) localStorage.setItem("marketlab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) { /* storage full or disabled: the page still works */ }
   }
   function loadStored(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
@@ -1114,7 +1172,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     state["class"] = S.classCode; state.names = groupNames();
     return { ts: Date.now() / 1000, group: groupKey(), question: question, finding: finding || "", state: state, pin: groupPin() };
   }
-  function enqueue(rec) { if (!S.group) return; queue.push(rec); persistQueue(); S.pinRejected = false; flush(); renderStatus(); }
+  function enqueue(rec) { if (!S.group || S.projector) return; queue.push(rec); persistQueue(); S.pinRejected = false; flush(); renderStatus(); }
   function flush() {
     if (!ENDPOINT || flushing || !queue.length || S.pinRejected) return;
     flushing = true;
@@ -1186,7 +1244,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     var parts = [];
     if (S.classCode) parts.push("Class " + esc(S.classCode));
     if (S.group) parts.push(esc(groupKey()));
-    if (!ENDPOINT) parts.push("Offline copy: nothing is sent to the class record");
+    if (S.projector) parts.push("Projector: pins stay in this browser, nothing is sent to the class record");
+    else if (!ENDPOINT) parts.push("Offline copy: nothing is sent to the class record");
     else if (S.pinRejected) parts.push('<span class="err">The class record refused the group number and PIN; press Change above and enter them again</span>');
     else if (S.lastError && queue.length) parts.push('<span class="err">Could not reach the class record (' + esc(S.lastError) + '); ' + queue.length + ' saved on this laptop, retrying</span>');
     else if (queue.length) parts.push("Saving…");
@@ -1194,7 +1253,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
     el.innerHTML = parts.join(" · ");
     ["book-status"].forEach(function (id) {
       var s = $(id); if (!s) return;
-      if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this laptop only.";
+      if (S.projector) s.textContent = "Projector: the pins stay in this browser; nothing is sent to the class record.";
+      else if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this laptop only.";
       else if (S.pinRejected) { s.textContent = "The class record refused the group number and PIN; press Change at the top and enter them again."; s.className = "status err"; }
       else if (S.lastError && queue.length) { s.textContent = "Could not reach the class record; your work is kept on this laptop and will be sent again."; s.className = "status err"; }
       else if (queue.length) { s.textContent = "Saving…"; s.className = "status"; }
@@ -1206,6 +1266,16 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   // ---- group panel -------------------------------------------------------------------
   function renderGroup() {
     var el = $("group-panel");
+    if (S.projector) {
+      el.innerHTML = '<div class="group-line"><div><b>Projector</b>' + (S.classCode ? " \u00b7 Class " + esc(S.classCode) : "") +
+                     ' \u00b7 pins stay in this browser and nothing is sent to the class record</div>' +
+                     '<button type="button" id="projector-clear">Clear the lab book</button></div>';
+      $("projector-clear").onclick = function () {
+        if (S.book.length && !window.confirm("Remove the " + S.book.length + " pinned column" + (S.book.length === 1 ? "" : "s") + " from this lab book?")) return;
+        S.book = []; S.lastQ = {}; saveLocal(); renderLab(); renderExt(); renderBook(); renderStatus();
+      };
+      return;
+    }
     if (S.group && !S.editingGroup) {
       el.innerHTML = '<div class="group-line"><div><b>Your group:</b> ' + esc(groupKey()) + (groupNames() ? " · " + esc(groupNames()) : "") +
                      (S.classCode ? " · Class " + esc(S.classCode) : "") + '</div><button type="button" id="group-change">Change</button></div>';
@@ -1366,7 +1436,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
         '<div id="' + which + '-pin-info"></div></div>';
     }
     $(which + "-pin-label").placeholder = suggestion;
-    $(which + "-pin").disabled = !S.group;
+    $(which + "-pin").disabled = !canPin();
     // the section follows the last pin (or the tab's default) only when that changes, not on every redraw
     var sel = $(which + "-pin-q"), want = S.lastQ[which] || "";
     if (sel.getAttribute("data-last") !== want) {
@@ -1375,7 +1445,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       QUESTIONS.forEach(function (q, i) { if (want && q.title === want) idx = i; });
       sel.value = String(idx);
     }
-    $(which + "-pin-info").innerHTML = (S.group ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
+    $(which + "-pin-info").innerHTML = (canPin() ? "" : '<p class="caption">Enter your group number at the top of the page to pin experiments.</p>') +
       (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "");
   }
   function doPin(which, suggestion, measures, baseline, state) {
@@ -1691,57 +1761,27 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   }
 
   // ---- Lab book tab ------------------------------------------------------------------
-  function sameMarket(a, b) {
-    return ["Market price", "Quantity traded"].every(function (k) { return a[k] != null && b[k] != null && Math.abs(a[k] - b[k]) <= 1e-6; });
-  }
-  function baselineName(e) {
-    if (e.tab !== "externality") return "Baseline";
-    var h = +(((e.state || {}).policy || {}).harm || 0);
-    return "Baseline, " + (h >= 0 ? "harm " : "benefit ") + M.num(Math.abs(h));
-  }
-  function cell(x) { return x == null ? "–" : (typeof x === "string" ? x : fmt(x)); }
-  function bookTable(entries) {
-    var cols = [], foot = [], seen = {}, bases = {};
-    entries.forEach(function (e) { var k = e.tab + "|" + baselineName(e); if (!bases[k]) { bases[k] = e.baseline; cols.push([baselineName(e), e.baseline, null]); } });
-    entries.forEach(function (e) {
-      var label = (e.label || "Experiment").trim(), n = (seen[label] || 0) + 1; seen[label] = n; if (n > 1) label += " (" + n + ")";
-      var base = bases[e.tab + "|" + baselineName(e)];
-      if (!sameMarket(e.baseline, base)) { foot.push("† " + label + " was run on a different market; its own baseline has price " + cell(e.baseline["Market price"]) + " and quantity " + cell(e.baseline["Quantity traded"]) + "."); label += " †"; }
-      cols.push([label, e.measures, e.id, e.baseline]);
-    });
-    var rows = M.MEASURES.filter(function (m) { return cols.some(function (c) { return c[1][m] != null; }); })
-                .concat(M.extraMeasures(cols.map(function (c) { return c[1]; })));
-    var h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + cols.map(function (c) {
-      return '<th>' + (c[2] ? '<button type="button" class="small remove-entry" data-id="' + c[2] + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(c[0]) + '">\u2715</button>' : "") + esc(c[0]) + '</th>';
-    }).join("") + '</tr></thead><tbody>';
-    // Each pinned value carries its change from that experiment's own baseline, small and grey under the number;
-    // not where the baseline is 0 (revenue, the loss, a shortage), since there the number is the change.
-    var delta = function (c, m) { var v = c[1][m], b = c[3] && c[3][m]; return (c[3] && v != null && b != null && typeof v === "number" && Math.abs(b) > 1e-9 && Math.abs(v - b) > 1e-9) ? '<span class="delta">' + fmt(v - b, 1, true) + '</span>' : ''; };
-    rows.forEach(function (m) { h += '<tr><td>' + esc(m) + '</td>' + cols.map(function (c) { return '<td class="num">' + cell(c[1][m]) + delta(c, m) + '</td>'; }).join("") + '</tr>'; });
-    h += '</tbody></table></div>';
-    foot.forEach(function (f) { h += '<p class="caption">' + esc(f) + '</p>'; });
-    return h;
-  }
   var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
   function renderBook() {
-    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : "";
+    var el = $("tab-book"), who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : (S.projector ? "the projector" : "");
     var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
             '<p class="caption">One section per question: the experiments you pinned for it, side by side with their baseline, and your answer. ' +
             'Work through the questions in order: each builds on the one before. ' +
             'Pin from the Laboratory or Externalities tab, choosing the section as you pin; the \u2715 on a column removes it. Reset market and Reset experiments on the Laboratory tab take you back to the default market between questions. Everything is saved as you go.</p>';
-    if (!S.group) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
+    if (!canPin()) h += '<div class="info">Enter your group number at the top of the page to pin experiments and write answers.</div>';
     QUESTIONS.forEach(function (q) {
       var mine = S.book.filter(function (e) { return sectionOf(e) === q.id; });
       var answered = (S.answers[q.id] || "").trim().length > 0;
       h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " \u00b7 answered" : "") + '</span></h2>' +
            '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
-      if (mine.length) h += bookTable(mine);
+      if (mine.length) h += B.table(mine, { removable: true });
       else h += '<p class="caption">Nothing pinned here yet.</p>';
-      h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
-           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="What you see in the table above, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea></section>';
+      if (!S.projector) h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
+           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="What you see in the table above, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea>';
+      h += '</section>';
     });
-    h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>' +
-         '<div id="book-status" class="status"></div>';
+    if (!S.projector) h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>';
+    h += '<div id="book-status" class="status"></div>';
     el.innerHTML = h;
     el.querySelectorAll(".remove-entry").forEach(function (btn) {
       var id = btn.getAttribute("data-id"), e = S.book.filter(function (x) { return x.id === id; })[0];
@@ -1754,7 +1794,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
       var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
       ta.addEventListener("input", upd); ta.addEventListener("change", upd);
     });
-    $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
+    if ($("book-notes")) $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
     renderStatus();
   }
 
@@ -1785,8 +1825,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLChart;
   function init() {
     var qs = new URLSearchParams(location.search);
     S.classCode = (qs.get("class") || "").trim();
+    S.projector = qs.get("projector") === "1";
     S.lab = freshLab(); S.ext = freshExt();
-    var last = loadStored("marketlab:" + S.classCode + ":last");
+    var last = S.projector ? null : loadStored("marketlab:" + S.classCode + ":last");
     if (last && last.number) S.group = last;
     mergeStored(loadStored(storeKey()));
     if (!S.lab.policy) S.lab = freshLab();
