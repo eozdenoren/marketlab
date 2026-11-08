@@ -1,6 +1,7 @@
 """Real-browser check of the exam calculator (docs/calculator.html): no group box, no pin button, no lab book; the
-helper forms turn exam notation into rows; nothing is read from or written to the browser's storage, even when the
-class page's own storage sits in the same origin. Reproduces the 2025 final's tariff table (Policy 1) as the check.
+market is typed row by row as in class (a block of capacity at constant MC is a row with Pmin = Pmax); nothing is read
+from or written to the browser's storage, even when the class page's own storage sits in the same origin. Reproduces
+the 2025 final's tariff table (Policy 1) as the check.
     python3 tests/browser_calculator.py [shots_dir]"""
 import http.server
 import json
@@ -41,13 +42,18 @@ def region(page, row):
     return [tr.locator("td").nth(i).inner_text() for i in range(1, tr.locator("td").count())]
 
 
-def add(page, table, kind, **fields):
-    form = page.locator("form.helper[data-table=%s]" % table)
-    form.locator("select[name=kind]").select_option(kind)
-    for name, value in fields.items():
-        form.locator("[name=%s]" % name).fill(str(value))
-    form.locator("button").click()
-    page.wait_for_timeout(200)
+def set_row(page, table, i, name, q, pmin, pmax):
+    """Type a row of a market table (adding rows as needed), committing each cell as a student would."""
+    rows = page.locator("#%s tbody tr" % table)
+    while rows.count() <= i:
+        page.locator("button.add-row[data-table=%s]" % table).click()
+        page.wait_for_timeout(150)
+    for j, val in enumerate([name, q, pmin, pmax]):
+        box = page.locator("#%s tbody tr" % table).nth(i).locator("input").nth(j)
+        box.fill(str(val))
+        box.press("Enter")
+        box.blur()
+        page.wait_for_timeout(120)
 
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -60,6 +66,7 @@ def main():
     subprocess.check_call([sys.executable, os.path.join(ROOT, "build.py"), "--out", os.path.join(dist, "index.html")])
     html = open(os.path.join(dist, "calculator.html")).read()
     check('"calculator": true' in html and '"endpoint"' not in html, "calculator config: calculator flag, no endpoint")
+    check("form.helper" not in html and "Pmin = Pmax" in html, "no helper forms; the how-to text is on the page")
     httpd = socketserver.TCPServer(("127.0.0.1", 0), lambda *a, **k: Quiet(*a, directory=dist, **k))
     port = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -81,15 +88,12 @@ def main():
         check(metric(page, "Market price") == "50.0" and metric(page, "Quantity traded") == "50.0", "default market, not the stored group's: price %s" % metric(page, "Market price"))
         check("Calculator" in page.locator("#footer-status").inner_text(), "calculator footer")
         page.screenshot(path=os.path.join(OUT, "01_default.png"), full_page=True)
-        # the 2025 final, question 11: China MC 20 capacity 80, USA MC 30 capacity 40; USA and ROW demand Q = 100 - P
-        page.locator("#lab-supply tbody tr").first.locator("button").click()      # remove the default rows
-        page.wait_for_timeout(150)
-        page.locator("#lab-demand tbody tr").first.locator("button").click()
-        page.wait_for_timeout(150)
-        add(page, "lab-supply", "block", name="China", mc=20, cap=80)
-        add(page, "lab-supply", "block", name="USA sellers", mc=30, cap=40)
-        add(page, "lab-demand", "QofP", name="USA", a=100, b=1)
-        add(page, "lab-demand", "QofP", name="ROW", a=100, b=1)
+        # the 2025 final, question 11: China MC 20 capacity 80, USA MC 30 capacity 40; USA and ROW demand Q = 100 - P,
+        # typed as rows: a block is Pmin = Pmax = MC with the capacity as quantity, a linear demand 100 units over 0..100
+        set_row(page, "lab-supply", 0, "China", 80, 20, 20)
+        set_row(page, "lab-supply", 1, "USA sellers", 40, 30, 30)
+        set_row(page, "lab-demand", 0, "USA", 100, 0, 100)
+        set_row(page, "lab-demand", 1, "ROW", 100, 0, 100)
         rows = page.locator("#lab-supply tbody tr")
         check(rows.count() == 2 and [i.input_value() for i in rows.nth(0).locator("input").all()] == ["China", "80", "20", "20"], "block row: " + str([i.input_value() for i in rows.nth(0).locator("input").all()]))
         drows = page.locator("#lab-demand tbody tr")

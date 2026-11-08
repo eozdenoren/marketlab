@@ -16,8 +16,11 @@ to the class Google Sheet (`backend/`).
   with each value's change), shared by both pages.
 * `src/chart.js` — SVG charts; `src/app.js` — the class page (group panel,
   Laboratory, Externalities and Lab book tabs, local storage, save queue;
-  `?projector=1` is projector mode: no group, pins allowed, nothing sent);
-  `src/style.css`, `src/index.html`.
+  `?projector=1` is projector mode: no group, pins allowed, nothing sent;
+  `calculator: true` in the config is the exam calculator: Laboratory and
+  Externalities only, nothing stored, with `src/calculator.html` as the shell
+  and its own text on how exam notation becomes rows); `src/style.css`,
+  `src/index.html`.
 * `src/qr.js` — QR codes for the class link (`tests/check_qr.py` compares the
   modules with segno's); `src/instructor.js`, `src/instructor.html`,
   `src/instructor.css` — the instructor page: sign in with the instructor
