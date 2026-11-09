@@ -33,7 +33,7 @@
 
   // ---- state ----------------------------------------------------------------------
   // Projector mode (?projector=1, the instructor page's links): no group, pins allowed, nothing sent to the class record.
-  var S = { classCode: "", projector: false, group: null, lab: null, ext: null, book: [], notes: "", answers: {}, tab: "lab", lastQ: {},
+  var S = { classCode: "", projector: false, group: null, lab: null, ext: null, book: [], notes: "", answers: {}, answersDirty: {}, tab: "lab", lastQ: {},
             inner: { lab: "outcomes", ext: "outcomes" }, hidden: { lab: {}, ext: {} }, lastSaved: null, lastError: "", pinMsg: {} };
   function freshPolicy() { return { cost_shock: 0, benefit_boost: 0, tax_supply: 0, tax_demand: 0, control: "none", control_value: 0, rationing: "efficient", rent_to: "sellers", regional: {} }; }
   function freshLab() { return { supply: clone(DEFAULT_LAB.supply), demand: clone(DEFAULT_LAB.demand), policy: freshPolicy() }; }
@@ -141,12 +141,12 @@
   function restoreFromRecords(recs) {
     if (!recs || !recs.length) return;
     recs.sort(function (a, b) { return a.ts - b.ts; });
-    var entries = {}, order = [], notes = "", answers = null;
+    var entries = {}, order = [], notes = "", answers = {};
     recs.forEach(function (f) {
       var st = f.state || {}, lbk = st.labbook;
       if (!lbk) return;
       if (lbk.kind === "notes") { notes = f.finding || ""; return; }
-      if (lbk.kind === "answers") { answers = st.answers || {}; return; }
+      if (lbk.kind === "answers") { mergeAnswers(answers, st.answers); return; }
       if (lbk.kind === "class") return;
       if (lbk.deleted) { delete entries[lbk.id]; return; }
       if (!entries[lbk.id]) order.push(lbk.id);
@@ -157,7 +157,37 @@
     var have = {}; S.book.forEach(function (e) { have[e.id] = true; });
     order.forEach(function (id) { if (entries[id] && !have[id]) S.book.push(entries[id]); });
     if (!S.notes && notes) S.notes = notes;
-    if (answers) Object.keys(answers).forEach(function (k) { if (!S.answers[k]) S.answers[k] = answers[k]; });
+    var pending = pendingAnswerKeys();
+    Object.keys(answers).forEach(function (k) { if (!pending[k]) S.answers[k] = answers[k]; });
+  }
+  // Answers are saved per question: a record carries only the boxes edited on this device since the last save, and
+  // reading the record keeps, for each question, the latest text that is not empty. So a second device never wipes
+  // answers it has not seen, and records from before this rule (whole sets, sometimes empty) lose nothing.
+  function mergeAnswers(into, add) {
+    Object.keys(add || {}).forEach(function (k) { if (String(add[k] || "").trim()) into[k] = add[k]; });
+    return into;
+  }
+  function pendingAnswerKeys() {        // edited here but not yet in the class record: this device's text wins
+    var keys = {};
+    Object.keys(S.answersDirty).forEach(function (k) { keys[k] = true; });
+    queue.forEach(function (r) { if (((r.state || {}).labbook || {}).kind === "answers") Object.keys((r.state || {}).answers || {}).forEach(function (k) { keys[k] = true; }); });
+    return keys;
+  }
+  // Bring this device up to date with the class record: on load for a remembered group, and on opening the Lab book.
+  var lastSync = 0;
+  function syncFromRecord(force) {
+    if (!ENDPOINT || !S.group || S.projector || CALC) return;
+    if (!force && Date.now() - lastSync < 15000) return;
+    lastSync = Date.now();
+    fetchGroupRecords(function (recs) {
+      if (!recs) return;
+      restoreFromRecords(recs); saveLocal();
+      var focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("#tab-book");
+      if (!focused) renderBook();
+      else Array.prototype.forEach.call($("tab-book").querySelectorAll("textarea[data-q]"), function (ta) {   // never redraw under the cursor
+        if (ta !== document.activeElement) ta.value = S.answers[ta.getAttribute("data-q")] || "";
+      });
+    });
   }
   function renderStatus() {
     var el = $("footer-status");
@@ -278,7 +308,7 @@
     S.tab = name;
     ["lab", "ext", "book"].forEach(function (t) { var sec = $("tab-" + t); if (sec) sec.hidden = t !== name; });
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-tab") === name); });
-    if (name === "book") renderBook();
+    if (name === "book") { renderBook(); syncFromRecord(false); }
     saveLocal();
   }
 
@@ -684,7 +714,12 @@
   }
 
   // ---- Lab book tab ------------------------------------------------------------------
-  var saveAnswers = debounce(function () { enqueue(record("Assignment answers", "", { answers: clone(S.answers), labbook: { id: "answers", kind: "answers" } })); }, 1200);
+  var saveAnswers = debounce(function () {
+    var changed = {};
+    Object.keys(S.answersDirty).forEach(function (k) { changed[k] = S.answers[k] || ""; });
+    S.answersDirty = {};
+    if (Object.keys(changed).length) enqueue(record("Assignment answers", "", { answers: changed, labbook: { id: "answers", kind: "answers" } }));
+  }, 1200);
   function renderBook() {
     var el = $("tab-book"); if (!el) return;
     var who = S.group ? groupKey() + (groupNames() ? " \u00b7 " + groupNames() : "") : (S.projector ? "the projector" : "");
@@ -715,7 +750,7 @@
       };
     });
     el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
-      var upd = function () { S.answers[ta.getAttribute("data-q")] = ta.value; saveLocal(); saveAnswers(); };
+      var upd = function () { var k = ta.getAttribute("data-q"); if (S.answers[k] === ta.value) return; S.answers[k] = ta.value; S.answersDirty[k] = true; saveLocal(); saveAnswers(); };
       ta.addEventListener("input", upd); ta.addEventListener("change", upd);
     });
     if ($("book-notes")) $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
@@ -762,6 +797,7 @@
     if (st) applyState(st); else showTab(S.tab || "lab");
     window.addEventListener("hashchange", function () { var s2 = stateFromHash(); if (s2) applyState(s2); });
     renderStatus(); flush();
+    syncFromRecord(true);
     setInterval(flush, 30000);
   }
   document.addEventListener("DOMContentLoaded", init);

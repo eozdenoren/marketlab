@@ -1130,7 +1130,10 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
       if (state.names) g.names = state.names;
       if (!lbk) { g.other.push(f); return; }
       if (lbk.kind === "notes") { g.notes = f.finding || ""; return; }
-      if (lbk.kind === "answers") { g.answers = state.answers || {}; return; }
+      if (lbk.kind === "answers") {     // per question, the latest text that is not empty (see app.js, mergeAnswers)
+        Object.keys(state.answers || {}).forEach(function (k) { if (String(state.answers[k] || "").trim()) g.answers[k] = state.answers[k]; });
+        return;
+      }
       if (lbk.deleted) { delete g.entries[lbk.id]; return; }
       var sw = {}; Object.keys(state).forEach(function (k) { if (k !== "labbook") sw[k] = state[k]; });
       if (!g.entries[lbk.id]) g.order.push(lbk.id);
