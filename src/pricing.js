@@ -378,12 +378,13 @@
     var fillFare = Math.ceil((d.a - t.seats) / d.b), fillProfit = C.profitAt(d, fillFare);
     var mine = S.projector ? null : (ch.mine || []), all = [];
     (ch.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { all.push({ group: g.group, fare: f }); }); });
-    var curve = C.profitCurve(d), ymin = Math.min(0, curve[0][1]), ymax = best.profit * 1.08;
+    var win = C.profitRange(d, (mine || all).map(function (f) { return f.fare; })), curve = C.profitCurve(d, 1, win.x0);
+    var ymin = Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), ymax = best.profit * 1.08;
     var markers = [{ x: t.p0, y: sq, color: C.COLORS.grey, hollow: true, name: "Last month", title: "Last month: " + money(t.p0) + ", profit " + money(sq) },
                    { x: best.fare, y: best.profit, color: C.COLORS.green, name: "Best fare " + money(best.fare), label: money(best.fare), title: "Best fare " + money(best.fare) + ": " + fmt(best.passengers) + " passengers, profit " + money(best.profit) }];
     if (mine) mine.forEach(function (f) { markers.push({ x: f.fare, y: f.profit, color: C.COLORS.red, name: "Your flights", title: "Flight " + f.n + ": " + money(f.fare) + ", " + fmt(f.passengers) + " passengers, profit " + money(f.profit) }); });
     else all.forEach(function (f) { markers.push({ x: f.fare, y: C.profitAt(d, f.fare), color: C.COLORS.red, r: 4, name: "Flights flown", title: f.group + ": " + money(f.fare) }); });
-    var profitChart = C.chart({ title: "Profit against the fare", x: { max: choke, label: "Fare (£)" }, y: { min: ymin, max: ymax, label: "Profit per flight (£)" },
+    var profitChart = C.chart({ title: "Profit against the fare", x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: ymin, max: ymax, label: "Profit per flight (£)" },
                                 lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: sq, label: "last month's profit", color: C.COLORS.grey }],
                                 vlines: [{ x: fillFare, label: "plane full below " + money(fillFare), color: C.COLORS.orange }], markers: markers });
     var dLine = [[0, choke], [d.a, 0]], qmax = Math.max(d.a, t.seats) * 1.05;
@@ -398,7 +399,7 @@
       'Fifty pounds either side of the best fare costs ' + money(best.profit - C.profitAt(d, best.fare + 50)) + ' a flight.</p>';
     if (mine && mine.length) {
       var first = mine[0], ln = C.lineThrough(t.p0, t.q0, first.fare, first.passengers);
-      var dec = function (x, d) { return fmt(x, Math.abs(x - Math.round(x)) < 1e-9 ? 0 : d); };
+      var dec = function (x, d) { return Number(x.toFixed(d)).toLocaleString("en-GB", { maximumFractionDigits: d }); };
       if (ln) h += '<p class="reveal-line">Your first flight, ' + money(first.fare) + ' with ' + fmt(first.passengers) + ' passengers, together with last month\'s point gives the line Q = ' + dec(ln.a, 1) + ' − ' + dec(ln.b, 3) + ' × P' +
                    (Math.abs(ln.a - d.a) < 1 && Math.abs(ln.b - d.b) < 0.01 ? ': the demand itself. Two points were enough.' : '.') + '</p>';
     }

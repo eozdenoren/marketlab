@@ -188,7 +188,8 @@
                            hlines: [{ y: s.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: s.seats, label: "capacity", color: C.COLORS.orange }],
                            markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "Last month", label: money(s.p0) + " / " + fmt(s.q0) },
                                      { x: v.best.passengers, y: v.best.fare, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) + " / " + fmt(v.best.passengers) }] });
-    var profit = C.chart({ title: "Profit against the fare", h: 340, x: { max: v.choke, label: "Fare (£)" }, y: { min: Math.min(0, curve[0][1]), max: v.best.profit * 1.08, label: "Profit per flight (£)" },
+    var win = C.profitRange(d, []); curve = C.profitCurve(d, 1, win.x0);
+    var profit = C.chart({ title: "Profit against the fare", h: 340, x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), max: v.best.profit * 1.08, label: "Profit per flight (£)" },
                            lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: v.sq, label: "last month's profit", color: C.COLORS.grey }],
                            vlines: [{ x: v.fill, label: "plane full below " + money(v.fill), color: C.COLORS.orange }],
                            markers: [{ x: s.p0, y: v.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: v.best.fare, y: v.best.profit, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) }] });
@@ -229,9 +230,11 @@
       h += '<div class="qblock"><h3>Leaderboard: ' + plural(board.length, "group") + ', ' + plural(flights.length, "flight") + '</h3>' +
            '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best fare flown</th></tr></thead><tbody>' +
            board.map(function (g, i) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>';
-      var curve = C.profitCurve(d.d), markers = [{ x: ch.settings.p0, y: d.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: d.best.fare, y: d.best.profit, color: C.COLORS.green, name: "Best fare", label: money(d.best.fare) }];
+      var win = C.profitRange(d.d, flights.map(function (fl) { return fl.fare; })), curve = C.profitCurve(d.d, 1, win.x0);
+      var markers = [{ x: ch.settings.p0, y: d.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: d.best.fare, y: d.best.profit, color: C.COLORS.green, name: "Best fare", label: money(d.best.fare) }];
       flights.forEach(function (fl) { markers.push({ x: fl.fare, y: fl.profit, color: C.COLORS.red, r: 4, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }); });
-      h += C.chart({ x: { max: d.choke, label: "Fare (£)" }, y: { min: Math.min(0, curve[0][1]), max: d.best.profit * 1.08, label: "Profit per flight (£)" }, lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: d.sq, label: "last month", color: C.COLORS.grey }], markers: markers }) +
+      h += C.chart({ x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), max: d.best.profit * 1.08, label: "Profit per flight (£)" },
+                     lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: d.sq, label: "last month", color: C.COLORS.grey }], vlines: [{ x: win.fill, label: "plane full below " + money(win.fill), color: C.COLORS.orange }], markers: markers }) +
            '<div class="row" style="margin-top:6px"><button type="button" id="csv-flights">Download the flights (CSV)</button></div></div>';
     }
     el.innerHTML = h;

@@ -36,12 +36,23 @@ var PricingCore = (function () {
     best.capped = capped; best.exactFare = fare; best.exactQ = q;
     return best;
   }
-  function profitCurve(d, step) {
-    var top = Math.ceil(chokePrice(d)), pts = [];
-    step = step || Math.max(1, Math.ceil(top / 1500));   // whole pounds up to a choke price of 1,500
-    for (var f = 0; f <= top; f += step) pts.push([f, profitAt(d, f)]);
+  function profitCurve(d, step, from) {
+    var top = Math.ceil(chokePrice(d)), pts = [], start = Math.max(0, Math.floor(from || 0));
+    step = step || Math.max(1, Math.ceil((top - start) / 1500));   // whole pounds up to a span of 1,500
+    for (var f = start; f <= top; f += step) pts.push([f, profitAt(d, f)]);
     if (pts[pts.length - 1][0] !== top) pts.push([top, profitAt(d, top)]);
     return pts;
+  }
+  // The fare below which the plane is full (demand at or above the capacity).
+  function fillFare(d) { var scale = d.scale || 1; return Math.ceil((scale * d.a - d.seats) / (scale * d.b)); }
+  // The fares worth looking at: from a little below the fare that fills the plane (below it profit is a straight
+  // line, every seat sold) to the choke price; widened to the left if any of the fares given was lower, so that
+  // every flight flown stays on the chart.
+  function profitRange(d, fares) {
+    var choke = chokePrice(d), fill = fillFare(d), left = fill > 0 ? fill : d.mc;
+    var x0 = Math.max(0, left - 0.12 * (choke - left));
+    (fares || []).forEach(function (f) { if (f - 20 < x0) x0 = Math.max(0, f - 20); });
+    return { x0: Math.floor(x0), x1: Math.ceil(choke), fill: fill };
   }
   function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
   // The line through the status quo and one test flight: the group's own estimate of the demand.
@@ -209,7 +220,7 @@ var PricingCore = (function () {
   }
 
   return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
-           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve,
+           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, profitRange: profitRange,
            statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };

@@ -28,6 +28,10 @@ var dbl = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }, bd = C.bestFar
 check(bd.fare === 830 && bd.passengers === 450 && bd.capped, "demand doubled: the seats bind, 830: " + JSON.stringify(bd));
 var curve = C.profitCurve(d);
 check(curve[0][0] === 0 && curve[curve.length - 1][0] === 1280 && curve.some(function (p) { return p[0] === 680 && p[1] === 180000; }), "the profit curve runs from 0 to the choke price through the best fare");
+var win = C.profitRange(d, []);
+check(C.fillFare(d) === 380 && win.x0 === 272 && win.x1 === 1280, "the chart window starts a little below the fare that fills the plane: " + JSON.stringify(win));
+check(C.profitRange(d, [100, 700]).x0 === 80, "a flight at 100 widens the window to 80");
+check(C.profitCurve(d, 1, 272)[0][0] === 272, "the curve can start inside the window");
 var line = C.lineThrough(580, 350, 780, 250);
 check(line && line.b === 0.5 && line.a === 640, "two flights give the line exactly");
 check(C.lineThrough(580, 350, 580, 350) === null, "no line from one point");
