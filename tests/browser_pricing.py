@@ -143,7 +143,7 @@ def main():
             s1.get_by_text("Round 1 is closed", exact=False).wait_for(timeout=15000)
             check(s1.locator("#fare").count() == 0, "no fare box after the close")
             ins.click("button[data-phase=revealed]"); ins.get_by_text("Demand revealed.", exact=False).wait_for()
-            check("Leaderboard" in ins.locator("#view-challenge").inner_text() and ins.locator("#view-challenge svg").count() == 1, "the instructor sees the board and the profit curve")
+            check("Leaderboard" in ins.locator("#view-challenge").inner_text() and ins.locator("#view-challenge svg").count() == 3, "the instructor sees the board, the two settings charts and the profit curve with the flights: %d svg" % ins.locator("#view-challenge svg").count())
             ins.screenshot(path=os.path.join(OUT, "07_instructor_revealed.png"), full_page=True)
             s1.get_by_text("The demand you were facing", exact=False).wait_for(timeout=15000)
             txt = s1.locator("#tab-challenge").inner_text()

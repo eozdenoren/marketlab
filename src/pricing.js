@@ -346,7 +346,7 @@
       '<b>' + fmt(t.q0) + ' passengers</b>, a profit of ' + money(sq) + ' per flight. How many people want to fly depends on the fare, and only on the fare: the market is the same every flight. ' +
       'Set the fare for <b>' + t.flights + ' flights</b>, one at a time; after each flight you see how many flew and what you earned. Every flight counts: your score is the profit over the ' +
       t.flights + ' flights compared with keeping the fare at ' + money(t.p0) + '.</p>' +
-      '<div class="metrics">' + metric("Cost per passenger", t.mc, { money: true }) + metric("Seats", t.seats) + metric("Last month's fare", t.p0, { money: true }) + metric("Passengers last month", t.q0, { sub: "profit " + money(sq) + " per flight" }) + '</div></div>';
+      '<div class="metrics">' + metric("Cost per passenger", t.mc, { money: true }) + metric("Plane's capacity", t.seats, { sub: "seats" }) + metric("Last month's fare", t.p0, { money: true }) + metric("Passengers last month", t.q0, { sub: "profit " + money(sq) + " per flight" }) + '</div></div>';
   }
   function flightsTable(flights, t, d) {
     if (!flights || !flights.length) return '<p class="caption">No flights yet.</p>';
@@ -389,7 +389,7 @@
     var dLine = [[0, choke], [d.a, 0]], qmax = Math.max(d.a, t.seats) * 1.05;
     var demandChart = C.chart({ title: "The demand", h: 360, x: { max: qmax, label: "Passengers who want to fly" }, y: { max: choke * 1.05, label: "Fare (£)" },
                                 lines: [{ pts: dLine, color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
-                                hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "seats", color: C.COLORS.orange }],
+                                hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
                                 markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
     var h = '<h2>The demand you were facing</h2>' +
       '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b) + '). Last month\'s ' + money(t.p0) + ' with ' + fmt(t.q0) + ' passengers is on that line.</p>' +
