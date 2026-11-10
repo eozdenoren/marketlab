@@ -17,7 +17,8 @@
    POST {token:<page>, action:"register", class, group, pin, names}   -> registers (refused if taken)
         {token:<page>, records:[{group, question, finding, state, pin}]} -> appended if the PIN matches
         {token:<admin>, records:[...]}                 -> appended, no PIN
-        {token:<admin>, action:"reset", class, group}  -> clears that group's registration */
+        {token:<admin>, action:"reset", class, group}  -> clears that group's registration
+        {token:<admin>, action:"move", moves:[{group, from, to}]} -> re-files a group's records and registration */
 var FINDINGS = "findings", GROUPS = "groups";
 var TOKEN = "PAGE-TOKEN";          // same value as "token" in the page's build config
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor view only (app/.streamlit/secrets.toml, html/config.json)
@@ -47,11 +48,16 @@ function adminStatus(token) {
   return "no";
 }
 
+// The sheet turns a PIN typed as "0001" into the number 1, so read it back as four digits.
+function pinText(v) {
+  var s = String(v === undefined || v === null ? "" : v).trim();
+  return /^\d{1,3}$/.test(s) ? ("0000" + s).slice(-4) : s;
+}
 function findGroup(cls, group) {
   var values = groupsSheet().getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][0]) === cls && String(values[i][1]) === group)
-      return { row: i + 1, pin: String(values[i][2]), names: String(values[i][3] || ""), registered: values[i][4] };
+      return { row: i + 1, pin: pinText(values[i][2]), names: String(values[i][3] || ""), registered: values[i][4] };
   }
   return null;
 }
@@ -82,7 +88,7 @@ function doGet(e) {
       var values = groupsSheet().getDataRange().getValues(), groups = [];
       for (var i = 1; i < values.length; i++) {
         if (p["class"] !== undefined && String(values[i][0]) !== p["class"]) continue;
-        groups.push({ "class": values[i][0], group: values[i][1], pin: String(values[i][2]), names: values[i][3] || "", registered: String(values[i][4] || "") });
+        groups.push({ "class": values[i][0], group: values[i][1], pin: pinText(values[i][2]), names: values[i][3] || "", registered: String(values[i][4] || "") });
       }
       return reply({ ok: true, groups: groups });
     }
@@ -116,6 +122,30 @@ function doPost(e) {
       var g = findGroup(String(data["class"] || ""), String(data.group || ""));
       if (g) groupsSheet().deleteRow(g.row);
       return reply({ ok: true, reset: !!g });
+    }
+    if (data.action === "move" && admin) {
+      // Re-file groups that worked under a wrong class code: every record of (from, group) gets class `to`, timestamps
+      // and everything else untouched; the registration moves too, or is dropped if the group is already registered
+      // under `to` (then that PIN applies).
+      var report = [];
+      (data.moves || []).forEach(function (m) {
+        var from = String(m.from === undefined || m.from === null ? "" : m.from), to = String(m.to || ""), grp = String(m.group || "");
+        if (!to || from === to || !/^Group \d+$/.test(grp)) { report.push({ group: grp, from: from, to: to, error: "bad move" }); return; }
+        var fs = findingsSheet(), vals = fs.getDataRange().getValues(), moved = 0;
+        for (var i = 1; i < vals.length; i++) {
+          if (String(vals[i][1]) !== grp) continue;
+          var st; try { st = JSON.parse(vals[i][4] || "{}"); } catch (err) { continue; }
+          if (String(st["class"] || "") !== from) continue;
+          st["class"] = to; fs.getRange(i + 1, 5).setValue(JSON.stringify(st)); moved++;
+        }
+        var g = findGroup(from, grp), reg = "none";
+        if (g) {
+          if (findGroup(to, grp)) { groupsSheet().deleteRow(g.row); reg = "dropped: already registered under " + to; }
+          else { groupsSheet().getRange(g.row, 1).setValue(to); reg = "moved"; }
+        }
+        report.push({ group: grp, from: from, to: to, records: moved, registration: reg });
+      });
+      return reply({ ok: true, moves: report });
     }
     var records = (data.records || []).slice(0, 50), rows = [], rejected = 0, now = Date.now() / 1000;
     records.forEach(function (r, i) {

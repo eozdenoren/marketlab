@@ -4,3 +4,4 @@ dist/
 __pycache__/
 .DS_Store
 backend/Code.local.gs
+backend/Pricing.local.gs

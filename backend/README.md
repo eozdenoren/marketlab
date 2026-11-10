@@ -42,3 +42,42 @@ To test the endpoint from a terminal:
 
 Changing the code later: Deploy > Manage deployments > edit > new version.
 The URL stays the same.
+
+## The Pricing Laboratory's script (`Pricing.gs`)
+
+The Pricing Laboratory (`docs/pricing.html`) has a script and a Google Sheet
+of its own, so that the Marketplace record above is never redeployed while an
+assignment runs on it. Groups sign in with the number and PIN they registered
+in the Marketplace Laboratory: the pricing script reads the `groups` tab of
+that sheet. Set-up, once:
+
+1. Create a new Google Sheet (say "Pricing Laboratory"). Extensions > Apps
+   Script, delete the sample code, paste `Pricing.local.gs` (the private copy
+   with the real tokens, not in git; `Pricing.gs` is the template).
+2. Project settings > Script properties, two properties:
+   `INSTRUCTOR_PASSWORD` (the password the pricing instructor page signs in
+   with; it can be the same as the Marketplace one) and `MARKETLAB_SHEET`
+   (the URL, or the ID, of the Marketplace Laboratory's Google Sheet, the one
+   with the `findings` and `groups` tabs).
+3. Deploy > New deployment > Web app, Execute as **Me**, Who has access
+   **Anyone**; authorise (the script asks for access to your spreadsheets:
+   it reads the Marketplace sheet's `groups` tab); copy the URL ending in
+   `/exec`.
+4. Put the URL under `pricing` in `config.json` (the tokens are already there,
+   the same values as in `Pricing.local.gs`):
+
+       "pricing": {"endpoint": "https://script.google.com/macros/s/.../exec", "token": "...", "admin_token": "..."}
+
+   then `python3 build.py --config config.json` and publish `docs/`.
+
+Tabs the script creates in its sheet: `records` (the lab books), `groups`
+(groups registered on the pricing page, when a number is not in the
+Marketplace sheet), `challenge` (one row per class: phase and settings),
+`flights` (round 1). The instructor page sets the challenge up and moves it
+through its phases; the student pages poll `?action=challenge` every few
+seconds while the Challenge tab is open.
+
+To test:
+
+    node tests/check_pricing_backend.js      # the script in a node vm against fake sheets
+    python3 tests/browser_pricing.py         # the pages in a browser against the script served by node

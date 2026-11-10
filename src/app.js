@@ -9,6 +9,18 @@
   // book, nothing read from or written to this browser's storage and nothing sent anywhere. The market is entered
   // row by row exactly as in class; the page's own text says how exam notation becomes rows.
   var CALC = !!CONFIG.calculator;
+  // This term's class codes (config "classes"). With a list, the page signs groups in only under one of them: a code is
+  // read without regard to case and with anything pasted after it ignored, and an address with no code or an unknown
+  // one shows the class links instead of the sign-in, so no group's work is filed under a stray code. No list: any code.
+  var CLASSES = (CONFIG.classes || []).map(function (c) { return String(c).trim().toUpperCase(); }).filter(Boolean);
+  function normalizeClass(raw) {
+    var s = String(raw == null ? "" : raw).trim();
+    if (!CLASSES.length) return s;
+    var up = s.toUpperCase().replace(/\s+/g, "");
+    for (var i = 0; i < CLASSES.length; i++) if (up.indexOf(CLASSES[i]) === 0) return CLASSES[i];
+    return null;                                            // no code, or not one of this term's
+  }
+  function classLink(code) { return location.origin + location.pathname + "?class=" + encodeURIComponent(code); }
 
   var RULES = [["efficient", "Efficient: highest values are served first"],
                ["random", "Random lottery: everyone willing has the same chance"],
@@ -94,7 +106,12 @@
   }
   function enqueue(rec) { if (!S.group || S.projector) return; queue.push(rec); persistQueue(); S.pinRejected = false; flush(); renderStatus(); }
   function flush() {
-    if (!ENDPOINT || flushing || !queue.length || S.pinRejected) return;
+    if (!ENDPOINT || flushing || !queue.length || S.pinRejected || S.classInvalid) return;   // invalid: kept for the right link
+    // Saves made on this laptop under a stray code (before the class list existed) go to the class signed in now.
+    if (CLASSES.length && S.classCode && !S.classInvalid) queue.forEach(function (r) {
+      var st = r.state || (r.state = {}), fixed = normalizeClass(st["class"]);
+      if (fixed !== st["class"]) st["class"] = fixed || S.classCode;
+    });
     flushing = true;
     var batch = queue.slice(0, 20).map(function (r) { r.pin = groupPin(); return r; });
     fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: TOKEN, records: batch }) })
@@ -226,6 +243,14 @@
         if (S.book.length && !window.confirm("Remove the " + S.book.length + " pinned column" + (S.book.length === 1 ? "" : "s") + " from this lab book?")) return;
         S.book = []; S.lastQ = {}; saveLocal(); renderLab(); renderExt(); renderBook(); renderStatus();
       };
+      return;
+    }
+    if (S.classInvalid) {
+      var shown = CLASSES.filter(function (c) { return !/TEST/.test(c); });
+      el.innerHTML = '<div class="error" style="margin:0 0 8px 0"><b>' + (S.rawClass ? 'This address has the class code “' + esc(S.rawClass) + '”, which is not one of this term’s classes.'
+                                                                                : 'This address has no class code.') + '</b> ' +
+        'Your group cannot sign in here: work saved from this page would not appear in your class’s lab book. Open the Marketplace Laboratory with the link for your class:</div>' +
+        '<div class="row" style="flex-wrap:wrap;gap:8px">' + shown.map(function (c) { return '<a class="button" href="' + esc(classLink(c)) + '">' + esc(c) + '</a>'; }).join("") + '</div>';
       return;
     }
     if (S.group && !S.editingGroup) {
@@ -783,10 +808,16 @@
   // ---- init ----------------------------------------------------------------------------
   function init() {
     var qs = new URLSearchParams(location.search);
-    S.classCode = (qs.get("class") || "").trim();
+    S.rawClass = (qs.get("class") || "").trim();
     S.projector = qs.get("projector") === "1";
+    var cls = normalizeClass(S.rawClass);
+    S.classInvalid = cls === null && !S.projector && !CALC;
+    S.classCode = cls === null ? S.rawClass : cls;
+    if (cls && cls !== S.rawClass && window.history && history.replaceState) {   // show (and bookmark) the clean link
+      qs.set("class", cls); history.replaceState(null, "", location.pathname + "?" + qs.toString() + location.hash);
+    }
     S.lab = freshLab(); S.ext = freshExt();
-    var last = (S.projector || CALC) ? null : loadStored("marketlab:" + S.classCode + ":last");
+    var last = (S.projector || CALC || S.classInvalid) ? null : loadStored("marketlab:" + S.classCode + ":last");
     if (last && last.number) S.group = last;
     mergeStored(loadStored(storeKey()));
     if (!S.lab.policy) S.lab = freshLab();

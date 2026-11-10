@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pricing Laboratory: instructor view</title>
+<!--STYLE-->
+</head>
+<body>
+<div class="wrap">
+  <div class="row between">
+    <div><h1>Pricing Laboratory: instructor view</h1><p class="caption" id="subtitle">The pricing challenge and the groups' lab books, straight from the class record.</p></div>
+    <div id="topbar" class="row"></div>
+  </div>
+  <div id="signin"></div>
+  <div id="main" hidden>
+    <div id="class-bar" class="panel shaded"></div>
+    <nav class="tabs" id="views">
+      <button type="button" data-view="challenge" class="active">Challenge</button>
+      <button type="button" data-view="overview">Lab books</button>
+      <button type="button" data-view="question">By question</button>
+      <button type="button" data-view="group">One group</button>
+      <button type="button" data-view="setup">Links and QR</button>
+    </nav>
+    <section id="view-challenge"></section>
+    <section id="view-overview" hidden></section>
+    <section id="view-question" hidden></section>
+    <section id="view-group" hidden></section>
+    <section id="view-setup" hidden></section>
+  </div>
+  <footer><span id="footer-status"></span></footer>
+</div>
+<!--CONFIG-->
+<!--SCRIPTS-->
+</body>
+</html>

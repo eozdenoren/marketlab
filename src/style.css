@@ -35,6 +35,8 @@ button.primary { background: var(--primary); border-color: var(--primary); color
 button.primary:hover { background: var(--primary-dark); color: #fff; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.small { padding: 3px 9px; font-size: 0.85rem; }
+a.button { display: inline-block; padding: 7px 14px; border-radius: 6px; background: var(--primary); color: #fff; text-decoration: none; font-weight: 600; }
+a.button:hover { background: var(--primary-dark); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; }
 .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; margin-bottom: -1px; color: var(--muted); }
 .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }

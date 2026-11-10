@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pricing Laboratory: instructor view</title>
+<style>
+:root { --text: #1f1e1c; --muted: #52514e; --line: #e4e3df; --panel: #f6f5f3; --primary: #2a78d6; --primary-dark: #1f5fae;
+        --accent: #eb6834; --gain: #2a78d6; --loss: #e34948; --radius: 8px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+       color: var(--text); background: #fff; font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 24px 60px; }
+h1 { font-size: 1.7rem; margin: 0 0 2px; }
+h2 { font-size: 1.1rem; margin: 18px 0 8px; }
+.caption, .small { color: var(--muted); font-size: 0.86rem; }
+.note { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 12px; color: var(--muted); font-size: 0.92rem; }
+.info { background: #e7f1fb; color: #1f5fae; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.error { background: #fbebeb; color: #9b1c1c; padding: 10px 14px; border-radius: var(--radius); margin: 10px 0; }
+.success { background: #e5f4e4; color: #1f6b2a; padding: 8px 12px; border-radius: var(--radius); margin: 8px 0; font-size: 0.92rem; }
+.panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; background: #fff; }
+.panel.shaded { background: var(--panel); }
+details.panel > summary { cursor: pointer; font-weight: 600; list-style: none; }
+details.panel > summary::before { content: "▸ "; color: var(--muted); font-size: 0.8em; }
+details[open].panel > summary::before { content: "▾ "; }
+details.panel > summary::-webkit-details-marker { display: none; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cols-4-8 { display: grid; grid-template-columns: 4fr 8fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .cols, .cols-4-8 { grid-template-columns: 1fr; } }
+label { display: block; font-size: 0.9rem; color: var(--text); margin: 8px 0 3px; }
+input[type=number], input[type=text], select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); width: 100%; }
+input[type=number]:focus, input[type=text]:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: var(--primary); background: #fff; }
+textarea { min-height: 110px; resize: vertical; }
+.radio label { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; font-weight: 400; }
+.radio input { margin-top: 4px; }
+button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--text); }
+button:hover { border-color: var(--primary); color: var(--primary); }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover { background: var(--primary-dark); color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.small { padding: 3px 9px; font-size: 0.85rem; }
+a.button { display: inline-block; padding: 7px 14px; border-radius: 6px; background: var(--primary); color: #fff; text-decoration: none; font-weight: 600; }
+a.button:hover { background: var(--primary-dark); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; margin-bottom: -1px; color: var(--muted); }
+.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tabs.inner { margin: 6px 0 8px; }
+table.grid { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+table.grid th, table.grid td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: middle; }
+table.grid th { background: var(--panel); font-weight: 600; color: var(--muted); }
+table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid input { padding: 4px 6px; background: #fff; }
+table.grid input[type=number] { text-align: right; }
+table.spec td:first-child input { min-width: 90px; }
+table.grid td.remove { width: 32px; text-align: center; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+.metric .label { color: var(--muted); font-size: 0.86rem; }
+.metric .value { font-size: 1.9rem; font-weight: 400; line-height: 1.15; }
+.metric .delta { font-size: 0.86rem; display: inline-block; padding: 1px 8px; border-radius: 10px; margin-top: 3px; }
+.metric .delta.up { background: #e5f4e4; color: #1f6b2a; } .metric .delta.down { background: #fbebeb; color: #9b1c1c; }
+.metric .delta.up.inverse { background: #fbebeb; color: #9b1c1c; } .metric .delta.down.inverse { background: #e5f4e4; color: #1f6b2a; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .tick { font-size: 11px; fill: var(--muted); } .chart .axis { font-size: 12px; fill: var(--muted); }
+.chart .note-text { font-size: 13px; font-weight: 600; }
+table.grid td.marked { box-shadow: inset 0 0 0 2px #c8102e; border-radius: 3px; }
+.dwl-note { margin-top: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 6px; }
+.legend-item { border: none; background: none; padding: 2px 4px; font-size: 0.82rem; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+.legend-item.off { color: #b5b4ae; text-decoration: line-through; }
+.legend-item:disabled { color: var(--text); opacity: 1; cursor: default; }
+.sw { display: inline-block; width: 18px; height: 10px; } .sw.line { height: 0; } .sw.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid; background: #fff; }
+.bars { margin: 6px 0 10px; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 0.86rem; }
+.bar-label { width: 36%; text-align: right; color: var(--muted); }
+.bar-track { position: relative; flex: 1; height: 22px; background: var(--panel); }
+.bar-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid #b5b4ae; }
+.bar { position: absolute; top: 2px; bottom: 2px; } .bar.gain { background: var(--gain); } .bar.loss { background: var(--loss); }
+.bar-val { position: absolute; top: 2px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; width: 44px; text-align: right; }
+.bar-val:not([style*='max']) { text-align: left; }
+.pin { display: grid; grid-template-columns: 3fr 3.5fr 1.6fr; gap: 10px; align-items: end; }
+@media (max-width: 900px) { .pin { grid-template-columns: 1fr; } }
+.group-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.group-form { display: grid; grid-template-columns: 1.6fr 6fr 1.3fr; gap: 10px; align-items: end; }
+.group-form.with-pin { grid-template-columns: 1.4fr 1.2fr 5fr 1.3fr; }
+@media (max-width: 900px) { .group-form { grid-template-columns: 1fr; } }
+.status { color: var(--muted); font-size: 0.86rem; margin-top: 8px; }
+.status.err { color: #9b1c1c; }
+.badge { display: inline-block; font-size: 0.78rem; padding: 1px 8px; border-radius: 10px; background: var(--panel); color: var(--muted); margin-left: 8px; }
+.labbook-wrap { overflow-x: auto; }
+table.grid.labbook td { white-space: nowrap; }
+table.grid.labbook th { white-space: normal; min-width: 120px; }
+table.grid.labbook th .remove-entry { float: right; margin-left: 8px; padding: 0 6px; line-height: 1.5; color: var(--muted); background: #fff; }
+table.grid.labbook th .remove-entry:hover { color: var(--loss); border-color: var(--loss); }
+table.grid.labbook td .delta { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); }
+.question { margin: 18px 0 6px; } .question h3 { margin: 0 0 4px; font-size: 1rem; }
+footer { margin-top: 30px; color: var(--muted); font-size: 0.8rem; }
+[hidden] { display: none !important; }
+.qsection { margin: 20px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.qsection h2 { margin: 4px 0 6px; font-size: 1.05rem; }
+details.prompt > summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; list-style: none; }
+details.prompt > summary::before { content: "\25B8 "; font-size: 0.8em; }
+details[open].prompt > summary::before { content: "\25BE "; }
+details.prompt > summary::-webkit-details-marker { display: none; }
+details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem; }
+
+/* Instructor page: on top of style.css */
+.signin { display: grid; grid-template-columns: 2fr 1.6fr 1fr; gap: 12px; align-items: end; max-width: 760px; }
+@media (max-width: 900px) { .signin { grid-template-columns: 1fr; } }
+.signin label.check { display: flex; gap: 8px; align-items: center; margin-bottom: 9px; }
+.signin label.check input { width: auto; }
+.class-bar { display: grid; grid-template-columns: 2fr 3fr auto; gap: 14px; align-items: end; }
+.class-bar .projector { text-align: center; } .class-bar .projector .caption { font-size: 0.78rem; margin-top: 4px; max-width: 260px; }
+@media (max-width: 900px) { .class-bar { grid-template-columns: 1fr; } }
+.class-bar .summary { color: var(--muted); font-size: 0.9rem; padding-bottom: 8px; }
+.wide { overflow-x: auto; }
+table.grid.sticky th:first-child, table.grid.sticky td:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+table.grid.sticky th:first-child { background: var(--panel); }
+table.grid td.tick { text-align: center; white-space: nowrap; }
+table.grid td.ok { color: #1f6b2a; } table.grid td.bad { color: #9b1c1c; } table.grid td.unk { color: var(--muted); }
+.links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+@media (max-width: 900px) { .links { grid-template-columns: 1fr 1fr; } }
+a.button { display: inline-block; text-align: center; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); text-decoration: none; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.button:hover { border-color: var(--primary); color: var(--primary); }
+a.button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-size: 1rem; padding: 10px 16px; }
+a.button.primary:hover { background: var(--primary-dark); }
+.answer { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin: 8px 0; white-space: pre-wrap; }
+.answer .who { font-weight: 600; margin-bottom: 4px; }
+.setup-grid { display: grid; grid-template-columns: 3fr 1.2fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .setup-grid { grid-template-columns: 1fr; } }
+.linkbox { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
+.qr { display: block; width: 200px; height: 200px; border: 1px solid var(--line); }
+.form-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 12px; align-items: end; }
+.form-row.three { grid-template-columns: 2fr 2fr 1.3fr; }
+@media (max-width: 900px) { .form-row, .form-row.three { grid-template-columns: 1fr; } }
+hr.sep { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+.qblock { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin: 10px 0; }
+.qblock h3 { margin: 0 0 6px; font-size: 1rem; }
+.section-title { font-weight: 600; margin: 10px 0 6px; }
+.err-text { color: #9b1c1c; }
+
+/* Pricing Laboratory: on top of style.css */
+.fare-form { display: grid; grid-template-columns: 2fr 1.2fr; gap: 10px; align-items: end; max-width: 420px; }
+.fare-form input { font-size: 1.3rem; }
+.phase { display: inline-block; font-size: 0.82rem; padding: 2px 10px; border-radius: 10px; background: var(--panel); color: var(--muted); margin-left: 8px; vertical-align: middle; }
+.phase.open { background: #e5f4e4; color: #1f6b2a; } .phase.closed { background: #fbebeb; color: #9b1c1c; } .phase.revealed, .phase.round2 { background: #e7f1fb; color: #1f5fae; }
+table.grid.board td.rank { width: 40px; text-align: center; color: var(--muted); }
+table.grid.board tr.me td { background: #e7f1fb; font-weight: 600; }
+body.projector .wrap { max-width: 1400px; }
+body.projector table.grid.board { font-size: 1.35rem; } body.projector table.grid.board th { font-size: 1rem; }
+body.projector h1 { font-size: 2rem; }
+.briefing { background: var(--panel); border-radius: var(--radius); padding: 12px 16px; margin: 10px 0; }
+.briefing .metrics { margin-top: 8px; }
+.scenarios { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+.scenarios button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.num-note { font-variant-numeric: tabular-nums; }
+.cols-5-7 { display: grid; grid-template-columns: 5fr 7fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .cols-5-7 { grid-template-columns: 1fr; } }
+.wide { overflow-x: auto; }
+@media (max-width: 640px) {
+  .wrap { padding: 12px 12px 50px; }
+  .metrics { grid-template-columns: 1fr 1fr; }
+  .metric .value { font-size: 1.5rem; }
+  .fare-form { grid-template-columns: 1fr; max-width: none; }
+  .tabs button { padding: 8px 8px; }
+  table.flights .opt { display: none; }
+  table.grid { font-size: 0.86rem; } table.grid th, table.grid td { padding: 4px 5px; }
+}
+.flights td.best { font-weight: 600; color: #1f6b2a; }
+.reveal-line { font-size: 1.05rem; margin: 6px 0; }
+.legend-item { cursor: default; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row between">
+    <div><h1>Pricing Laboratory: instructor view</h1><p class="caption" id="subtitle">The pricing challenge and the groups' lab books, straight from the class record.</p></div>
+    <div id="topbar" class="row"></div>
+  </div>
+  <div id="signin"></div>
+  <div id="main" hidden>
+    <div id="class-bar" class="panel shaded"></div>
+    <nav class="tabs" id="views">
+      <button type="button" data-view="challenge" class="active">Challenge</button>
+      <button type="button" data-view="overview">Lab books</button>
+      <button type="button" data-view="question">By question</button>
+      <button type="button" data-view="group">One group</button>
+      <button type="button" data-view="setup">Links and QR</button>
+    </nav>
+    <section id="view-challenge"></section>
+    <section id="view-overview" hidden></section>
+    <section id="view-question" hidden></section>
+    <section id="view-group" hidden></section>
+    <section id="view-setup" hidden></section>
+  </div>
+  <footer><span id="footer-status"></span></footer>
+</div>
+<script>window.PRICINGLAB_CONFIG = {"endpoint": "https://script.google.com/macros/s/AKfycbwK_KNABFuJpX-aNw_ZdMltYGmqVbpWCIbfP1cgCoclLdBcGxSmJ4BGhd_bJ0bYmFbz3w/exec", "app_url": "https://eozdenoren.github.io/marketlab", "classes": ["CM03AUT26A", "CM03AUT26B", "CM03AUT26C", "LIVE-TEST"]};</script>
+<script>
+/* Pricing Laboratory: the arithmetic, the SVG chart and the lab-book table, shared by the class page
+   (pricing.js) and the instructor page (pricing_instructor.js). Plain script, no dependencies.
+
+   The challenge: a route with cost mc per passenger, `seats` seats, last month's fare p0 carrying q0 passengers,
+   and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). The same arithmetic as the
+   script's (backend/Pricing.gs): passengers are rounded to the whole and capped by the seats.
+   Mocha: a list of bids (each the most one student would pay); at price p the buyers are the bids >= p. */
+var PricingCore = (function () {
+  "use strict";
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function fmt(x, d, signed) {
+    if (x == null || (typeof x === "number" && isNaN(x))) return "–";
+    if (d === undefined) d = 0;
+    if (Math.abs(x) < 5e-10) x = 0;
+    var s = Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+    return (x < 0 ? "-" : (signed ? "+" : "")) + s;
+  }
+  function money(x, d, signed) { return x == null || isNaN(x) ? "–" : (x < 0 ? "-£" : (signed ? "+£" : "£")) + fmt(Math.abs(x), d); }
+  function round(x, d) { var m = Math.pow(10, d || 0); return Math.round(x * m) / m; }
+
+  // ---- the challenge ---------------------------------------------------------------------------------------
+  function intercept(s) { return s.q0 + s.b * s.p0; }
+  // demand d = {a, b, mc, seats, scale}: Q = scale (a - b P), capped by the seats
+  function passengersAt(d, fare) { return Math.max(0, Math.min(d.seats, Math.round((d.scale || 1) * (d.a - d.b * fare)))); }
+  function profitAt(d, fare) { return (fare - d.mc) * passengersAt(d, fare); }
+  function chokePrice(d) { return d.a / d.b; }
+  // The best fare: MR = MC gives Q = scale (a - b mc) / 2; if that exceeds the seats, sell every seat at the fare
+  // that fills the plane. Fares in whole pounds, so the exact optimum is checked against its neighbours.
+  function bestFare(d) {
+    var scale = d.scale || 1, qStar = scale * (d.a - d.b * d.mc) / 2, capped = qStar > d.seats;
+    var q = capped ? d.seats : qStar, fare = (d.a - q / scale) / d.b, best = null;
+    [Math.floor(fare), Math.ceil(fare)].forEach(function (f) {
+      var pr = profitAt(d, f);
+      if (!best || pr > best.profit + 1e-9) best = { fare: f, passengers: passengersAt(d, f), profit: pr };
+    });
+    best.capped = capped; best.exactFare = fare; best.exactQ = q;
+    return best;
+  }
+  function profitCurve(d, step) {
+    var top = Math.ceil(chokePrice(d)), pts = [];
+    step = step || Math.max(1, Math.ceil(top / 1500));   // whole pounds up to a choke price of 1,500
+    for (var f = 0; f <= top; f += step) pts.push([f, profitAt(d, f)]);
+    if (pts[pts.length - 1][0] !== top) pts.push([top, profitAt(d, top)]);
+    return pts;
+  }
+  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
+  // The line through the status quo and one test flight: the group's own estimate of the demand.
+  function lineThrough(p1, q1, p2, q2) {
+    if (Math.abs(p2 - p1) < 1e-9) return null;
+    var b = (q1 - q2) / (p2 - p1);
+    return b > 0 ? { a: q1 + b * p1, b: b } : null;
+  }
+
+  // ---- Mocha -----------------------------------------------------------------------------------------------
+  function buyersAt(bids, p) { var n = 0; for (var i = 0; i < bids.length; i++) if (bids[i] >= p - 1e-9) n++; return n; }
+  function profitAtPrice(bids, p, mc) { return (p - mc) * buyersAt(bids, p); }
+  function clean(bids, opts) {
+    opts = opts || {};
+    return bids.filter(function (v) { return !(opts.dropZero && v <= 0) && !(opts.above != null && !isNaN(opts.above) && v > opts.above); });
+  }
+  // The demand schedule: at each whole price from 0 to the highest bid, how many would buy.
+  function schedule(bids) {
+    var top = bids.length ? Math.ceil(Math.max.apply(null, bids)) : 0, out = [];
+    for (var p = 0; p <= top; p++) out.push([p, buyersAt(bids, p)]);
+    return out;
+  }
+  // The best price is always one of the bids (raising the price to the next bid loses nobody).
+  function bestPrice(bids, mc) {
+    var best = null, seen = {};
+    bids.forEach(function (v) {
+      if (seen[v]) return; seen[v] = true;
+      var pr = profitAtPrice(bids, v, mc);
+      if (!best || pr > best.profit + 1e-9 || (Math.abs(pr - best.profit) < 1e-9 && v < best.price)) best = { price: v, buyers: buyersAt(bids, v), profit: pr };
+    });
+    return best || { price: null, buyers: 0, profit: 0 };
+  }
+  // The straight line fitted to the schedule, price on quantity (as the spreadsheet does with SLOPE and
+  // INTERCEPT over the Price and Demand columns): P = a - b Q.
+  function fitLine(bids) {
+    var pts = schedule(bids), n = pts.length;
+    if (n < 2) return null;
+    var sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach(function (qp) { sx += qp[1]; sy += qp[0]; sxx += qp[1] * qp[1]; sxy += qp[1] * qp[0]; });
+    var den = n * sxx - sx * sx;
+    if (Math.abs(den) < 1e-12) return null;
+    var slope = (n * sxy - sx * sy) / den, inter = (sy - slope * sx) / n;
+    if (!(slope < 0)) return null;
+    return { a: inter, b: -slope };
+  }
+  // MR = MC on the fitted line: Q = (a - mc) / (2b), P = (a + mc) / 2; the profit it earns on the actual bids.
+  function linePricing(line, bids, mc) {
+    if (!line) return null;
+    var p = (line.a + mc) / 2, q = (line.a - mc) / (2 * line.b);
+    return { price: p, lineQ: q, buyers: buyersAt(bids, p), profit: profitAtPrice(bids, p, mc) };
+  }
+  // One price for every set against a price per set.
+  function segmentation(sets, mc) {
+    var all = [], separate = [], total = 0;
+    sets.forEach(function (s) { all = all.concat(s.bids); var b = bestPrice(s.bids, mc); separate.push({ name: s.name, price: b.price, buyers: b.buyers, profit: b.profit }); total += b.profit; });
+    var uni = bestPrice(all, mc);
+    var uniform = { price: uni.price, profit: uni.profit, per: sets.map(function (s) { return { name: s.name, buyers: buyersAt(s.bids, uni.price), profit: profitAtPrice(s.bids, uni.price, mc) }; }) };
+    return { uniform: uniform, separate: separate, total: total, gain: total - uni.profit, gainPct: uni.profit > 0 ? (total - uni.profit) / uni.profit : null };
+  }
+  function histogram(bids, width) {
+    width = width || 5;
+    var top = bids.length ? Math.max.apply(null, bids) : 0, bins = [];
+    for (var lo = 0; lo <= top; lo += width) {
+      var hi = lo + width, n = bids.filter(function (v) { return v >= lo && (v < hi || (hi > top && v <= hi)); }).length;
+      bins.push({ lo: lo, hi: hi, n: n });
+    }
+    return bins;
+  }
+  function median(bids) { if (!bids.length) return null; var s = bids.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+
+  // ---- the chart ------------------------------------------------------------------------------------------------
+  // spec: {w, h, x: {min, max, label}, y: {min, max, label}, lines: [{pts, color, width, dash, name}],
+  //        bars: [{x0, x1, y, color, name}], markers: [{x, y, color, hollow, label, name}], hlines: [{y, label, color}],
+  //        vlines: [{x, label, color}], legend: true}
+  function niceStep(span, target) {
+    var raw = span / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+    return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
+  }
+  function ticks(lo, hi, target) {
+    var step = niceStep(hi - lo || 1, target || 6), out = [];
+    for (var v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  function rgba(hex, a) { var h = hex.replace("#", ""); return "rgba(" + parseInt(h.substr(0, 2), 16) + "," + parseInt(h.substr(2, 2), 16) + "," + parseInt(h.substr(4, 2), 16) + "," + a + ")"; }
+  function dashAttr(d) { return d === "dash" ? ' stroke-dasharray="8,5"' : d === "dot" ? ' stroke-dasharray="2,4"' : d === "dashdot" ? ' stroke-dasharray="10,4,2,4"' : ""; }
+  var COLORS = { blue: "#2a78d6", red: "#e34948", green: "#1baf7a", orange: "#eb6834", purple: "#7b4fb3", grey: "#8a8984", text: "#52514e", grid: "#ececea", black: "#0b0b0b" };
+  function chart(spec) {
+    var W = spec.w || 760, H = spec.h || 400, ml = 62, mr = 16, mt = 16, mb = 46, pw = W - ml - mr, ph = H - mt - mb;
+    var xmin = spec.x.min || 0, xmax = spec.x.max, ymin = spec.y.min || 0, ymax = spec.y.max;
+    if (!(xmax > xmin)) xmax = xmin + 1;
+    if (!(ymax > ymin)) ymax = ymin + 1;
+    var X = function (x) { return ml + (x - xmin) / (xmax - xmin) * pw; }, Y = function (y) { return H - mb - (y - ymin) / (ymax - ymin) * ph; };
+    var body = [], legend = [];
+    ticks(xmin, xmax, 7).forEach(function (t) {
+      body.push('<line x1="' + X(t) + '" x2="' + X(t) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.grid + '"/>');
+      body.push('<text x="' + X(t) + '" y="' + (H - mb + 16) + '" text-anchor="middle" class="tick">' + fmt(t, 0) + '</text>');
+    });
+    ticks(ymin, ymax, 6).forEach(function (t) {
+      body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + Y(t) + '" y2="' + Y(t) + '" stroke="' + (Math.abs(t) < 1e-9 ? COLORS.text : COLORS.grid) + '"/>');
+      body.push('<text x="' + (ml - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end" class="tick">' + fmt(t, 0) + '</text>');
+    });
+    body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + (H - mb) + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.2"/>');
+    body.push('<line x1="' + ml + '" x2="' + ml + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + COLORS.text + '" stroke-width="1.2"/>');
+    body.push('<text x="' + (ml + pw / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="axis">' + esc(spec.x.label || "") + '</text>');
+    body.push('<text transform="translate(14,' + (mt + ph / 2) + ') rotate(-90)" text-anchor="middle" class="axis">' + esc(spec.y.label || "") + '</text>');
+    var cid = "clip" + Math.random().toString(16).slice(2, 8);
+    body.push('<clipPath id="' + cid + '"><rect x="' + ml + '" y="' + mt + '" width="' + pw + '" height="' + ph + '"/></clipPath><g clip-path="url(#' + cid + ')">');
+    (spec.bars || []).forEach(function (b, i) {
+      var x0 = X(b.x0), x1 = X(b.x1), y1 = Y(b.y), y0 = Y(Math.max(ymin, 0));
+      body.push('<rect x="' + (x0 + 1) + '" y="' + Math.min(y0, y1) + '" width="' + Math.max(0, x1 - x0 - 2) + '" height="' + Math.abs(y0 - y1) + '" fill="' + rgba(b.color || COLORS.blue, 0.55) + '"><title>' + esc(b.title || "") + '</title></rect>');
+      if (b.name && !legend.some(function (l) { return l.name === b.name; })) legend.push({ name: b.name, color: b.color || COLORS.blue, kind: "area" });
+    });
+    (spec.lines || []).forEach(function (l) {
+      if (!l.pts || l.pts.length < 2) return;
+      var d = l.pts.map(function (xy) { return X(xy[0]).toFixed(2) + "," + Y(xy[1]).toFixed(2); }).join(" ");
+      body.push('<polyline points="' + d + '" fill="none" stroke="' + l.color + '" stroke-width="' + (l.width || 2) + '"' + dashAttr(l.dash) + ' stroke-linejoin="round"/>');
+      if (l.name) legend.push({ name: l.name, color: l.color, kind: "line", dash: l.dash });
+    });
+    body.push("</g>");
+    (spec.hlines || []).forEach(function (l) {
+      if (l.y < ymin || l.y > ymax) return;
+      body.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + Y(l.y) + '" y2="' + Y(l.y) + '" stroke="' + (l.color || COLORS.text) + '" stroke-width="1.3"' + dashAttr("dashdot") + '/>');
+      if (l.label) body.push('<text x="' + (W - mr - 4) + '" y="' + (Y(l.y) - 5) + '" text-anchor="end" class="tick">' + esc(l.label) + '</text>');
+    });
+    (spec.vlines || []).forEach(function (l) {
+      if (l.x < xmin || l.x > xmax) return;
+      body.push('<line x1="' + X(l.x) + '" x2="' + X(l.x) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + (l.color || COLORS.text) + '" stroke-width="1.3"' + dashAttr("dashdot") + '/>');
+      if (l.label) body.push('<text x="' + (X(l.x) + 4) + '" y="' + (mt + 12) + '" class="tick">' + esc(l.label) + '</text>');
+    });
+    (spec.markers || []).forEach(function (m) {
+      if (m.x < xmin || m.x > xmax || m.y < ymin || m.y > ymax) return;
+      var r = m.r || 5.5;
+      body.push('<circle cx="' + X(m.x) + '" cy="' + Y(m.y) + '" r="' + r + '" fill="' + (m.hollow ? "white" : m.color) + '" stroke="' + (m.hollow ? m.color : "white") + '" stroke-width="2"><title>' + esc(m.title || m.name || "") + '</title></circle>');
+      if (m.label) body.push('<text x="' + (X(m.x) + 8) + '" y="' + (Y(m.y) - 8) + '" class="note-text" paint-order="stroke" stroke="white" stroke-width="4" fill="' + COLORS.text + '">' + esc(m.label) + '</text>');
+      if (m.name && !legend.some(function (l) { return l.name === m.name; })) legend.push({ name: m.name, color: m.color, kind: "marker", hollow: m.hollow });
+    });
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="' + esc(spec.title || "chart") + '">' + body.join("") + '</svg>';
+    var lg = spec.legend === false ? "" : '<div class="legend">' + legend.map(function (it) {
+      var sw = it.kind === "area" ? '<span class="sw area" style="background:' + rgba(it.color, 0.55) + '"></span>'
+             : it.kind === "line" ? '<span class="sw line" style="border-top:2.5px ' + (it.dash ? "dashed" : "solid") + ' ' + it.color + '"></span>'
+             : '<span class="sw dot" style="border-color:' + it.color + (it.hollow ? "" : ";background:" + it.color) + '"></span>';
+      return '<span class="legend-item">' + sw + esc(it.name) + '</span>';
+    }).join("") + '</div>';
+    return svg + lg;
+  }
+
+  // ---- the lab-book table: rows are the measures in order of first appearance, columns the pinned entries -----
+  function bookTable(entries, opts) {
+    opts = opts || {};
+    var rows = [], seen = {};
+    entries.forEach(function (e) { Object.keys(e.measures || {}).forEach(function (k) { if (!seen[k]) { seen[k] = true; rows.push(k); } }); });
+    var labels = {}, h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + entries.map(function (e) {
+      var label = (e.label || "Experiment").trim(), n = (labels[label] || 0) + 1; labels[label] = n; if (n > 1) label += " (" + n + ")";
+      var mark = opts.mark && opts.mark[e.id] ? opts.mark[e.id] + " " : "";
+      var btn = opts.removable ? '<button type="button" class="small remove-entry" data-id="' + esc(e.id) + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(label) + '">✕</button>' : "";
+      return '<th>' + btn + mark + esc(label) + '</th>';
+    }).join("") + '</tr></thead><tbody>';
+    rows.forEach(function (m) {
+      h += '<tr><td>' + esc(m) + '</td>' + entries.map(function (e) {
+        var v = (e.measures || {})[m];
+        return '<td class="num">' + (v == null ? "–" : (typeof v === "number" ? fmt(v, Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 2) : esc(v))) + '</td>';
+      }).join("") + '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
+           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve,
+           statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
+           buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
+           segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;
+
+</script>
+<script>
+/* Pricing Laboratory: the lab-book sections, shared by the class page (pricing.js) and the instructor page
+   (pricing_instructor.js). Pins are filed under the question TITLE (psectionOf); answers under the id. */
+var PQUESTIONS = [
+  { id: "c1", tab: "challenge", title: "1. Your flights",
+    prompt: "After the reveal. Which of your fares earned the most, and how far was it from the best fare? What did your first test flight cost you, and what did it tell you about the demand? Looking at the profit curve, how much does it cost to be £50 off the best fare, and how much to fill the plane? What would you do with six more flights?" },
+  { id: "c2", tab: "challenge", title: "2. Demand rises 40%",
+    prompt: "Round 2, first scenario: at every fare, 40% more people want to fly than in round 1. Before you test anything, write down your guess for the best fare. Then test fares and pin the one you recommend. Does the best fare change? Explain why, in terms of what a lower fare costs on the passengers you already carry and what it earns on the new ones." },
+  { id: "c3", tab: "challenge", title: "3. Demand doubles",
+    prompt: "Round 2, second scenario: demand doubles. Test fares and pin the one you recommend. What limits you now that did not before, and how does the best fare compare with the first scenario? At that fare, how many people would like to fly and cannot? What would you expect to see outside the airport?" },
+  { id: "m1", tab: "mocha", title: "4. Price Mocha for your stream",
+    prompt: "The bids are the most each student in your stream said they would pay for Mocha in Session 1. With a cost of £15 per Mocha, find the price that earns the most and pin it. How many of your classmates buy at that price, and what share of the stream is that? Why is the best price not the price that sells the most, and not the median bid?" },
+  { id: "m2", tab: "mocha", title: "5. The straight line",
+    prompt: "Show the fitted line. It turns the bids into a demand line P = a − bQ, and MR = MC on that line gives a price. How far is that price from the best price on the raw bids, and how much profit does it give up? Pin it. What is it about your classmates' bids that the line does not see? When would you trust the line more than the raw bids?" },
+  { id: "m3", tab: "mocha", title: "6. Do you believe the bids at £50?",
+    prompt: "Bids were capped at £50, and several students bid exactly that. Ignore bids above £49 and price again; then put them back and ignore the £0 bids instead. Pin both. Which bids would you trust when setting a real price, and what price would you actually charge?" },
+  { id: "m4", tab: "mocha", title: "7. Three streams, three prices",
+    prompt: "Open Three streams. If you could charge each stream its own price, how much more would you earn than with one price for all, in pounds and in percent? Why is the gain the size it is? Add last year's bids as a fourth market and look again: what changes, and why?" },
+  { id: "own", title: "Your own experiments",
+    prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
+function psectionOf(entry) { for (var i = 0; i < PQUESTIONS.length; i++) if (PQUESTIONS[i].title === entry.question) return PQUESTIONS[i].id; return "own"; }
+if (typeof module !== "undefined" && module.exports) module.exports = { PQUESTIONS: PQUESTIONS, psectionOf: psectionOf };
+
+</script>
+<script>
+/* Marketplace Laboratory: QR codes for the class link, in the page itself (no library, no network). Byte mode, error
+   correction level M, versions 1 to 10, so up to 213 bytes of text. MLQR.matrix(text) gives the modules as rows of
+   0/1 without the quiet zone; MLQR.svg(text, size) the picture. tests/check_qr.py compares the modules with segno's. */
+var MLQR = (function () {
+  "use strict";
+  // Level M, versions 1..10: [data codewords per block and blocks in group 1, the same for group 2, EC codewords per block]
+  var BLOCKS = [[16, 1, 0, 0, 10], [28, 1, 0, 0, 16], [44, 1, 0, 0, 26], [32, 2, 0, 0, 18], [43, 2, 0, 0, 24],
+                [27, 4, 0, 0, 16], [31, 4, 0, 0, 18], [38, 2, 39, 2, 22], [36, 3, 37, 2, 22], [43, 4, 44, 1, 26]];
+  var ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+  var VERSION_INFO = { 7: 0x07C94, 8: 0x085BC, 9: 0x09A99, 10: 0x0A4D3 };
+  var MASKS = [
+    function (r, c) { return (r + c) % 2 === 0; },
+    function (r, c) { return r % 2 === 0; },
+    function (r, c) { return c % 3 === 0; },
+    function (r, c) { return (r + c) % 3 === 0; },
+    function (r, c) { return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0; },
+    function (r, c) { return (r * c) % 2 + (r * c) % 3 === 0; },
+    function (r, c) { return ((r * c) % 2 + (r * c) % 3) % 2 === 0; },
+    function (r, c) { return ((r + c) % 2 + (r * c) % 3) % 2 === 0; }];
+
+  // GF(256) with the QR primitive polynomial x^8 + x^4 + x^3 + x^2 + 1
+  var EXP = [], LOG = [];
+  (function () {
+    var x = 1;
+    for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+    for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255];
+  })();
+  function mul(a, b) { return a && b ? EXP[LOG[a] + LOG[b]] : 0; }
+  function generator(n) {       // coefficients of the degree-n generator polynomial, highest power first
+    var g = [1];
+    for (var i = 0; i < n; i++) {
+      var ng = []; for (var k = 0; k <= g.length; k++) ng.push(0);
+      for (var j = 0; j < g.length; j++) { ng[j] ^= g[j]; ng[j + 1] ^= mul(g[j], EXP[i]); }
+      g = ng;
+    }
+    return g;
+  }
+  function ecCodewords(data, n) {
+    var g = generator(n), res = [];
+    for (var k = 0; k < n; k++) res.push(0);
+    for (var i = 0; i < data.length; i++) {
+      var f = data[i] ^ res[0];
+      res.shift(); res.push(0);
+      if (f) for (var j = 0; j < n; j++) res[j] ^= mul(g[j + 1], f);
+    }
+    return res;
+  }
+  function toBytes(text) {
+    var s = unescape(encodeURIComponent(String(text))), out = [];
+    for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  }
+  function formatBits(mask) {
+    var data = mask;      // level M is 00, then the three mask bits
+    var val = data << 10;
+    for (var i = 14; i >= 10; i--) if ((val >> i) & 1) val ^= 0x537 << (i - 10);
+    return ((data << 10) | val) ^ 0x5412;
+  }
+  function penalty(m) {
+    var n = m.length, score = 0, r, c, run, dark = 0;
+    for (var pass = 0; pass < 2; pass++) {
+      for (r = 0; r < n; r++) {
+        run = 1;
+        for (c = 1; c <= n; c++) {
+          var cur = c < n ? (pass ? m[c][r] : m[r][c]) : -1, prev = pass ? m[c - 1][r] : m[r][c - 1];
+          if (cur === prev) run++; else { if (run >= 5) score += 3 + run - 5; run = 1; }
+        }
+        for (c = 0; c + 6 < n; c++) {
+          var line = []; for (var k = 0; k < 7; k++) line.push(pass ? m[c + k][r] : m[r][c + k]);
+          if (line.join("") === "1011101") {
+            var before = 0, after = 0;     // the quiet zone outside the symbol counts as light
+            for (k = 1; k <= 4; k++) { if (c - k < 0 || !(pass ? m[c - k][r] : m[r][c - k])) before++; if (c + 6 + k >= n || !(pass ? m[c + 6 + k][r] : m[r][c + 6 + k])) after++; }
+            if (before === 4 || after === 4) { score += 40; c += 6; }   // the next pattern can only start after this one
+          }
+        }
+      }
+    }
+    for (r = 0; r + 1 < n; r++) for (c = 0; c + 1 < n; c++) {
+      var v = m[r][c]; if (m[r][c + 1] === v && m[r + 1][c] === v && m[r + 1][c + 1] === v) score += 3;
+    }
+    for (r = 0; r < n; r++) for (c = 0; c < n; c++) dark += m[r][c];
+    var pct = 100 * dark / (n * n), lo = Math.floor(pct / 5) * 5, hi = lo + 5;
+    score += Math.min(Math.abs(lo - 50), Math.abs(hi - 50)) / 5 * 10;
+    return score;
+  }
+
+  function matrix(text, forceMask) {
+    var bytes = toBytes(text), v = 0, i, j, r, c;
+    for (i = 0; i < BLOCKS.length; i++) {
+      var cap0 = BLOCKS[i][0] * BLOCKS[i][1] + BLOCKS[i][2] * BLOCKS[i][3];
+      if (4 + (i + 1 <= 9 ? 8 : 16) + 8 * bytes.length <= 8 * cap0) { v = i + 1; break; }
+    }
+    if (!v) throw new Error("too long for a QR code (" + bytes.length + " bytes; the limit is 213)");
+    var b = BLOCKS[v - 1], cap = b[0] * b[1] + b[2] * b[3];
+    // the bit stream: mode, count, the bytes, terminator, padding
+    var bits = [];
+    var push = function (val, nbits) { for (var k = nbits - 1; k >= 0; k--) bits.push((val >> k) & 1); };
+    push(4, 4); push(bytes.length, v <= 9 ? 8 : 16);
+    bytes.forEach(function (x) { push(x, 8); });
+    for (i = 0; i < 4 && bits.length < 8 * cap; i++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var data = [];
+    for (i = 0; i < bits.length; i += 8) { var byte = 0; for (j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j]; data.push(byte); }
+    for (i = 0; data.length < cap; i++) data.push(i % 2 ? 0x11 : 0xEC);
+    // blocks, error correction, interleaving
+    var blocks = [], pos = 0;
+    for (i = 0; i < b[1]; i++) { blocks.push(data.slice(pos, pos + b[0])); pos += b[0]; }
+    for (i = 0; i < b[3]; i++) { blocks.push(data.slice(pos, pos + b[2])); pos += b[2]; }
+    var ecs = blocks.map(function (blk) { return ecCodewords(blk, b[4]); });
+    var stream = [], maxK = Math.max(b[0], b[2]);
+    for (i = 0; i < maxK; i++) blocks.forEach(function (blk) { if (i < blk.length) stream.push(blk[i]); });
+    for (i = 0; i < b[4]; i++) ecs.forEach(function (e) { stream.push(e[i]); });
+    // the modules: m holds the bits, fn marks function patterns and reserved areas
+    var n = 17 + 4 * v, m = [], fn = [];
+    for (r = 0; r < n; r++) { var row = [], frow = []; for (c = 0; c < n; c++) { row.push(0); frow.push(false); } m.push(row); fn.push(frow); }
+    var set = function (rr, cc, val) { m[rr][cc] = val ? 1 : 0; fn[rr][cc] = true; };
+    var finder = function (r0, c0) {
+      for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
+        var rr = r0 + dr, cc = c0 + dc; if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+        var inside = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+        set(rr, cc, inside && (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4)));
+      }
+    };
+    finder(0, 0); finder(0, n - 7); finder(n - 7, 0);
+    for (i = 8; i < n - 8; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    var al = ALIGN[v - 1];
+    al.forEach(function (rc) { al.forEach(function (cc) {
+      if ((rc <= 7 && cc <= 7) || (rc <= 7 && cc >= n - 8) || (rc >= n - 8 && cc <= 7)) return;   // would sit on a finder
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++) set(rc + dr, cc + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+    }); });
+    for (i = 0; i <= 8; i++) { fn[8][i] = true; fn[i][8] = true; }                // format information
+    for (i = 0; i < 8; i++) { fn[8][n - 1 - i] = true; fn[n - 1 - i][8] = true; }
+    if (v >= 7) {
+      var vi = VERSION_INFO[v];
+      for (i = 0; i < 18; i++) { var bit = (vi >> i) & 1; set(Math.floor(i / 3), n - 11 + i % 3, bit); set(n - 11 + i % 3, Math.floor(i / 3), bit); }
+    }
+    // the data, in the zigzag from the bottom right, two columns at a time, skipping the timing column
+    var idx = 0, up = true;
+    for (var col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col = 5;
+      for (var step = 0; step < n; step++) {
+        var rr = up ? n - 1 - step : step;
+        for (var dc = 0; dc < 2; dc++) {
+          var cc = col - dc; if (fn[rr][cc]) continue;
+          m[rr][cc] = idx < stream.length * 8 ? (stream[idx >> 3] >> (7 - (idx & 7))) & 1 : 0; idx++;
+        }
+      }
+      up = !up;
+    }
+    // mask and format information: try the eight masks, keep the one with the lowest penalty
+    var placeFormat = function (mm, mask) {
+      var f = formatBits(mask), at = function (k) { return (f >> (14 - k)) & 1; };
+      for (var k = 0; k < 6; k++) { mm[8][k] = at(k); mm[5 - k][8] = at(9 + k); }
+      mm[8][7] = at(6); mm[8][8] = at(7); mm[7][8] = at(8);
+      for (k = 0; k < 7; k++) mm[n - 1 - k][8] = at(k);
+      for (k = 0; k < 8; k++) mm[8][n - 8 + k] = at(7 + k);
+      mm[n - 8][8] = 1;
+    };
+    var masked = function (mask) {
+      var mm = m.map(function (row) { return row.slice(); });
+      for (var rr = 0; rr < n; rr++) for (var cc = 0; cc < n; cc++) if (!fn[rr][cc] && MASKS[mask](rr, cc)) mm[rr][cc] ^= 1;
+      placeFormat(mm, mask);
+      return mm;
+    };
+    if (forceMask != null) return masked(forceMask);
+    var best = null, bestScore = Infinity;
+    for (var k = 0; k < 8; k++) { var cand = masked(k), s = penalty(cand); if (s < bestScore) { best = cand; bestScore = s; } }
+    return best;
+  }
+
+  function svg(text, size) {
+    var m = matrix(text), n = m.length, q = 2, total = n + 2 * q, d = "";
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (m[r][c]) d += "M" + (c + q) + " " + (r + q) + "h1v1h-1z";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + total + ' ' + total + '" width="' + size + '" height="' + size +
+           '" shape-rendering="crispEdges" role="img" aria-label="QR code"><rect width="100%" height="100%" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+  }
+  return { matrix: matrix, svg: svg };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
+
+</script>
+<script>
+/* Pricing Laboratory instructor page: the challenge's controls and live leaderboard, and the groups' lab books, read
+   straight from the pricing script (backend/Pricing.gs). Sign in with the instructor password (or the admin token);
+   the credential goes to the script with every request and stays in this browser. Depends on PricingCore
+   (pricing_core.js), MLQR (qr.js) and the questions in pricing_questions.js. */
+(function () {
+  "use strict";
+  var C = PricingCore, esc = C.esc, fmt = C.fmt, money = C.money;
+  var CONFIG = window.PRICINGLAB_CONFIG || {};
+  var ENDPOINT = (CONFIG.endpoint || "").trim();
+  var APP_URL = (CONFIG.app_url || "").replace(/\/+$/, "") || location.href.replace(/[?#].*$/, "").replace(/\/[^\/]*$/, "");
+  var CLASSES = (CONFIG.classes || []).map(function (c) { return String(c).trim().toUpperCase(); }).filter(Boolean);
+  var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
+  var VIEWS = ["challenge", "overview", "question", "group", "setup"];
+  var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
+  // Three routes with round numbers; the hidden slope differs, so the answer differs from one stream to the next.
+  var PRESETS = [
+    { label: "London–Detroit", mc: 80, seats: 450, p0: 580, q0: 350, b: 0.5, flights: 6 },
+    { label: "London–Chicago", mc: 100, seats: 420, p0: 650, q0: 340, b: 0.4, flights: 6 },
+    { label: "London–Singapore", mc: 80, seats: 320, p0: 800, q0: 280, b: 0.25, flights: 6 }];
+  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, readAt: null, busy: false, error: "", msg: "", form: null };
+
+  function $(id) { return document.getElementById(id); }
+  function fmtTime(ts, withDate) {
+    if (!ts) return "";
+    var o = withDate === false ? { hour: "2-digit", minute: "2-digit", second: "2-digit" } : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" };
+    o.timeZone = "Europe/London"; o.hour12 = false;
+    return new Date(ts * 1000).toLocaleString("en-GB", o).replace(",", "");
+  }
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+  function csvCell(v) { var s = v == null ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function csv(rows) { return rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n") + "\r\n"; }
+  function download(name, text) {
+    var a = document.createElement("a"), url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+  function classLink(cls) { return APP_URL + "/pricing.html?class=" + encodeURIComponent(cls); }
+  function projectorLink(cls) { return classLink(cls) + "&projector=1"; }
+  function selectOptions(values, current, labels) { return values.map(function (v, i) { return '<option value="' + esc(v) + '"' + (v === current ? " selected" : "") + '>' + esc(labels ? labels[i] : v) + '</option>'; }).join(""); }
+  function questionIndex(title) { for (var i = 0; i < PQUESTIONS.length; i++) if (PQUESTIONS[i].title === title) return i; return PQUESTIONS.length - 1; }
+  function ticks(n) { return n === 0 ? "" : (n <= 3 ? "✓".repeat(n) : "✓×" + n); }
+
+  // ---- the class record ------------------------------------------------------------------------------------------
+  function api(params) {
+    var qs = Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
+    return fetch(ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + qs).then(function (r) { return r.json(); });
+  }
+  function post(body) { return fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+  function loadRecords(cb) {
+    S.busy = true; renderTop();
+    api({ token: S.cred }).then(function (j) {
+      S.busy = false;
+      if (!j || !j.ok) { cb(j && j.error ? j.error : "no answer from the class record"); return; }
+      S.records = j.records || []; S.readAt = Date.now() / 1000; rebuild(); cb(null);
+    }).catch(function (err) { S.busy = false; cb(String(err && err.message || err)); });
+  }
+  function loadChallenge(cb) {
+    if (!S.cls) { if (cb) cb(); return; }
+    api({ token: S.cred, action: "challenge", "class": S.cls }).then(function (j) {
+      if (j && j.ok) { S.challenge = j.challenge; S.defaults = j.defaults; }
+      if (cb) cb(j && j.ok ? null : ((j && j.error) || "no answer"));
+    }).catch(function (err) { if (cb) cb(String(err && err.message || err)); });
+  }
+  function booksFromRecords(records) {
+    var books = {};
+    records.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (f) {
+      var state = f.state || {}, lbk = state.labbook, cls = state["class"] || "", key = cls + "\u0000" + (f.group || "");
+      var g = books[key] || (books[key] = { "class": cls, group: f.group || "", names: "", entries: {}, order: [], notes: "", answers: {}, last: 0 });
+      g.last = Math.max(g.last, f.ts || 0);
+      if (state.names) g.names = state.names;
+      if (!lbk) return;
+      if (lbk.kind === "notes") { g.notes = f.finding || ""; return; }
+      if (lbk.kind === "answers") { Object.keys(state.answers || {}).forEach(function (k) { if (String(state.answers[k] || "").trim()) g.answers[k] = state.answers[k]; }); return; }
+      if (lbk.deleted) { delete g.entries[lbk.id]; return; }
+      var sw = {}; Object.keys(state).forEach(function (k) { if (k !== "labbook") sw[k] = state[k]; });
+      if (!g.entries[lbk.id]) g.order.push(lbk.id);
+      g.entries[lbk.id] = { id: lbk.id, ts: f.ts || 0, tab: lbk.tab || "", label: lbk.label || "", question: f.question || "", note: f.finding || "", measures: lbk.measures || {}, state: sw };
+    });
+    return books;
+  }
+  function entriesOf(bk) { return bk.order.filter(function (id) { return bk.entries[id]; }).map(function (id) { return bk.entries[id]; }); }
+  function rebuild() {
+    S.books = booksFromRecords(S.records);
+    var seen = {}; CLASSES.forEach(function (c) { seen[c] = true; });
+    Object.keys(S.books).forEach(function (k) { if (S.books[k]["class"]) seen[S.books[k]["class"]] = true; });
+    S.classes = Object.keys(seen);
+    if (S.classes.indexOf(S.cls) < 0) S.cls = S.classes.length ? S.classes[0] : "";
+  }
+  function booksOf(cls) {
+    return Object.keys(S.books).map(function (k) { return S.books[k]; }).filter(function (bk) { return bk["class"] === cls; })
+                 .sort(function (a, b) { return a.group.localeCompare(b.group, undefined, { numeric: true }); });
+  }
+
+  // ---- sign-in and the top bar ---------------------------------------------------------------------------------
+  function storedCred() { try { return localStorage.getItem(CRED_KEY) || sessionStorage.getItem(CRED_KEY) || ""; } catch (e) { return ""; } }
+  function storeCred(cred, remember) { try { sessionStorage.setItem(CRED_KEY, cred); if (remember) localStorage.setItem(CRED_KEY, cred); else localStorage.removeItem(CRED_KEY); } catch (e) {} }
+  function clearCred() { try { sessionStorage.removeItem(CRED_KEY); localStorage.removeItem(CRED_KEY); } catch (e) {} }
+  function renderSignin(error) {
+    $("main").hidden = true; $("topbar").innerHTML = "";
+    if (!ENDPOINT) { $("signin").innerHTML = '<div class="error">This copy of the instructor page has no class record endpoint. Build it with <code>python3 build.py --config config.json</code> with a "pricing" section in the config.</div>'; return; }
+    $("signin").innerHTML = '<div class="panel"><form id="signin-form" class="signin">' +
+      '<div><label for="pw">Instructor password</label><input type="password" id="pw" autocomplete="current-password" autofocus></div>' +
+      '<div><label class="check"><input type="checkbox" id="remember"> Remember on this computer</label></div>' +
+      '<div><button type="submit" class="primary" id="signin-btn" style="width:100%">Sign in</button></div></form>' +
+      '<p class="caption">The password of the Pricing Laboratory\'s script (its INSTRUCTOR_PASSWORD property). Leave "Remember" unticked on a shared computer.</p>' +
+      '<div id="signin-error" class="error"' + (error ? "" : " hidden") + '>' + esc(error || "") + '</div></div>';
+    $("signin-form").onsubmit = function (ev) {
+      ev.preventDefault();
+      var pw = $("pw").value, remember = $("remember").checked, btn = $("signin-btn"), errEl = $("signin-error");
+      if (!pw) { errEl.textContent = "Please type the password."; errEl.hidden = false; return; }
+      btn.disabled = true; btn.textContent = "Checking…"; S.cred = pw;
+      loadRecords(function (err) {
+        if (err) {
+          S.cred = ""; btn.disabled = false; btn.textContent = "Sign in";
+          errEl.textContent = /bad token|locked/.test(err) ? (/locked/.test(err) ? "Too many wrong passwords; the class record refuses sign-ins for a while." : "Wrong password.") : "Could not reach the class record (" + err + ").";
+          errEl.hidden = false; return;
+        }
+        storeCred(pw, remember); start();
+      });
+    };
+  }
+  function renderTop() {
+    if (!S.cred) return;
+    $("topbar").innerHTML = '<span class="caption" id="top-status">' + (S.busy ? "Reading the class record…" : (S.readAt ? "Read at " + fmtTime(S.readAt, false) : "")) + '</span>' +
+      '<button type="button" id="refresh"' + (S.busy ? " disabled" : "") + '>Refresh</button><button type="button" id="signout">Sign out</button>';
+    $("refresh").onclick = function () { loadRecords(function (err) { S.error = err || ""; loadChallenge(function () { render(); }); }); };
+    $("signout").onclick = function () { clearCred(); S.cred = ""; S.records = null; clearTimeout(pollTimer); renderSignin(); };
+  }
+  function start() {
+    $("signin").innerHTML = ""; $("main").hidden = false;
+    try { var c = localStorage.getItem(CLASS_KEY); if (c != null && S.classes.indexOf(c) >= 0) S.cls = c; } catch (e) {}
+    loadChallenge(function () { render(); schedulePoll(); });
+  }
+  var pollTimer = null;
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    if (!S.cred) return;
+    pollTimer = setTimeout(function () {
+      if (S.view === "challenge" && S.challenge && (S.challenge.phase === "open" || S.challenge.phase === "closed")) loadChallenge(function () { renderChallenge(); schedulePoll(); });
+      else schedulePoll();
+    }, 5000);
+  }
+
+  // ---- the page -------------------------------------------------------------------------------------------------------
+  function render() {
+    renderTop();
+    $("footer-status").textContent = S.records ? plural(S.records.length, "record") + " in the class record, read at " + fmtTime(S.readAt, false) + (S.error ? " · " + S.error : "") : "";
+    renderClassBar();
+    VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== S.view; });
+    Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-view") === S.view); });
+    if (S.view === "challenge") renderChallenge();
+    else if (S.view === "overview") renderOverview(booksOf(S.cls));
+    else if (S.view === "question") renderByQuestion(booksOf(S.cls));
+    else if (S.view === "group") renderOneGroup(booksOf(S.cls));
+    else renderSetup(S.cls);
+  }
+  function renderClassBar() {
+    var el = $("class-bar"), books = booksOf(S.cls), nPins = 0;
+    books.forEach(function (bk) { nPins += entriesOf(bk).length; });
+    if (!S.classes.length) { el.innerHTML = '<div class="info" style="margin:0">No classes: put this term\'s class codes under "classes" in config.json and rebuild.</div>'; return; }
+    el.innerHTML = '<div class="class-bar"><div><label for="class-pick">Class</label><select id="class-pick">' + selectOptions(S.classes, S.cls) + '</select></div>' +
+      '<div class="summary">' + plural(books.length, "group") + " with lab books, " + plural(nPins, "pinned column") + (S.challenge ? "; challenge: " + esc(phaseLabel(S.challenge.phase)) + ", " + plural(S.challenge.flights.length, "flight") : "; no challenge set up") + '.</div>' +
+      '<div class="projector"><a class="button primary" id="projector-open" target="_blank" rel="noopener" href="' + esc(projectorLink(S.cls)) + '">Open the projector page</a><div class="caption">The leaderboard while round 1 runs, the reveal afterwards; no group, nothing sent</div></div></div>';
+    $("class-pick").onchange = function () { S.cls = this.value; S.group = ""; S.form = null; S.msg = ""; try { localStorage.setItem(CLASS_KEY, S.cls); } catch (e) {} loadChallenge(function () { render(); }); };
+  }
+  function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p; }
+
+  // ---- the challenge ------------------------------------------------------------------------------------------------
+  function formValues() {
+    var f = S.form; if (f) return f;
+    var s = S.challenge ? S.challenge.settings : (S.defaults || PRESETS[0]);
+    S.form = { label: s.label || "", mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, b: s.b, flights: s.flights };
+    return S.form;
+  }
+  function derived(s) {
+    var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats }, best = C.bestFare(d), sq = C.statusQuoProfit(s);
+    var fill = Math.ceil((d.a - s.seats) / s.b);
+    return { d: d, best: best, sq: sq, choke: C.chokePrice(d), fill: fill, fillProfit: C.profitAt(d, fill), up: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 1.4 }), dbl: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }) };
+  }
+  function renderChallenge() {
+    var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
+    var h = '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
+    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': cost ' + p.mc + ', ' + p.seats + ' seats, last month ' + p.p0 + ' / ' + p.q0 + ', slope ' + p.b + '</option>'; }).join("") + '</select></div>';
+    h += '<form id="settings" class="cols" style="gap:10px 20px">' +
+      ['label|Route (shown to students)|text', 'mc|Cost per passenger (£)|number', 'seats|Seats|number', 'p0|Last month\'s fare (£)|number', 'q0|Passengers last month|number', 'b|Hidden slope b (passengers lost per £1 on the fare)|number', 'flights|Flights in round 1|number'].map(function (spec) {
+        var parts = spec.split("|");
+        return '<div><label for="f-' + parts[0] + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="f-' + parts[0] + '" data-f="' + parts[0] + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '></div>';
+      }).join("") + '</form>';
+    var s = { mc: +f.mc, seats: +f.seats, p0: +f.p0, q0: +f.q0, b: +f.b, flights: +f.flights }, ok = s.b > 0 && s.seats > 0 && s.q0 >= 0 && s.p0 > s.mc;
+    if (ok) {
+      var v = derived(s);
+      h += '<div class="note">Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P (nobody flies above ' + money(v.choke) + '). Status quo profit ' + money(v.sq) + '. <b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) +
+           ', ' + money(v.best.profit - v.sq) + ' per flight over the status quo (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). Filling the plane: fare ' + money(v.fill) + ', profit ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
+           'Round 2: demand +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>';
+    } else h += '<div class="error">The slope must be positive, the seats positive, and the fare above the cost.</div>';
+    h += '<div class="row">' + (locked ? '<span class="caption">Settings are locked while flights exist; reset the flights to change them.</span>' : '<button type="button" class="primary" id="save-settings"' + (ok ? "" : " disabled") + '>Save settings</button>') + '</div></div>';
+    h += '<div class="qblock"><h3>Phase</h3><div class="row">' + PHASES.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && ch.phase === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
+         '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + ' style="margin-left:auto">Delete the flights and start over</button></div>' +
+         '<p class="caption">Open round 1 when the groups have read the briefing; close it when time is up (unflown flights count as zero); Reveal sends the demand to every page; Round 2 unlocks the two scenarios. Settings are read when a flight is flown, so change them before opening.</p>' +
+         (S.msg ? '<div class="' + (/Could not|refused|error/i.test(S.msg) ? "error" : "success") + '">' + esc(S.msg) + '</div>' : "") + '</div>';
+    if (ch && flights.length) {
+      var d = derived(ch.settings), byGroup = {};
+      flights.forEach(function (fl) { var g = byGroup[fl.group] || (byGroup[fl.group] = { group: fl.group, n: 0, gain: 0, fares: [], flights: [] }); g.n++; g.gain += fl.gain; g.fares.push(fl.fare); g.flights.push(fl); });
+      var board = Object.keys(byGroup).map(function (k) { return byGroup[k]; }).sort(function (x, y) { return y.gain - x.gain; });
+      h += '<div class="qblock"><h3>Leaderboard: ' + plural(board.length, "group") + ', ' + plural(flights.length, "flight") + '</h3>' +
+           '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best fare flown</th></tr></thead><tbody>' +
+           board.map(function (g, i) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>';
+      var curve = C.profitCurve(d.d), markers = [{ x: ch.settings.p0, y: d.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: d.best.fare, y: d.best.profit, color: C.COLORS.green, name: "Best fare", label: money(d.best.fare) }];
+      flights.forEach(function (fl) { markers.push({ x: fl.fare, y: fl.profit, color: C.COLORS.red, r: 4, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }); });
+      h += C.chart({ x: { max: d.choke, label: "Fare (£)" }, y: { min: Math.min(0, curve[0][1]), max: d.best.profit * 1.08, label: "Profit per flight (£)" }, lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: d.sq, label: "last month", color: C.COLORS.grey }], markers: markers }) +
+           '<div class="row" style="margin-top:6px"><button type="button" id="csv-flights">Download the flights (CSV)</button></div></div>';
+    }
+    el.innerHTML = h;
+    $("preset").onchange = function () { var p = PRESETS[+this.value]; if (!p) return; S.form = { label: p.label, mc: p.mc, seats: p.seats, p0: p.p0, q0: p.q0, b: p.b, flights: p.flights }; renderChallenge(); };
+    Array.prototype.forEach.call(el.querySelectorAll("#settings input"), function (inp) { inp.addEventListener("change", function () { S.form[inp.getAttribute("data-f")] = inp.type === "number" ? inp.value : inp.value; renderChallenge(); }); });
+    if ($("save-settings")) $("save-settings").onclick = function () {
+      post({ token: S.cred, action: "challenge_set", "class": S.cls, settings: { label: f.label, mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, b: s.b, flights: s.flights } })
+        .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = j.challenge; S.form = null; S.msg = "Settings saved for " + S.cls + "."; render(); })
+        .catch(function (err) { S.msg = "Could not save: " + String(err && err.message || err); renderChallenge(); });
+    };
+    Array.prototype.forEach.call(el.querySelectorAll("button[data-phase]"), function (b) {
+      b.onclick = function () {
+        var phase = b.getAttribute("data-phase");
+        post({ token: S.cred, action: "challenge_phase", "class": S.cls, phase: phase })
+          .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = j.challenge; S.msg = "Class " + S.cls + ": " + phaseLabel(phase) + "."; render(); schedulePoll(); })
+          .catch(function (err) { S.msg = "Could not change the phase: " + String(err && err.message || err); renderChallenge(); });
+      };
+    });
+    $("reset-flights").onclick = function () {
+      if (!window.confirm("Delete every flight flown in class " + S.cls + " and put the challenge back to 'not open yet'? The groups' lab books are kept.")) return;
+      post({ token: S.cred, action: "challenge_reset", "class": S.cls })
+        .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.msg = plural(j.removed, "flight") + " deleted; the challenge is back to the start."; loadChallenge(function () { render(); }); })
+        .catch(function (err) { S.msg = "Could not reset: " + String(err && err.message || err); renderChallenge(); });
+    };
+    if ($("csv-flights")) $("csv-flights").onclick = function () {
+      download("flights_" + S.cls + ".csv", csv([["class", "time", "group", "flight", "fare", "passengers", "profit", "gain"]].concat(ch.flights.map(function (fl) { return [S.cls, fmtTime(fl.ts), fl.group, fl.n, fl.fare, fl.passengers, fl.profit, fl.gain]; }))));
+    };
+  }
+
+  // ---- lab books ----------------------------------------------------------------------------------------------------
+  function renderOverview(books) {
+    var el = $("view-overview");
+    if (!books.length) { el.innerHTML = '<div class="info">No group has pinned or written anything in this class yet.</div>'; return; }
+    var graded = PQUESTIONS.filter(function (q) { return q.id !== "own"; });
+    var h = '<div class="wide"><table class="grid sticky"><thead><tr><th>Group</th><th>Members</th>' + PQUESTIONS.map(function (q, i) { return '<th class="tick">' + (q.id === "own" ? "Own" : (i + 1)) + '</th>'; }).join("") + '<th class="num">Pins</th><th>Answered</th><th>Last saved</th><th>Debrief notes</th></tr></thead><tbody>';
+    books.forEach(function (bk) {
+      var entries = entriesOf(bk), counts = PQUESTIONS.map(function () { return 0; });
+      entries.forEach(function (e) { counts[questionIndex(e.question)]++; });
+      var answered = graded.filter(function (q) { return (bk.answers[q.id] || "").trim(); }).length, note = (bk.notes || "").trim().split(/\r?\n/)[0] || "";
+      h += '<tr><td>' + esc(bk.group) + '</td><td>' + esc(bk.names) + '</td>' + counts.map(function (n) { return '<td class="tick">' + ticks(n) + '</td>'; }).join("") +
+           '<td class="num">' + entries.length + '</td><td>' + (answered ? answered + "/" + graded.length : "") + '</td><td>' + esc(fmtTime(bk.last)) + '</td><td>' + esc(note.length > 90 ? note.slice(0, 90) + "…" : note) + '</td></tr>';
+    });
+    h += '</tbody></table></div><div class="row"><button type="button" id="csv-books">Download the lab books as CSV (one row per pinned column)</button><button type="button" id="csv-answers">Download the answers as CSV (one row per group)</button></div>';
+    el.innerHTML = h;
+    $("csv-books").onclick = function () {
+      var keys = [], seen = {};
+      books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { Object.keys(e.measures).forEach(function (k) { if (!seen[k]) { seen[k] = true; keys.push(k); } }); }); });
+      var rows = [["class", "time", "group", "members", "tab", "label", "question", "note"].concat(keys).concat(["state"])];
+      books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { rows.push([bk["class"], fmtTime(e.ts), bk.group, bk.names, e.tab, e.label, e.question, e.note].concat(keys.map(function (k) { return e.measures[k] == null ? "" : e.measures[k]; })).concat([JSON.stringify(e.state)])); }); });
+      download("pricing_lab_books_" + S.cls + ".csv", csv(rows));
+    };
+    $("csv-answers").onclick = function () {
+      var rows = [["class", "group", "members", "pins", "last saved"].concat(PQUESTIONS.map(function (q) { return q.title; })).concat(["debrief notes"])];
+      books.forEach(function (bk) { rows.push([bk["class"], bk.group, bk.names, entriesOf(bk).length, fmtTime(bk.last)].concat(PQUESTIONS.map(function (q) { return bk.answers[q.id] || ""; })).concat([bk.notes || ""])); });
+      download("pricing_answers_" + S.cls + ".csv", csv(rows));
+    };
+  }
+  function renderByQuestion(books) {
+    var el = $("view-question"), titles = PQUESTIONS.map(function (q) { return q.title; });
+    if (titles.indexOf(S.q) < 0) S.q = titles[0];
+    var qid = PQUESTIONS[titles.indexOf(S.q)].id, h = '<label for="q-pick">Question</label><select id="q-pick">' + selectOptions(titles, S.q) + '</select>';
+    var pins = [];
+    books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { if (e.question === S.q) pins.push({ bk: bk, e: e }); }); });
+    if (pins.length) h += C.bookTable(pins.map(function (p) { return { id: p.e.id, label: p.bk.group + ": " + p.e.label, measures: p.e.measures }; }), {}) + '<p class="caption">' + plural(pins.length, "pinned column") + '.</p>';
+    else h += '<div class="info">No group has pinned anything under this question yet.</div>';
+    var answered = books.filter(function (bk) { return (bk.answers[qid] || "").trim(); });
+    if (answered.length) { h += '<div class="section-title">Answers</div>'; answered.forEach(function (bk) { h += '<div class="answer"><div class="who">' + esc(bk.group) + (bk.names ? " · " + esc(bk.names) : "") + '</div>' + esc(bk.answers[qid]) + '</div>'; }); }
+    el.innerHTML = h;
+    $("q-pick").onchange = function () { S.q = this.value; renderByQuestion(books); };
+  }
+  function renderOneGroup(books) {
+    var el = $("view-group");
+    if (!books.length) { el.innerHTML = '<div class="info">No group has pinned or written anything in this class yet.</div>'; return; }
+    var names = books.map(function (bk) { return bk.group || "(no group number)"; });
+    if (!S.group || names.indexOf(S.group) < 0) S.group = names[0];
+    var bk = books[names.indexOf(S.group)], entries = entriesOf(bk);
+    var h = '<label for="g-pick">Group</label><select id="g-pick">' + selectOptions(names, S.group) + '</select><p class="caption">' + (bk.names ? esc(bk.names) + " · " : "") + "Last saved " + fmtTime(bk.last) + " · " + plural(entries.length, "pinned column") + '</p>';
+    var byQ = {}; entries.forEach(function (e) { var i = questionIndex(e.question); (byQ[i] = byQ[i] || []).push(e); });
+    PQUESTIONS.forEach(function (q, i) {
+      var mine = byQ[i] || [], answer = (bk.answers[q.id] || "").trim();
+      if (!mine.length && !answer) return;
+      h += '<div class="qblock"><h3>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned</span></h3>' + (mine.length ? C.bookTable(mine, {}) : '<p class="caption">Nothing pinned under this question.</p>') +
+           (answer ? '<div class="section-title">' + (q.id === "own" ? "What the group learned" : "Answer") + '</div><div class="answer">' + esc(answer) + '</div>' : '<p class="caption">No answer yet.</p>') + '</div>';
+    });
+    if (bk.notes) h += '<div class="section-title">Notes for the debrief</div><div class="answer">' + esc(bk.notes) + '</div>';
+    el.innerHTML = h;
+    $("g-pick").onchange = function () { S.group = this.value; renderOneGroup(books); };
+  }
+  function renderSetup(cls) {
+    var el = $("view-setup");
+    if (!cls) { el.innerHTML = ""; return; }
+    var link = classLink(cls);
+    el.innerHTML = '<div class="setup-grid"><div><p style="margin:4px 0 6px">Link for class <b>' + esc(cls) + '</b> (the Pricing Laboratory; the group number and PIN are the Marketplace Laboratory\'s):</p>' +
+      '<div class="linkbox">' + esc(link) + '</div><div class="row" style="margin-top:8px"><button type="button" id="copy-link">Copy the link</button><span class="caption" id="copy-msg"></span></div>' +
+      '<p class="caption">Projector: <span class="linkbox" style="display:inline">' + esc(projectorLink(cls)) + '</span></p></div>' +
+      '<div>' + MLQR.svg(link, 200).replace("<svg ", '<svg class="qr" ') + '</div></div>';
+    $("copy-link").onclick = function () {
+      var done = function () { $("copy-msg").textContent = "Copied."; setTimeout(function () { $("copy-msg").textContent = ""; }, 2000); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, function () { $("copy-msg").textContent = "Select the link and copy it."; });
+      else $("copy-msg").textContent = "Select the link and copy it.";
+    };
+  }
+
+  // ---- init -------------------------------------------------------------------------------------------------------------
+  function init() {
+    Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.onclick = function () { S.view = b.getAttribute("data-view"); render(); }; });
+    var cred = storedCred();
+    if (!cred || !ENDPOINT) { renderSignin(); return; }
+    S.cred = cred; $("signin").innerHTML = '<p class="caption">Reading the class record…</p>';
+    loadRecords(function (err) {
+      if (err) { S.cred = ""; if (/bad token|locked/.test(err)) clearCred(); renderSignin(/bad token/.test(err) ? "The saved password is no longer accepted; sign in again." : "Could not reach the class record (" + err + ")."); return; }
+      start();
+    });
+  }
+  document.addEventListener("DOMContentLoaded", init);
+  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords, PRESETS: PRESETS };
+})();
+
+</script>
+
+</body>
+</html>

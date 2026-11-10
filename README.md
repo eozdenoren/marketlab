@@ -41,8 +41,43 @@ Links: `?class=<code>` stamps the class; `#state=<base64url JSON>` loads a
 recorded experiment; `&projector=1` is projector mode (the instructor page's
 links carry both).
 
+## The Pricing Laboratory
+
+A second pair of pages in the same build, for the monopoly session: one firm
+sets the price. `docs/pricing.html?class=<code>` (students; `&projector=1`
+for the projector) and `docs/pricing_instructor.html`. Same look, same group
+number and PIN as the Marketplace Laboratory, but a script and Google Sheet
+of its own (`backend/Pricing.gs`, see `backend/README.md`), so the Marketplace
+record is never touched while an assignment runs on it.
+
+* **Challenge.** Each group is an airline's pricing team: told the cost per
+  passenger, the seats and last month's fare and passengers, it sets the fare
+  for six flights against a demand it cannot see (linear, hidden in the
+  script, different per class); every flight counts, scored against keeping
+  last month's fare; live leaderboard on the projector. The instructor opens
+  round 1, closes it, reveals the demand (the true profit curve with every
+  fare flown on it) and opens round 2: demand up 40%, then demand doubled
+  against the seats, tested on the revealed demand and pinned.
+* **Mocha.** Pricing on the class's own Session 1 bids (`src/mocha_data.js`,
+  written by `tools/mocha_data.py` from the auction sheet, amounts only):
+  demand from the bids, the best price by trying every price, the straight
+  line fitted to the schedule and MR = MC on it, bids to ignore, and one price
+  for the three streams against a price per stream. No demand can be typed
+  in: nothing on these pages answers an exam question.
+* **Lab book** with pins and answers, as in the Marketplace Laboratory
+  (`src/pricing_questions.js`).
+* `src/pricing_core.js` — the arithmetic, the SVG chart and the lab-book
+  table, shared by both pages; `src/pricing.js`, `src/pricing.html`,
+  `src/pricing.css` — the class page; `src/pricing_instructor.js`,
+  `src/pricing_instructor.html` — the instructor page (challenge settings
+  and phases, leaderboard, lab books, links and QR).
+
     python3 tests/gen_cases.py && node tests/check_engine.js
     python3 tests/check_qr.py
+    node tests/check_backend.js && node tests/check_pricing_backend.js
+    node tests/check_pricing_core.js
     python3 build.py --config config.json
     python3 tests/browser_page.py /tmp/shots
     python3 tests/browser_instructor.py /tmp/shots_instructor
+    python3 tests/browser_classes.py
+    python3 tests/browser_pricing.py /tmp/shots_pricing
