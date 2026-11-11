@@ -75,5 +75,20 @@ check(/<svg/.test(svg) && /legend-item/.test(svg) && svg.indexOf("line</span>") 
 var table = C.bookTable([{ id: "x", label: "Flight", measures: { Fare: 680, Profit: 180000 } }, { id: "y", label: "Flight", measures: { Fare: 580, Note: "status quo" } }], { removable: true });
 check(/Flight \(2\)/.test(table) && /remove-entry/.test(table) && /status quo/.test(table) && /180,000/.test(table), "the lab-book table: duplicate labels numbered, text cells kept");
 
+// ---- the instructor page's presets (src/pricing_instructor.js), as agreed with the user on 2026-11-11
+[["Detroit", 80, 500, 640, 0.5, 480, 400, 160000, 680, 300, 180000, 280, 100000, [470, 490, 405, 395], [680, 420, false], [780, 500, true]],
+ ["Chicago", 100, 480, 600, 0.4, 550, 380, 171000, 800, 280, 196000, 300, 96000, [540, 560, 384, 376], [800, 392, false], [900, 480, true]],
+ ["Singapore", 80, 400, 480, 0.25, 700, 305, 189100, 1000, 230, 211600, 320, 96000, [680, 720, 310, 300], [1000, 322, false], [1120, 400, true]]].forEach(function (p) {
+  var s0 = { mc: p[1], seats: p[2], p0: p[5], q0: p[3] - p[4] * p[5], b: p[4] }, dd = { a: p[3], b: p[4], mc: p[1], seats: p[2] }, bb = C.bestFare(dd), hh = C.historyRange(s0);
+  var up = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 1.4 }), dbl = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 2 });
+  check(s0.q0 === p[6] && C.statusQuoProfit(s0) === p[7] && p[2] - s0.q0 >= 95, p[0] + ": old fare carries " + p[6] + ", profit " + p[7] + ", about 100 empty");
+  check(bb.fare === p[8] && bb.passengers === p[9] && bb.profit === p[10], p[0] + ": best " + p[8] + " / " + p[9] + " / " + p[10] + ": " + JSON.stringify(bb));
+  check((bb.profit - C.statusQuoProfit(s0)) / C.statusQuoProfit(s0) > 0.1, p[0] + ": the best beats the old fare by more than 10%");
+  check(C.fillFare(dd) === p[11] && C.profitAt(dd, p[11]) === p[12], p[0] + ": the plane fills at " + p[11] + ", profit " + p[12]);
+  check(hh && hh.fareLo === p[13][0] && hh.fareHi === p[13][1] && hh.paxAtLo === p[13][2] && hh.paxAtHi === p[13][3], p[0] + ": history " + JSON.stringify(hh));
+  check(up.fare === p[14][0] && up.passengers === p[14][1] && up.capped === p[14][2], p[0] + ": +40% keeps the best fare: " + JSON.stringify(up));
+  check(dbl.fare === p[15][0] && dbl.passengers === p[15][1] && dbl.capped === p[15][2], p[0] + ": doubled fills the plane: " + JSON.stringify(dbl));
+});
+
 console.log("pricing core:", failures ? failures + " checks failed" : "OK");
 process.exit(failures ? 1 : 0);

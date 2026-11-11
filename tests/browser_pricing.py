@@ -105,17 +105,17 @@ def main():
             # ---- the student page picks the opening up by polling and flies
             s1.get_by_text("Fare for flight 1 of 6", exact=False).wait_for(timeout=15000)
             brief = s1.locator("#tab-challenge .briefing").inner_text()
-            check("450 seats" in brief and "between £570 and £590" in brief and "between 345 and 355 passengers" in brief and "100 of the 450 seats flew empty" in brief,
+            check("500 seats" in brief and "between £470 and £490" in brief and "between 395 and 405 passengers" in brief and "100 of the 500 seats flew empty" in brief,
                   "the briefing gives the range of old fares, the passengers and the empty seats: %r" % brief[:400])
             s1.screenshot(path=os.path.join(OUT, "03_student_open.png"), full_page=True)
             s1.fill("#fare", "680"); s1.click("#fly")
             s1.get_by_text("Fare for flight 2 of 6", exact=False).wait_for()
             row = s1.locator("table.flights tbody tr").first.inner_text()
-            check("£680" in row and "300" in row and "£180,000" in row and "+£5,000" in row, "flight 1: 680, 300 passengers, 180,000, +5,000: %r" % row)
-            s1.fill("#fare", "380"); s1.click("#fly")
+            check("£680" in row and "300" in row and "£180,000" in row and "+£20,000" in row, "flight 1: 680, 300 passengers, 180,000, +20,000: %r" % row)
+            s1.fill("#fare", "280"); s1.click("#fly")
             s1.get_by_text("Fare for flight 3 of 6", exact=False).wait_for()
             row2 = s1.locator("table.flights tbody tr").nth(1).inner_text()
-            check("450" in row2 and "(full)" in row2 and "-£40,000" in row2, "flight 2 fills the plane and loses 40,000: %r" % row2)
+            check("500" in row2 and "(full)" in row2 and "-£60,000" in row2, "flight 2 fills the plane and loses 60,000: %r" % row2)
             check("Group 12" in s1.locator("table.board").inner_text(), "the student's leaderboard lists the group")
             s1.screenshot(path=os.path.join(OUT, "04_student_flown.png"), full_page=True)
 
@@ -152,7 +152,7 @@ def main():
             check("640 − 0.5 × P" in txt and "£1,280" in txt and "best fare is £680" in txt, "the reveal states the demand and the best fare")
             check("Two points were enough" in txt, "the line through the status quo and the first flight is the demand")
             check(s1.locator("#tab-challenge svg").count() == 2, "two charts at the reveal")
-            check("£680, £380" in s1.locator("table.board").inner_text(), "fares shown on the board once revealed")
+            check("£680, £280" in s1.locator("table.board").inner_text(), "fares shown on the board once revealed")
             s1.screenshot(path=os.path.join(OUT, "08_student_revealed.png"), full_page=True)
             proj.get_by_text("The demand you were facing", exact=False).wait_for(timeout=15000)
             check(proj.locator("#tab-challenge svg").count() == 2 and "£700" in proj.locator("table.board").inner_text(),
@@ -175,11 +175,11 @@ def main():
             s1.fill("#r2-fare", "700"); s1.click("#r2-form button")
             s1.wait_for_selector("table.flights")
             r2b = s1.locator("table.flights tbody tr").first.inner_text()
-            check("580" in r2b and "(full)" in r2b and "£279,000" in r2b, "demand doubled at 700: 580 want to fly, 450 carried, 279,000: %r" % r2b)
-            s1.fill("#r2-fare", "830"); s1.click("#r2-form button")
-            s1.get_by_text("£337,500", exact=False).wait_for()
+            check("580" in r2b and "(full)" in r2b and "£310,000" in r2b, "demand doubled at 700: 580 want to fly, 500 carried, 310,000: %r" % r2b)
+            s1.fill("#r2-fare", "780"); s1.click("#r2-form button")
+            s1.locator("table.flights tbody tr").nth(1).wait_for()
             r2c = s1.locator("table.flights tbody tr").nth(1).inner_text()
-            check(r2c.count("450") == 2 and "(full)" in r2c and "£337,500" in r2c, "demand doubled at 830: exactly 450 want to fly, 337,500: %r" % r2c)
+            check(r2c.count("500") == 2 and "(full)" in r2c and "£350,000" in r2c, "demand doubled at 780: exactly 500 want to fly, 350,000: %r" % r2c)
             check(s1.locator("#challenge-pin-q").input_value() == "c3", "the pin section follows the scenario")
             s1.screenshot(path=os.path.join(OUT, "10_student_round2.png"), full_page=True)
 
@@ -215,7 +215,7 @@ def main():
             check("Round 1: my flights" in sec.inner_text() and "180,000" in sec.inner_text(), "the round 1 pin sits under question 1 with the best profit")
             check("Demand rises 40%: fare £680" in s1.locator("section[data-q=c2]").inner_text(), "the round 2 pin sits under question 2")
             check("Your stream: price £35" in s1.locator("section[data-q=m1]").inner_text() and "Gain from separate prices" in s1.locator("section[data-q=m1]").inner_text(), "the Mocha pin with the segmentation numbers")
-            s1.fill("#ans-c1", "Our first test at £380 cost us £40,000.")
+            s1.fill("#ans-c1", "Our first test at £280 cost us £60,000.")
             s1.locator("#ans-c1").dispatch_event("change")
             s1.get_by_text("Saved to the class record", exact=False).first.wait_for(timeout=10000)
             s1.wait_for_timeout(2500)
@@ -234,7 +234,6 @@ def main():
             s3.click("#main-tabs button[data-tab=book]")
             s3.wait_for_selector("#tab-book table.labbook")
             check("Round 1: my flights" in s3.locator("section[data-q=c1]").inner_text() and "Our first test" in s3.locator("#ans-c1").input_value(), "a second device restores pins and answers")
-            check("£680, £380" in s3.locator("#tab-book").inner_text() or True, "")
             ctx5.close()
 
             # ---- the instructor's lab-book views

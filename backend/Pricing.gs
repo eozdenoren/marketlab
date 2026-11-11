@@ -38,7 +38,7 @@ var TOKEN = "PAGE-TOKEN";          // same value as "token" under "pricing" in t
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor page only
 var LOCK_AFTER = 10, LOCK_MINUTES = 15;
 var PHASES = ["setup", "open", "closed", "revealed", "round2"];
-var DEFAULT_SETTINGS = { mc: 80, seats: 450, p0: 580, q0: 350, b: 0.5, flights: 6, label: "" };
+var DEFAULT_SETTINGS = { mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5, flights: 6, label: "London–Detroit" };
 
 function sheet(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();

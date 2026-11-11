@@ -688,10 +688,12 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
   // Three routes with round numbers: the hidden demand Q = a - b P, and the old fare on it (the passengers it carried
   // follow); the demand differs, so the answer differs from one stream to the next.
+  // In each the old fare is well below the best (a gain of 12-15% a flight), about 100 seats fly empty at it (the
+  // temptation to cut), demand +40% leaves the best fare unchanged and doubled demand fills the plane.
   var PRESETS = [
-    { label: "London–Detroit", mc: 80, seats: 450, a: 640, b: 0.5, p0: 580, flights: 6 },
-    { label: "London–Chicago", mc: 100, seats: 420, a: 600, b: 0.4, p0: 650, flights: 6 },
-    { label: "London–Singapore", mc: 80, seats: 320, a: 480, b: 0.25, p0: 800, flights: 6 }];
+    { label: "London–Detroit", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480, flights: 6 },
+    { label: "London–Chicago", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550, flights: 6 },
+    { label: "London–Singapore", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700, flights: 6 }];
   var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, readAt: null, busy: false, error: "", msg: "", form: null };
 
   function $(id) { return document.getElementById(id); }
@@ -845,7 +847,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   // and recovers a from them, exactly, since q0 is a whole number.
   function formValues() {
     var f = S.form; if (f) return f;
-    var s = S.challenge ? S.challenge.settings : (S.defaults || PRESETS[0]);
+    var s = S.challenge ? S.challenge.settings : PRESETS[0];
     S.form = { label: s.label || "", mc: s.mc, seats: s.seats, a: s.a != null ? s.a : C.intercept(s), b: s.b, p0: s.p0, flights: s.flights };
     return S.form;
   }

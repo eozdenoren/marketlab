@@ -846,13 +846,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
                                 lines: [{ pts: dLine, color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
                                 hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
                                 markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "The old fare" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
+    var step = [50, 40, 20, 10].filter(function (x) { return Math.abs(d.b * x - Math.round(d.b * x)) < 1e-9; })[0] || 50;   // whole passengers lost
     var h = '<h2>The demand you were facing</h2>' +
       '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b) + '). ' +
       (t.history ? 'The previous team\'s fares are on that line: ' + money(t.history.fareLo) + ' with ' + fmt(t.history.paxAtLo) + ' passengers, ' + money(t.history.fareHi) + ' with ' + fmt(t.history.paxAtHi) + ', so the history already told you the slope.'
                  : 'The old fare of ' + money(t.p0) + ' with its ' + fmt(t.q0) + ' passengers is on that line.') + '</p>' +
       '<p class="reveal-line">The best fare is <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and a profit of <b>' + money(best.profit) + '</b> per flight, ' + money(best.profit - sq) + ' more than the old fare earned, ' +
       money((best.profit - sq) * t.flights) + ' over ' + t.flights + ' flights. Filling the plane takes a fare of ' + money(fillFare) + ' and earns ' + money(fillProfit) + ', ' + money(sq - fillProfit) + ' less than the old fare. ' +
-      'Fifty pounds either side of the best fare costs ' + money(best.profit - C.profitAt(d, best.fare + 50)) + ' a flight.</p>';
+      'A fare ' + money(step) + ' either side of the best costs ' + money(best.profit - C.profitAt(d, best.fare + step)) + ' a flight.</p>';
     if (mine && mine.length) {
       var first = mine[0], ln = C.lineThrough(t.p0, t.q0, first.fare, first.passengers);
       var dec = function (x, d) { return Number(x.toFixed(d)).toLocaleString("en-GB", { maximumFractionDigits: d }); };
