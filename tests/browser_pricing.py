@@ -95,7 +95,7 @@ def main():
             ins.wait_for_selector("#main:not([hidden])")
             check(ins.locator("#class-pick").input_value() == CLS, "the first class of the list is selected")
             ins.select_option("#preset", "0")
-            ins.get_by_text("Best fare £680", exact=False).wait_for()
+            ins.get_by_text("Best fare £680", exact=False).first.wait_for()
             ins.screenshot(path=os.path.join(OUT, "02_instructor_settings.png"), full_page=True)
             ins.click("#save-settings")
             ins.get_by_text("Settings saved", exact=False).wait_for()
@@ -104,7 +104,9 @@ def main():
 
             # ---- the student page picks the opening up by polling and flies
             s1.get_by_text("Fare for flight 1 of 6", exact=False).wait_for(timeout=15000)
-            check("450 seats" in s1.locator("#tab-challenge").inner_text() and "£580" in s1.locator("#tab-challenge").inner_text(), "the briefing shows the told numbers")
+            brief = s1.locator("#tab-challenge .briefing").inner_text()
+            check("450 seats" in brief and "between £570 and £590" in brief and "between 345 and 355 passengers" in brief and "100 of the 450 seats flew empty" in brief,
+                  "the briefing gives the range of old fares, the passengers and the empty seats: %r" % brief[:400])
             s1.screenshot(path=os.path.join(OUT, "03_student_open.png"), full_page=True)
             s1.fill("#fare", "680"); s1.click("#fly")
             s1.get_by_text("Fare for flight 2 of 6", exact=False).wait_for()

@@ -339,19 +339,25 @@
       .catch(function (err) { S.flying = false; S.flyError = "Could not reach the class record (" + String(err && err.message || err) + "). Check the wifi and try again."; renderChallenge(); });
   }
   function demandOf(ch) { return ch && ch.demand && ch.told ? { a: ch.demand.a, b: ch.demand.b, mc: ch.told.mc, seats: ch.told.seats } : null; }
+  // The history: a range of old fares with the passengers each brought (from the script), or the single old fare when
+  // the script does not send a range. Either way the empty seats are what the previous team was looking at.
   function briefing(t) {
-    var sq = (t.p0 - t.mc) * t.q0;
-    return '<div class="briefing"><p style="margin:0">You are the pricing team of an airline on the <b>' + esc(t.label || "London–Detroit") + '</b> route. Every flight has ' +
-      '<b>' + fmt(t.seats) + ' seats</b> and costs the airline <b>' + money(t.mc) + ' per passenger</b> carried. Last month the fare was <b>' + money(t.p0) + '</b> and each flight carried ' +
-      '<b>' + fmt(t.q0) + ' passengers</b>, a profit of ' + money(sq) + ' per flight. How many people want to fly depends on the fare, and only on the fare: the market is the same every flight. ' +
-      'Set the fare for <b>' + t.flights + ' flights</b>, one at a time; after each flight you see how many flew and what you earned. Every flight counts: your score is the profit over the ' +
-      t.flights + ' flights compared with keeping the fare at ' + money(t.p0) + '.</p>' +
-      '<div class="metrics">' + metric("Cost per passenger", t.mc, { money: true }) + metric("Plane's capacity", t.seats, { sub: "seats" }) + metric("Last month's fare", t.p0, { money: true }) + metric("Passengers last month", t.q0, { sub: "profit " + money(sq) + " per flight" }) + '</div></div>';
+    var sq = (t.p0 - t.mc) * t.q0, hr = t.history, empty = t.seats - t.q0, pct = Math.round(100 * empty / t.seats);
+    var past = hr ? 'Over the past year the previous team charged between <b>' + money(hr.fareLo) + ' and ' + money(hr.fareHi) + '</b>, and the flights carried between <b>' + fmt(hr.paxAtHi) + ' and ' + fmt(hr.paxAtLo) + ' passengers</b>: the higher the fare, the fewer passengers. '
+                  : 'Over the past year the previous team charged <b>' + money(t.p0) + '</b>, and the flights carried <b>' + fmt(t.q0) + ' passengers</b>. ';
+    return '<div class="briefing"><p style="margin:0">You are the new pricing team of an airline on the <b>' + esc(t.label || "London–Detroit") + '</b> route. Every flight has ' +
+      '<b>' + fmt(t.seats) + ' seats</b> and costs the airline <b>' + money(t.mc) + ' per passenger</b> carried. ' + past +
+      'So about <b>' + fmt(empty) + ' of the ' + fmt(t.seats) + ' seats flew empty</b> on every flight. ' + (hr ? 'At the average fare of ' + money(t.p0) + ' a flight carried ' + fmt(t.q0) + ' passengers and made' : 'Each flight made') + ' a profit of about ' + money(sq) + '. ' +
+      'How many people want to fly depends on the fare, and only on the fare. You set the fare for <b>' + t.flights + ' flights</b>, one at a time; after each flight you see how many flew and what you earned. ' +
+      'Every flight counts: the board judges you on the profit of your ' + t.flights + ' flights compared with keeping the old fare of ' + money(t.p0) + ' (' + money(sq) + ' a flight).</p>' +
+      '<div class="metrics">' + metric("Cost per passenger", t.mc, { money: true }) + metric("Plane's capacity", t.seats, { sub: "seats; about " + fmt(empty) + " flew empty (" + pct + "%)" }) +
+      metric("The old fare", hr ? money(hr.fareLo) + "–" + money(hr.fareHi) : money(t.p0), { sub: hr ? "average " + money(t.p0) : "for the past year" }) +
+      metric("Passengers at the old fare", hr ? fmt(hr.paxAtLo) + "–" + fmt(hr.paxAtHi) : fmt(t.q0), { sub: (hr ? "average " + fmt(t.q0) + "; " : "") + "profit about " + money(sq) + " a flight" }) + '</div></div>';
   }
   function flightsTable(flights, t, d) {
     if (!flights || !flights.length) return '<p class="caption">No flights yet.</p>';
     var bestF = null; flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
-    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Fare</th><th class="num">Passengers</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against last month</th>' + (d ? '<th class="num">Off the best fare</th>' : "") + '</tr></thead><tbody>';
+    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Fare</th><th class="num">Passengers</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against the old fare</th>' + (d ? '<th class="num">Off the best fare</th>' : "") + '</tr></thead><tbody>';
     var total = 0;
     flights.forEach(function (f) {
       total += f.gain;
@@ -366,7 +372,7 @@
     var b = ch.board || [];
     if (!b.length) return '<p class="caption">No flights flown yet in class ' + esc(S.classCode) + '.</p>';
     var revealed = ch.phase === "revealed" || ch.phase === "round2", me = groupKey();
-    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score: profit over last month</th>' + (revealed ? '<th>Fares</th>' : "") + '</tr></thead><tbody>';
+    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score: profit over the old fare</th>' + (revealed ? '<th>Fares</th>' : "") + '</tr></thead><tbody>';
     b.forEach(function (g, i) {
       h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (ch.told ? " / " + ch.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td>' +
            (revealed ? '<td class="num-note">' + (g.fares || []).map(function (f) { return money(f); }).join(", ") + '</td>' : "") + '</tr>';
@@ -378,29 +384,25 @@
     var fillFare = Math.ceil((d.a - t.seats) / d.b), fillProfit = C.profitAt(d, fillFare);
     var mine = S.projector ? null : (ch.mine || []), all = [];
     (ch.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { all.push({ group: g.group, fare: f }); }); });
-    var win = C.profitRange(d, (mine || all).map(function (f) { return f.fare; })), curve = C.profitCurve(d, 1, win.x0);
-    var ymin = Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), ymax = best.profit * 1.08;
-    var markers = [{ x: t.p0, y: sq, color: C.COLORS.grey, hollow: true, name: "Last month", title: "Last month: " + money(t.p0) + ", profit " + money(sq) },
-                   { x: best.fare, y: best.profit, color: C.COLORS.green, name: "Best fare " + money(best.fare), label: money(best.fare), title: "Best fare " + money(best.fare) + ": " + fmt(best.passengers) + " passengers, profit " + money(best.profit) }];
-    if (mine) mine.forEach(function (f) { markers.push({ x: f.fare, y: f.profit, color: C.COLORS.red, name: "Your flights", title: "Flight " + f.n + ": " + money(f.fare) + ", " + fmt(f.passengers) + " passengers, profit " + money(f.profit) }); });
-    else all.forEach(function (f) { markers.push({ x: f.fare, y: C.profitAt(d, f.fare), color: C.COLORS.red, r: 4, name: "Flights flown", title: f.group + ": " + money(f.fare) }); });
-    var profitChart = C.chart({ title: "Profit against the fare", x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: ymin, max: ymax, label: "Profit per flight (£)" },
-                                lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: sq, label: "last month's profit", color: C.COLORS.grey }],
-                                vlines: [{ x: fillFare, label: "plane full below " + money(fillFare), color: C.COLORS.orange }], markers: markers });
+    var flightDots = mine ? mine.map(function (f) { return { fare: f.fare, profit: f.profit, name: "Your flights", title: "Flight " + f.n + ": " + money(f.fare) + ", " + fmt(f.passengers) + " passengers" }; })
+                          : all.map(function (f) { return { fare: f.fare, profit: C.profitAt(d, f.fare), name: "Flights flown", title: f.group + ": " + money(f.fare) }; });
+    var profitChart = C.profitChartHtml(d, { fare: t.p0, profit: sq }, flightDots, { r: mine ? undefined : 4 });
     var dLine = [[0, choke], [d.a, 0]], qmax = Math.max(d.a, t.seats) * 1.05;
     var demandChart = C.chart({ title: "The demand", h: 360, x: { max: qmax, label: "Passengers who want to fly" }, y: { max: choke * 1.05, label: "Fare (£)" },
                                 lines: [{ pts: dLine, color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
                                 hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
-                                markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
+                                markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "The old fare" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
     var h = '<h2>The demand you were facing</h2>' +
-      '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b) + '). Last month\'s ' + money(t.p0) + ' with ' + fmt(t.q0) + ' passengers is on that line.</p>' +
-      '<p class="reveal-line">The best fare is <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and a profit of <b>' + money(best.profit) + '</b> per flight, ' + money(best.profit - sq) + ' more than last month, ' +
-      money((best.profit - sq) * t.flights) + ' over ' + t.flights + ' flights. Filling the plane takes a fare of ' + money(fillFare) + ' and earns ' + money(fillProfit) + ', ' + money(sq - fillProfit) + ' less than last month. ' +
+      '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b) + '). ' +
+      (t.history ? 'The previous team\'s fares are on that line: ' + money(t.history.fareLo) + ' with ' + fmt(t.history.paxAtLo) + ' passengers, ' + money(t.history.fareHi) + ' with ' + fmt(t.history.paxAtHi) + ', so the history already told you the slope.'
+                 : 'The old fare of ' + money(t.p0) + ' with its ' + fmt(t.q0) + ' passengers is on that line.') + '</p>' +
+      '<p class="reveal-line">The best fare is <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and a profit of <b>' + money(best.profit) + '</b> per flight, ' + money(best.profit - sq) + ' more than the old fare earned, ' +
+      money((best.profit - sq) * t.flights) + ' over ' + t.flights + ' flights. Filling the plane takes a fare of ' + money(fillFare) + ' and earns ' + money(fillProfit) + ', ' + money(sq - fillProfit) + ' less than the old fare. ' +
       'Fifty pounds either side of the best fare costs ' + money(best.profit - C.profitAt(d, best.fare + 50)) + ' a flight.</p>';
     if (mine && mine.length) {
       var first = mine[0], ln = C.lineThrough(t.p0, t.q0, first.fare, first.passengers);
       var dec = function (x, d) { return Number(x.toFixed(d)).toLocaleString("en-GB", { maximumFractionDigits: d }); };
-      if (ln) h += '<p class="reveal-line">Your first flight, ' + money(first.fare) + ' with ' + fmt(first.passengers) + ' passengers, together with last month\'s point gives the line Q = ' + dec(ln.a, 1) + ' − ' + dec(ln.b, 3) + ' × P' +
+      if (ln) h += '<p class="reveal-line">Your first flight, ' + money(first.fare) + ' with ' + fmt(first.passengers) + ' passengers, together with the old fare\'s average (' + money(t.p0) + ', ' + fmt(t.q0) + ') gives the line Q = ' + dec(ln.a, 1) + ' − ' + dec(ln.b, 3) + ' × P' +
                    (Math.abs(ln.a - d.a) < 1 && Math.abs(ln.b - d.b) < 0.01 ? ': the demand itself. Two points were enough.' : '.') + '</p>';
     }
     h += '<div class="cols"><div>' + profitChart + '</div><div>' + demandChart + '</div></div>';
@@ -498,7 +500,7 @@
           var mine = ch.mine || [], bestF = null, total = 0; mine.forEach(function (f) { total += f.gain; if (!bestF || f.profit > bestF.profit) bestF = f; });
           var best = C.bestFare(d), sq = C.statusQuoProfit(t);
           measures = { "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
-                       "Score: profit over last month": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
+                       "Score: profit over the old fare": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
           state = { page: "challenge", round: 1, flights: mine, told: t, demand: ch.demand };
         }
         doPin("challenge", suggestion, measures, state); pinPanel("challenge", suggestion, qid);

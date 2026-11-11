@@ -45,14 +45,48 @@ var PricingCore = (function () {
   }
   // The fare below which the plane is full (demand at or above the capacity).
   function fillFare(d) { var scale = d.scale || 1; return Math.ceil((scale * d.a - d.seats) / (scale * d.b)); }
-  // The fares worth looking at: from a little below the fare that fills the plane (below it profit is a straight
-  // line, every seat sold) to the choke price; widened to the left if any of the fares given was lower, so that
-  // every flight flown stays on the chart.
-  function profitRange(d, fares) {
-    var choke = chokePrice(d), fill = fillFare(d), left = fill > 0 ? fill : d.mc;
-    var x0 = Math.max(0, left - 0.12 * (choke - left));
-    (fares || []).forEach(function (f) { if (f - 20 < x0) x0 = Math.max(0, f - 20); });
-    return { x0: Math.floor(x0), x1: Math.ceil(choke), fill: fill };
+  // The window of fares worth looking at: from a little below the fare that fills the plane (below it every seat is
+  // sold and profit is a straight line) to the same distance beyond the best fare, where profit is back at the
+  // fill-the-plane level; profits from that level up, not from zero, so the hump fills the chart.
+  function focusWindow(d) {
+    var best = bestFare(d), fill = fillFare(d), choke = chokePrice(d), left = fill > 0 ? fill : d.mc;
+    var span = best.fare - left; if (span < 20) span = Math.max(20, 0.3 * best.fare);
+    var x0 = Math.max(0, Math.floor(left - 0.05 * span)), x1 = Math.min(Math.ceil(choke), Math.ceil(best.fare + 1.05 * span));
+    var curve = profitCurve(d, 1, x0).filter(function (p) { return p[0] <= x1; });
+    var ys = curve.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys), r = Math.max(1, hi - lo);
+    return { x0: x0, x1: x1, y0: lo - 0.08 * r, y1: hi + 0.06 * r, fill: fill, curve: curve, best: best };
+  }
+  // The profit chart in that window: the curve, the old fare's profit as a dashed line and a hollow dot, the best fare,
+  // the fill-the-plane line, and the flights given as dots ({fare, profit, title, name}); flights outside the window
+  // are listed under the chart instead of stretching it.
+  function profitChartHtml(d, old, flights, opts) {
+    opts = opts || {};
+    var w = focusWindow(d), markers = [];
+    if (old) markers.push({ x: old.fare, y: old.profit, color: COLORS.grey, hollow: true, name: opts.oldName || "The old fare", title: (opts.oldName || "The old fare") + ": " + money(old.fare) + ", profit " + money(old.profit) });
+    markers.push({ x: w.best.fare, y: w.best.profit, color: COLORS.green, name: "Best fare " + money(w.best.fare), label: money(w.best.fare), title: "Best fare " + money(w.best.fare) + ": " + fmt(w.best.passengers) + " passengers, profit " + money(w.best.profit) });
+    var off = [];
+    (flights || []).forEach(function (f) {
+      if (f.fare < w.x0 || f.fare > w.x1) { off.push(f); return; }
+      markers.push({ x: f.fare, y: f.profit, color: COLORS.red, r: opts.r, name: f.name || opts.flightName || "Flights", title: f.title || "" });
+    });
+    var html = chart({ title: "Profit against the fare", h: opts.h, x: { min: w.x0, max: w.x1, label: "Fare (£)" }, y: { min: w.y0, max: w.y1, label: "Profit per flight (£)" },
+                       lines: [{ pts: w.curve, color: COLORS.blue, width: 2.5, name: "Profit at each fare" }],
+                       hlines: old ? [{ y: old.profit, label: (opts.oldName || "the old fare") + "'s profit", color: COLORS.grey }] : [],
+                       vlines: w.fill > w.x0 ? [{ x: w.fill, label: "plane full below " + money(w.fill), color: COLORS.orange }] : [], markers: markers });
+    if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || money(f.fare)) + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
+    return html;
+  }
+  // The history given to the students: over the past year the old fare moved within p0 ± d and the flights carried
+  // what the demand gives at those fares. The same rule as historyRange in backend/Pricing.gs, which sends it to the
+  // pages (they do not know b); here for the instructor page and the tests.
+  function historyRange(s) {
+    var ds = [10, 20, 25, 30, 40, 50];
+    for (var i = 0; i < ds.length; i++) {
+      var d = ds[i], dq = s.b * d;
+      if (Math.abs(dq - Math.round(dq)) < 1e-9 && dq >= 2 && s.p0 - d > s.mc && s.q0 + dq <= s.seats && s.q0 - dq > 0)
+        return { fareLo: s.p0 - d, fareHi: s.p0 + d, paxAtLo: s.q0 + Math.round(dq), paxAtHi: s.q0 - Math.round(dq) };
+    }
+    return null;
   }
   function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
   // The line through the status quo and one test flight: the group's own estimate of the demand.
@@ -220,7 +254,7 @@ var PricingCore = (function () {
   }
 
   return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
-           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, profitRange: profitRange,
+           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, focusWindow: focusWindow, profitChartHtml: profitChartHtml, historyRange: historyRange,
            statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };

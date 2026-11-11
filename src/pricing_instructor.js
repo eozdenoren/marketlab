@@ -12,7 +12,7 @@
   var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
   var VIEWS = ["challenge", "overview", "question", "group", "setup"];
   var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
-  // Three routes with round numbers: the hidden demand Q = a - b P, and last month's fare on it (its passengers
+  // Three routes with round numbers: the hidden demand Q = a - b P, and the old fare on it (the passengers it carried
   // follow); the demand differs, so the answer differs from one stream to the next.
   var PRESETS = [
     { label: "London–Detroit", mc: 80, seats: 450, a: 640, b: 0.5, p0: 580, flights: 6 },
@@ -167,7 +167,7 @@
   function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p; }
 
   // ---- the challenge ------------------------------------------------------------------------------------------------
-  // The form holds the demand (a, b) and last month's fare; the script stores last month's passengers q0 = a - b p0
+  // The form holds the demand (a, b) and the old fare; the script stores the old fare's passengers q0 = a - b p0
   // and recovers a from them, exactly, since q0 is a whole number.
   function formValues() {
     var f = S.form; if (f) return f;
@@ -182,27 +182,22 @@
   }
   // The demand line and the profit curve for a set of settings: what the students see at the reveal.
   function settingsCharts(s, v) {
-    var d = v.d, curve = C.profitCurve(d);
+    var d = v.d;
     var demand = C.chart({ title: "The demand", h: 340, x: { max: Math.max(d.a, s.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: v.choke * 1.05, label: "Fare (£)" },
                            lines: [{ pts: [[0, v.choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + s.b + " × fare" }],
                            hlines: [{ y: s.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: s.seats, label: "capacity", color: C.COLORS.orange }],
-                           markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "Last month", label: money(s.p0) + " / " + fmt(s.q0) },
+                           markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "The old fare", label: money(s.p0) + " / " + fmt(s.q0) },
                                      { x: v.best.passengers, y: v.best.fare, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) + " / " + fmt(v.best.passengers) }] });
-    var win = C.profitRange(d, []); curve = C.profitCurve(d, 1, win.x0);
-    var profit = C.chart({ title: "Profit against the fare", h: 340, x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), max: v.best.profit * 1.08, label: "Profit per flight (£)" },
-                           lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: v.sq, label: "last month's profit", color: C.COLORS.grey }],
-                           vlines: [{ x: v.fill, label: "plane full below " + money(v.fill), color: C.COLORS.orange }],
-                           markers: [{ x: s.p0, y: v.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: v.best.fare, y: v.best.profit, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) }] });
-    return '<div>' + demand + '</div><div>' + profit + '</div>';
+    return '<div>' + demand + '</div><div>' + C.profitChartHtml(d, { fare: s.p0, profit: v.sq }, [], { h: 340 }) + '</div>';
   }
   function renderChallenge() {
     var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
     var h = '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
-    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': demand Q = ' + p.a + ' − ' + p.b + ' P, cost ' + p.mc + ', capacity ' + p.seats + ', last month\'s fare ' + p.p0 + '</option>'; }).join("") + '</select></div>';
-    h += '<p class="caption">The demand is hidden from the students; they are told the cost, the plane\'s capacity, last month\'s fare and the passengers it carried, which follow from the demand.</p>';
+    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': demand Q = ' + p.a + ' − ' + p.b + ' P, cost ' + p.mc + ', capacity ' + p.seats + ', the old fare ' + p.p0 + '</option>'; }).join("") + '</select></div>';
+    h += '<p class="caption">The demand is hidden from the students. They are the new pricing team; they are told the cost, the plane\'s capacity, the range of fares the previous team charged and the passengers those fares carried (both follow from the demand and the old fare), and how many seats flew empty.</p>';
     h += '<form id="settings" class="cols" style="gap:10px 20px">' +
       ['label|Route (shown to students)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number', 'flights|Flights in round 1|number',
-       'a|Demand intercept a: passengers who want to fly at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|Last month\'s fare (£), a point on that demand|number'].map(function (spec) {
+       'a|Demand intercept a: passengers who want to fly at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The old fare (£): what the previous team charged, a point on that demand|number'].map(function (spec) {
         var parts = spec.split("|");
         return '<div><label for="f-' + parts[0] + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="f-' + parts[0] + '" data-f="' + parts[0] + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '></div>';
       }).join("") + '</form>';
@@ -210,14 +205,18 @@
     var whole = Math.abs(q0 - Math.round(q0)) < 1e-9, ok = s.b > 0 && s.seats > 0 && +f.a > 0 && s.p0 > s.mc && q0 > 0 && q0 <= s.seats && whole;
     if (ok) {
       var v = derived(s);
-      h += '<div class="note">Last month: ' + money(s.p0) + ' carried <b>' + fmt(q0) + ' passengers</b> (on the demand), a profit of ' + money(v.sq) + ' per flight; the students are told both. Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P: nobody flies above ' + money(v.choke) + '. ' +
-           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' per flight over last month (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). ' +
+      var hr = C.historyRange(s);
+      h += '<div class="note">The students are told: ' + (hr ? 'fares between ' + money(hr.fareLo) + ' and ' + money(hr.fareHi) + ' carried ' + fmt(hr.paxAtLo) + ' to ' + fmt(hr.paxAtHi) + ' passengers (the higher the fare, the fewer), average ' + money(s.p0) + ' with ' + fmt(q0)
+                                                     : 'the old fare ' + money(s.p0) + ' carried ' + fmt(q0) + ' passengers (no round range fits this slope)') +
+           '; about ' + fmt(s.seats - q0) + ' seats flew empty; profit ' + money(v.sq) + ' per flight. ' + (hr ? 'The range gives the slope (' + fmt(hr.paxAtLo - hr.paxAtHi) + ' passengers per ' + money(hr.fareHi - hr.fareLo) + '), so a sharp team can find the best fare before flying. ' : '') +
+           'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P: nobody flies above ' + money(v.choke) + '. ' +
+           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' per flight over the old fare (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). ' +
            'Filling the plane: fare ' + money(v.fill) + ', profit ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
            'Round 2: demand +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>' +
            '<div class="cols">' + settingsCharts(s, v) + '</div><p class="caption">The two charts the students see at the reveal, without the flights.</p>';
-    } else h += '<div class="error">' + (!whole ? 'Last month\'s passengers, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
-                                        : q0 > s.seats ? 'At last month\'s fare the demand (' + fmt(q0) + ') exceeds the seats; raise the fare or the seats.'
-                                        : 'The intercept, the slope and the seats must be positive, the fare above the cost, and the demand at last month\'s fare positive.') + '</div>';
+    } else h += '<div class="error">' + (!whole ? 'The passengers at the old fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
+                                        : q0 > s.seats ? 'At the old fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
+                                        : 'The intercept, the slope and the capacity must be positive, the old fare above the cost, and the demand at the old fare positive.') + '</div>';
     h += '<div class="row">' + (locked ? '<span class="caption">Settings are locked while flights exist; reset the flights to change them.</span>' : '<button type="button" class="primary" id="save-settings"' + (ok ? "" : " disabled") + '>Save settings</button>') + '</div></div>';
     h += '<div class="qblock"><h3>Phase</h3><div class="row">' + PHASES.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && ch.phase === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
          '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + ' style="margin-left:auto">Delete the flights and start over</button></div>' +
@@ -230,11 +229,7 @@
       h += '<div class="qblock"><h3>Leaderboard: ' + plural(board.length, "group") + ', ' + plural(flights.length, "flight") + '</h3>' +
            '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best fare flown</th></tr></thead><tbody>' +
            board.map(function (g, i) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>';
-      var win = C.profitRange(d.d, flights.map(function (fl) { return fl.fare; })), curve = C.profitCurve(d.d, 1, win.x0);
-      var markers = [{ x: ch.settings.p0, y: d.sq, color: C.COLORS.grey, hollow: true, name: "Last month" }, { x: d.best.fare, y: d.best.profit, color: C.COLORS.green, name: "Best fare", label: money(d.best.fare) }];
-      flights.forEach(function (fl) { markers.push({ x: fl.fare, y: fl.profit, color: C.COLORS.red, r: 4, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }); });
-      h += C.chart({ x: { min: win.x0, max: win.x1, label: "Fare (£)" }, y: { min: Math.min(0, Math.min.apply(null, curve.map(function (p) { return p[1]; }))), max: d.best.profit * 1.08, label: "Profit per flight (£)" },
-                     lines: [{ pts: curve, color: C.COLORS.blue, width: 2.5, name: "Profit at each fare" }], hlines: [{ y: d.sq, label: "last month", color: C.COLORS.grey }], vlines: [{ x: win.fill, label: "plane full below " + money(win.fill), color: C.COLORS.orange }], markers: markers }) +
+      h += C.profitChartHtml(d.d, { fare: ch.settings.p0, profit: d.sq }, flights.map(function (fl) { return { fare: fl.fare, profit: fl.profit, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }; }), { r: 4 }) +
            '<div class="row" style="margin-top:6px"><button type="button" id="csv-flights">Download the flights (CSV)</button></div></div>';
     }
     el.innerHTML = h;

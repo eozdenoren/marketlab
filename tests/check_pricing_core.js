@@ -28,10 +28,12 @@ var dbl = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }, bd = C.bestFar
 check(bd.fare === 830 && bd.passengers === 450 && bd.capped, "demand doubled: the seats bind, 830: " + JSON.stringify(bd));
 var curve = C.profitCurve(d);
 check(curve[0][0] === 0 && curve[curve.length - 1][0] === 1280 && curve.some(function (p) { return p[0] === 680 && p[1] === 180000; }), "the profit curve runs from 0 to the choke price through the best fare");
-var win = C.profitRange(d, []);
-check(C.fillFare(d) === 380 && win.x0 === 272 && win.x1 === 1280, "the chart window starts a little below the fare that fills the plane: " + JSON.stringify(win));
-check(C.profitRange(d, [100, 700]).x0 === 80, "a flight at 100 widens the window to 80");
-check(C.profitCurve(d, 1, 272)[0][0] === 272, "the curve can start inside the window");
+var win = C.focusWindow(d);
+check(C.fillFare(d) === 380 && win.x0 === 365 && win.x1 === 995 && win.fill === 380, "the chart window runs from just below the fill-the-plane fare to its mirror beyond the best: " + JSON.stringify([win.x0, win.x1]));
+check(win.y0 < 135000 && win.y0 > 120000 && win.y1 > 180000 && win.y1 < 185000, "profits from the fill-the-plane level up, not from zero: " + JSON.stringify([win.y0, win.y1]));
+check(win.curve[0][0] === 365 && win.curve[win.curve.length - 1][0] === 995, "the curve covers the window");
+var pc = C.profitChartHtml(d, { fare: 580, profit: 175000 }, [{ fare: 680, profit: 180000, title: "Flight 1: £680" }, { fare: 1200, profit: 16000, title: "Flight 2: £1,200" }], {});
+check(/<svg/.test(pc) && /Off the chart: Flight 2: £1,200 \(profit £16,000\)/.test(pc) && pc.indexOf("Flight 1") > 0, "flights inside the window are drawn, the others listed");
 var line = C.lineThrough(580, 350, 780, 250);
 check(line && line.b === 0.5 && line.a === 640, "two flights give the line exactly");
 check(C.lineThrough(580, 350, 580, 350) === null, "no line from one point");
@@ -39,6 +41,12 @@ var s2 = { mc: 100, seats: 420, p0: 650, q0: 340, b: 0.4 }, d2 = { a: C.intercep
 check(d2.a === 600 && b2.fare === 800 && b2.passengers === 280 && b2.profit === 196000, "second preset: best 800 / 280 / 196,000");
 var s3 = { mc: 80, seats: 320, p0: 800, q0: 280, b: 0.25 }, d3 = { a: C.intercept(s3), b: 0.25, mc: 80, seats: 320 }, b3 = C.bestFare(d3);
 check(d3.a === 480 && b3.fare === 1000 && b3.passengers === 230 && b3.profit === 211600, "third preset: best 1000 / 230 / 211,600");
+var h1 = C.historyRange(s), h2 = C.historyRange(s2), h3 = C.historyRange(s3);
+check(h1 && h1.fareLo === 570 && h1.fareHi === 590 && h1.paxAtLo === 355 && h1.paxAtHi === 345, "Detroit history: 570-590 carried 355-345: " + JSON.stringify(h1));
+check(h2 && h2.fareLo === 640 && h2.fareHi === 660 && h2.paxAtLo === 344 && h2.paxAtHi === 336, "Chicago history: 640-660 carried 344-336: " + JSON.stringify(h2));
+check(h3 && h3.fareLo === 780 && h3.fareHi === 820 && h3.paxAtLo === 285 && h3.paxAtHi === 275, "Singapore history: 780-820 carried 285-275 (10 would give half passengers): " + JSON.stringify(h3));
+[h1, h2, h3].forEach(function (h, i) { var dd = [d, d2, d3][i]; check(C.passengersAt(dd, h.fareLo) === h.paxAtLo && C.passengersAt(dd, h.fareHi) === h.paxAtHi, "history " + (i + 1) + " lies on the demand"); });
+check(C.historyRange({ mc: 80, seats: 450, p0: 580, q0: 350, b: 0.37 }) === null, "no round range for an awkward slope");
 
 // ---- Mocha: the figures numpy gave on the same bids (scratch analysis, 2026-11-10)
 function stream(code) { return D.streams.filter(function (x) { return x.code === code; })[0].bids; }

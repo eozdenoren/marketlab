@@ -127,6 +127,19 @@ function intercept(s) { return s.q0 + s.b * s.p0; }                          // 
 function passengersAt(s, fare) { return Math.max(0, Math.min(s.seats, Math.round(intercept(s) - s.b * fare))); }
 function profitAt(s, fare) { return (fare - s.mc) * passengersAt(s, fare); }
 function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
+// The history the students are told: over the past year the old fare moved within p0 ± d and the flights carried
+// the passengers the demand gives at those fares (fewer at the higher fare), so the variation is the market reacting
+// to the fare, not noise. d is the first of a few round numbers for which b·d is a whole number of passengers; null
+// if none fits (then the pages show the single old fare). Same rule as historyRange in src/pricing_core.js.
+function historyRange(s) {
+  var ds = [10, 20, 25, 30, 40, 50];
+  for (var i = 0; i < ds.length; i++) {
+    var d = ds[i], dq = s.b * d;
+    if (Math.abs(dq - Math.round(dq)) < 1e-9 && dq >= 2 && s.p0 - d > s.mc && s.q0 + dq <= s.seats && s.q0 - dq > 0)
+      return { fareLo: s.p0 - d, fareHi: s.p0 + d, paxAtLo: s.q0 + Math.round(dq), paxAtHi: s.q0 - Math.round(dq) };
+  }
+  return null;
+}
 function readChallenge(cls) {
   var values = challengeSheet().getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
@@ -166,7 +179,7 @@ function publicChallenge(cls, group) {
   var c = readChallenge(cls);
   if (!c) return { phase: "setup", told: null };
   var s = c.settings, revealed = c.phase === "revealed" || c.phase === "round2", flights = classFlights(cls);
-  var out = { phase: c.phase, told: { mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, flights: s.flights, label: s.label }, board: board(flights, revealed) };
+  var out = { phase: c.phase, told: { mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, flights: s.flights, label: s.label, history: historyRange(s) }, board: board(flights, revealed) };
   if (revealed) out.demand = { a: intercept(s), b: s.b };
   if (group) out.mine = flights.filter(function (f) { return f.group === group; });
   return out;
