@@ -13,10 +13,11 @@
          "challenge" (class | phase | settings | updated)            one row per class: the pricing challenge
          "flights"   (ts | class | group | n | fare | passengers | profit | gain)   round 1 flights
 
-   The challenge: each group is the airline's pricing team on one route. It is told the cost per passenger (mc),
-   the seats, and last month's fare p0 with its q0 passengers; the demand Q = a - b P is hidden (b in the
+   The challenge: each group is a consulting team pricing a new route. It is told the cost per passenger (mc),
+   the seats, and the trial flights' fare p0 with the q0 passengers they carried on average (a single point,
+   so nothing about the slope); the demand Q = a - b P is hidden (b in the
    settings, a = q0 + b p0). It flies `flights` flights at fares of its choice; each flight's gain is its profit
-   minus the status quo's (p0 - mc) q0. Phases: setup -> open (round 1) -> closed -> revealed (the demand is sent
+   minus the trial fare's (p0 - mc) q0. Phases: setup -> open (round 1) -> closed -> revealed (the demand is sent
    to the pages) -> round2 (the exercise on the revealed demand). Settings cannot change while flights exist.
 
    GET  ?token=<page>&action=check&class=&group=&pin=       -> {status:"new"} | {status:"ok", names, records, challenge}
@@ -38,7 +39,7 @@ var TOKEN = "PAGE-TOKEN";          // same value as "token" under "pricing" in t
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor page only
 var LOCK_AFTER = 10, LOCK_MINUTES = 15;
 var PHASES = ["setup", "open", "closed", "revealed", "round2"];
-var DEFAULT_SETTINGS = { mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5, flights: 6, label: "London–Detroit" };
+var DEFAULT_SETTINGS = { mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5, flights: 6, label: "London–Anchorage" };
 
 function sheet(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -127,19 +128,6 @@ function intercept(s) { return s.q0 + s.b * s.p0; }                          // 
 function passengersAt(s, fare) { return Math.max(0, Math.min(s.seats, Math.round(intercept(s) - s.b * fare))); }
 function profitAt(s, fare) { return (fare - s.mc) * passengersAt(s, fare); }
 function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
-// The history the students are told: over the past year the old fare moved within p0 ± d and the flights carried
-// the passengers the demand gives at those fares (fewer at the higher fare), so the variation is the market reacting
-// to the fare, not noise. d is the first of a few round numbers for which b·d is a whole number of passengers; null
-// if none fits (then the pages show the single old fare). Same rule as historyRange in src/pricing_core.js.
-function historyRange(s) {
-  var ds = [10, 20, 25, 30, 40, 50];
-  for (var i = 0; i < ds.length; i++) {
-    var d = ds[i], dq = s.b * d;
-    if (Math.abs(dq - Math.round(dq)) < 1e-9 && dq >= 2 && s.p0 - d > s.mc && s.q0 + dq <= s.seats && s.q0 - dq > 0)
-      return { fareLo: s.p0 - d, fareHi: s.p0 + d, paxAtLo: s.q0 + Math.round(dq), paxAtHi: s.q0 - Math.round(dq) };
-  }
-  return null;
-}
 function readChallenge(cls) {
   var values = challengeSheet().getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
@@ -179,7 +167,7 @@ function publicChallenge(cls, group) {
   var c = readChallenge(cls);
   if (!c) return { phase: "setup", told: null };
   var s = c.settings, revealed = c.phase === "revealed" || c.phase === "round2", flights = classFlights(cls);
-  var out = { phase: c.phase, told: { mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, flights: s.flights, label: s.label, history: historyRange(s) }, board: board(flights, revealed) };
+  var out = { phase: c.phase, told: { mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, flights: s.flights, label: s.label }, board: board(flights, revealed) };
   if (revealed) out.demand = { a: intercept(s), b: s.b };
   if (group) out.mine = flights.filter(function (f) { return f.group === group; });
   return out;

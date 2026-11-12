@@ -67,8 +67,7 @@ check(!fly0.ok && /not open/.test(fly0.error), "cannot fly before round 1 opens"
 check(post({ token: ADMIN, action: "challenge_phase", "class": "A", phase: "open" }).ok, "round 1 opened");
 var pub = get({ token: PAGE, action: "challenge", "class": "A" }).challenge;
 check(pub.phase === "open" && pub.told.p0 === 580 && pub.told.q0 === 350 && pub.told.mc === 80 && pub.told.seats === 450 && pub.told.flights === 6, "told numbers: " + JSON.stringify(pub.told));
-var hist = pub.told.history;
-check(hist && hist.fareLo === 570 && hist.fareHi === 590 && hist.paxAtLo === 355 && hist.paxAtHi === 345, "the history: fares 570-590 carried 355-345: " + JSON.stringify(hist));
+check(pub.told.history === undefined, "no fare range is sent (it would give the slope away)");
 check(pub.told.b === undefined && pub.told.a === undefined, "the slope and the intercept are not sent");
 check(pub.demand === undefined, "the demand is not sent while round 1 is open");
 var f1 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 680 });

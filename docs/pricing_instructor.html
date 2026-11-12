@@ -204,7 +204,7 @@ body.projector h1 { font-size: 2rem; }
 /* Pricing Laboratory: the arithmetic, the SVG chart and the lab-book table, shared by the class page
    (pricing.js) and the instructor page (pricing_instructor.js). Plain script, no dependencies.
 
-   The challenge: a route with cost mc per passenger, `seats` seats, last month's fare p0 carrying q0 passengers,
+   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights' fare p0 carrying q0 passengers on average,
    and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). The same arithmetic as the
    script's (backend/Pricing.gs): passengers are rounded to the whole and capped by the seats.
    Mocha: a list of bids (each the most one student would pay); at price p the buyers are the bids >= p. */
@@ -259,13 +259,13 @@ var PricingCore = (function () {
     var ys = curve.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys), r = Math.max(1, hi - lo);
     return { x0: x0, x1: x1, y0: lo - 0.08 * r, y1: hi + 0.06 * r, fill: fill, curve: curve, best: best };
   }
-  // The profit chart in that window: the curve, the old fare's profit as a dashed line and a hollow dot, the best fare,
+  // The profit chart in that window: the curve, the trial fare's profit as a dashed line and a hollow dot, the best fare,
   // the fill-the-plane line, and the flights given as dots ({fare, profit, title, name}); flights outside the window
   // are listed under the chart instead of stretching it.
   function profitChartHtml(d, old, flights, opts) {
     opts = opts || {};
     var w = focusWindow(d), markers = [];
-    if (old) markers.push({ x: old.fare, y: old.profit, color: COLORS.grey, hollow: true, name: opts.oldName || "The old fare", title: (opts.oldName || "The old fare") + ": " + money(old.fare) + ", profit " + money(old.profit) });
+    if (old) markers.push({ x: old.fare, y: old.profit, color: COLORS.grey, hollow: true, name: opts.oldName || "The trial fare", title: (opts.oldName || "The trial fare") + ": " + money(old.fare) + ", profit " + money(old.profit) });
     markers.push({ x: w.best.fare, y: w.best.profit, color: COLORS.green, name: "Best fare " + money(w.best.fare), label: money(w.best.fare), title: "Best fare " + money(w.best.fare) + ": " + fmt(w.best.passengers) + " passengers, profit " + money(w.best.profit) });
     var off = [];
     (flights || []).forEach(function (f) {
@@ -274,25 +274,13 @@ var PricingCore = (function () {
     });
     var html = chart({ title: "Profit against the fare", h: opts.h, x: { min: w.x0, max: w.x1, label: "Fare (£)" }, y: { min: w.y0, max: w.y1, label: "Profit per flight (£)" },
                        lines: [{ pts: w.curve, color: COLORS.blue, width: 2.5, name: "Profit at each fare" }],
-                       hlines: old ? [{ y: old.profit, label: (opts.oldName || "the old fare") + "'s profit", color: COLORS.grey }] : [],
+                       hlines: old ? [{ y: old.profit, label: (opts.oldName || "the trial fare") + "'s profit", color: COLORS.grey }] : [],
                        vlines: w.fill > w.x0 ? [{ x: w.fill, label: "plane full below " + money(w.fill), color: COLORS.orange }] : [], markers: markers });
     if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || money(f.fare)) + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
     return html;
   }
-  // The history given to the students: over the past year the old fare moved within p0 ± d and the flights carried
-  // what the demand gives at those fares. The same rule as historyRange in backend/Pricing.gs, which sends it to the
-  // pages (they do not know b); here for the instructor page and the tests.
-  function historyRange(s) {
-    var ds = [10, 20, 25, 30, 40, 50];
-    for (var i = 0; i < ds.length; i++) {
-      var d = ds[i], dq = s.b * d;
-      if (Math.abs(dq - Math.round(dq)) < 1e-9 && dq >= 2 && s.p0 - d > s.mc && s.q0 + dq <= s.seats && s.q0 - dq > 0)
-        return { fareLo: s.p0 - d, fareHi: s.p0 + d, paxAtLo: s.q0 + Math.round(dq), paxAtHi: s.q0 - Math.round(dq) };
-    }
-    return null;
-  }
   function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
-  // The line through the status quo and one test flight: the group's own estimate of the demand.
+  // The line through the trial flights' average and one test flight: the group's own estimate of the demand.
   function lineThrough(p1, q1, p2, q2) {
     if (Math.abs(p2 - p1) < 1e-9) return null;
     var b = (q1 - q2) / (p2 - p1);
@@ -457,7 +445,7 @@ var PricingCore = (function () {
   }
 
   return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
-           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, focusWindow: focusWindow, profitChartHtml: profitChartHtml, historyRange: historyRange,
+           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, focusWindow: focusWindow, profitChartHtml: profitChartHtml,
            statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };
@@ -686,14 +674,15 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
   var VIEWS = ["challenge", "overview", "question", "group", "setup"];
   var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
-  // Three routes with round numbers: the hidden demand Q = a - b P, and the old fare on it (the passengers it carried
-  // follow); the demand differs, so the answer differs from one stream to the next.
-  // In each the old fare is well below the best (a gain of 12-15% a flight), about 100 seats fly empty at it (the
+  // Three new routes with round numbers (WeezyJet's only direct flights; none had a scheduled nonstop from London
+  // in November 2026): the hidden demand Q = a - b P, and the trial fare on it (the passengers it carried follow);
+  // the demand differs, so the answer differs from one stream to the next.
+  // In each the trial fare is well below the best (a gain of 12-15% a flight), about 100 seats fly empty at it (the
   // temptation to cut), demand +40% leaves the best fare unchanged and doubled demand fills the plane.
   var PRESETS = [
-    { label: "London–Detroit", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480, flights: 6 },
-    { label: "London–Chicago", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550, flights: 6 },
-    { label: "London–Singapore", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700, flights: 6 }];
+    { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480, flights: 6 },
+    { label: "London–Zanzibar", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550, flights: 6 },
+    { label: "London–Bali", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700, flights: 6 }];
   var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, readAt: null, busy: false, error: "", msg: "", form: null };
 
   function $(id) { return document.getElementById(id); }
@@ -843,7 +832,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p; }
 
   // ---- the challenge ------------------------------------------------------------------------------------------------
-  // The form holds the demand (a, b) and the old fare; the script stores the old fare's passengers q0 = a - b p0
+  // The form holds the demand (a, b) and the trial fare; the script stores the trial fare's passengers q0 = a - b p0
   // and recovers a from them, exactly, since q0 is a whole number.
   function formValues() {
     var f = S.form; if (f) return f;
@@ -862,18 +851,18 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     var demand = C.chart({ title: "The demand", h: 340, x: { max: Math.max(d.a, s.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: v.choke * 1.05, label: "Fare (£)" },
                            lines: [{ pts: [[0, v.choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + s.b + " × fare" }],
                            hlines: [{ y: s.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: s.seats, label: "capacity", color: C.COLORS.orange }],
-                           markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "The old fare", label: money(s.p0) + " / " + fmt(s.q0) },
+                           markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare", label: money(s.p0) + " / " + fmt(s.q0) },
                                      { x: v.best.passengers, y: v.best.fare, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) + " / " + fmt(v.best.passengers) }] });
     return '<div>' + demand + '</div><div>' + C.profitChartHtml(d, { fare: s.p0, profit: v.sq }, [], { h: 340 }) + '</div>';
   }
   function renderChallenge() {
     var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
     var h = '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
-    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': demand Q = ' + p.a + ' − ' + p.b + ' P, cost ' + p.mc + ', capacity ' + p.seats + ', the old fare ' + p.p0 + '</option>'; }).join("") + '</select></div>';
-    h += '<p class="caption">The demand is hidden from the students. They are the new pricing team; they are told the cost, the plane\'s capacity, the range of fares the previous team charged and the passengers those fares carried (both follow from the demand and the old fare), and how many seats flew empty.</p>';
+    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': demand Q = ' + p.a + ' − ' + p.b + ' P, cost ' + p.mc + ', capacity ' + p.seats + ', trial fare ' + p.p0 + '</option>'; }).join("") + '</select></div>';
+    h += '<p class="caption">The demand is hidden from the students. They are consulting teams pricing WeezyJet\'s new route; they are told the cost, the plane\'s capacity, the trial fare and the passengers a trial flight carried on average (from the demand and the trial fare), and how many seats flew empty. One point, so nothing about the slope: the first flight is how they learn it.</p>';
     h += '<form id="settings" class="cols" style="gap:10px 20px">' +
-      ['label|Route (shown to students)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number', 'flights|Flights in round 1|number',
-       'a|Demand intercept a: passengers who want to fly at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The old fare (£): what the previous team charged, a point on that demand|number'].map(function (spec) {
+      ['label|Route (shown to students, as London–Place)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number', 'flights|Flights in round 1|number',
+       'a|Demand intercept a: passengers who want to fly at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The trial fare (£): what the trial flights charged, a point on that demand|number'].map(function (spec) {
         var parts = spec.split("|");
         return '<div><label for="f-' + parts[0] + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="f-' + parts[0] + '" data-f="' + parts[0] + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '></div>';
       }).join("") + '</form>';
@@ -881,18 +870,15 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     var whole = Math.abs(q0 - Math.round(q0)) < 1e-9, ok = s.b > 0 && s.seats > 0 && +f.a > 0 && s.p0 > s.mc && q0 > 0 && q0 <= s.seats && whole;
     if (ok) {
       var v = derived(s);
-      var hr = C.historyRange(s);
-      h += '<div class="note">The students are told: ' + (hr ? 'fares between ' + money(hr.fareLo) + ' and ' + money(hr.fareHi) + ' carried ' + fmt(hr.paxAtLo) + ' to ' + fmt(hr.paxAtHi) + ' passengers (the higher the fare, the fewer), average ' + money(s.p0) + ' with ' + fmt(q0)
-                                                     : 'the old fare ' + money(s.p0) + ' carried ' + fmt(q0) + ' passengers (no round range fits this slope)') +
-           '; about ' + fmt(s.seats - q0) + ' seats flew empty; profit ' + money(v.sq) + ' per flight. ' + (hr ? 'The range gives the slope (' + fmt(hr.paxAtLo - hr.paxAtHi) + ' passengers per ' + money(hr.fareHi - hr.fareLo) + '), so a sharp team can find the best fare before flying. ' : '') +
+      h += '<div class="note">The students are told: the trial fare ' + money(s.p0) + ' carried ' + fmt(q0) + ' passengers on average; about ' + fmt(s.seats - q0) + ' seats flew empty; ' + money(v.sq) + ' per flight after passenger costs. ' +
            'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P: nobody flies above ' + money(v.choke) + '. ' +
-           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' per flight over the old fare (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). ' +
+           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' per flight over the trial fare (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). ' +
            'Filling the plane: fare ' + money(v.fill) + ', profit ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
            'Round 2: demand +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>' +
            '<div class="cols">' + settingsCharts(s, v) + '</div><p class="caption">The two charts the students see at the reveal, without the flights.</p>';
-    } else h += '<div class="error">' + (!whole ? 'The passengers at the old fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
-                                        : q0 > s.seats ? 'At the old fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
-                                        : 'The intercept, the slope and the capacity must be positive, the old fare above the cost, and the demand at the old fare positive.') + '</div>';
+    } else h += '<div class="error">' + (!whole ? 'The passengers at the trial fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
+                                        : q0 > s.seats ? 'At the trial fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
+                                        : 'The intercept, the slope and the capacity must be positive, the trial fare above the cost, and the demand at the trial fare positive.') + '</div>';
     h += '<div class="row">' + (locked ? '<span class="caption">Settings are locked while flights exist; reset the flights to change them.</span>' : '<button type="button" class="primary" id="save-settings"' + (ok ? "" : " disabled") + '>Save settings</button>') + '</div></div>';
     h += '<div class="qblock"><h3>Phase</h3><div class="row">' + PHASES.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && ch.phase === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
          '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + ' style="margin-left:auto">Delete the flights and start over</button></div>' +

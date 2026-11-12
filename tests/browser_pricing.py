@@ -105,8 +105,9 @@ def main():
             # ---- the student page picks the opening up by polling and flies
             s1.get_by_text("Fare for flight 1 of 6", exact=False).wait_for(timeout=15000)
             brief = s1.locator("#tab-challenge .briefing").inner_text()
-            check("500 seats" in brief and "between £470 and £490" in brief and "between 395 and 405 passengers" in brief and "100 of the 500 seats flew empty" in brief,
-                  "the briefing gives the range of old fares, the passengers and the empty seats: %r" % brief[:400])
+            check("WeezyJet has just opened the only direct flight between" in brief and "consulting teams" in brief and "trial flights" in brief
+                  and "the next six flights" in brief and "after passenger costs" in brief and "£470" not in brief and "old fare" not in brief.lower(),
+                  "the briefing: WeezyJet's new route, the consulting contest, the trial flights, six flights: %r" % brief[:500])
             s1.screenshot(path=os.path.join(OUT, "03_student_open.png"), full_page=True)
             s1.fill("#fare", "680"); s1.click("#fly")
             s1.get_by_text("Fare for flight 2 of 6", exact=False).wait_for()
