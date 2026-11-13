@@ -1,3 +1,5 @@
+// ==== PRICING LAB SCRIPT, VERSION 4 (13 Nov 2026): three routes per class ====
+// (The pricing instructor page shows this version number at the bottom once this code is the live deployment.)
 /* Pricing Laboratory: class record endpoint (Google Apps Script, bound to the Pricing Lab's own Google Sheet).
 
    A second script, separate from the Marketplace Laboratory's Code.gs, so that the Marketplace record is never
@@ -46,6 +48,7 @@ var RECORDS = "records", GROUPS = "groups", CHALLENGE = "challenge", FLIGHTS = "
 var TOKEN = "PAGE-TOKEN";          // same value as "token" under "pricing" in the page's build config
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor page only
 var LOCK_AFTER = 10, LOCK_MINUTES = 15;
+var VERSION = "4 (13 Nov 2026)";   // sent with every reply; the same number as in the first line of this file
 var PHASES = ["setup", "open", "closed", "revealed", "round2"];
 var MAX_ROUTES = 6, DEFAULT_FLIGHTS = 6;
 var DEFAULT_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5 };
@@ -335,5 +338,6 @@ function doPost(e) {
 }
 
 function reply(obj) {
+  obj.version = VERSION;
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }

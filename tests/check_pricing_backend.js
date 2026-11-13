@@ -73,6 +73,7 @@ check(pub.demand === undefined, "the demand is not sent while round 1 is open");
 check(pub.nroutes === 1 && pub.route === 0 && pub.routes === undefined, "a class with one route: the page gets that route, group or not");
 var pubRaw = get({ token: PAGE, action: "challenge", "class": "A" });
 check(pubRaw.presets === undefined && pubRaw.groups === undefined, "the page token gets no presets and no group list");
+check(/^\d+ \(/.test(pubRaw.version) && src.indexOf("VERSION " + pubRaw.version.split(" ")[0] + " (") > 0 && src.indexOf("VERSION " + pubRaw.version.split(" ")[0] + " (") < 60, "every reply carries the version, the same number as in the first line of the script: " + pubRaw.version);
 var f1 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 680 });
 check(f1.ok && f1.flight.passengers === 300 && f1.flight.profit === 180000 && f1.flight.gain === 5000, "fare 680: 300 passengers, profit 180,000, gain 5,000: " + JSON.stringify(f1.flight));
 var f2 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 380 });

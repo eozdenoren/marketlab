@@ -103,6 +103,11 @@ def main():
             check(ins.locator("#settings .route-card").count() == 3 and "Best fare £800" in st and "Best fare £1,000" in st, "three routes, each with its best fare")
             check("2 registered teams: 7, 13" in st and "1 registered team: 8" in st, "the routes list their teams by group number: %r" % st[:600])
             check("1. Open round 1" in st and "4. Open round 2" in st, "the steps are numbered")
+            check("script version 4 (" in ins.locator("#footer-status").inner_text() and ins.locator("#old-script").count() == 0, "the footer shows the script's version: %r" % ins.locator("#footer-status").inner_text())
+            ins.evaluate("() => { var P = window.PricingLabInstructor; P.state.version = ''; P.render(); }")   # as if an old deployment had answered
+            check(ins.locator("#old-script").count() == 1 and ins.locator("#save-settings").is_disabled() and "unknown (an old deployment)" in ins.locator("#footer-status").inner_text(), "an old deployment is called out and settings cannot be saved through it")
+            ins.evaluate("() => { var P = window.PricingLabInstructor; P.state.version = '4 (test)'; P.render(); }")
+            check(ins.locator("#old-script").count() == 0 and not ins.locator("#save-settings").is_disabled(), "with a version the warning goes")
             src = open(os.path.join(dist, "pricing_instructor.html")).read() + open(os.path.join(dist, "pricing.html")).read()
             check("London–Zanzibar" not in src and "a: 600" not in src and "PRESET_SETS" not in src, "the pages' source holds no preset routes: they come from the script after sign-in")
             ins.screenshot(path=os.path.join(OUT, "02_instructor_settings.png"), full_page=True)

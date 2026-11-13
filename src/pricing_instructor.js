@@ -18,7 +18,7 @@
   // preset sets once the instructor has signed in. A class runs up to three routes at once; each group prices the
   // route its number gives it. This one route only stands in when the script sends no preset.
   var FALLBACK_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480 };
-  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, presets: [], groups: [], readAt: null, busy: false, error: "", msg: "", form: null };
+  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, presets: [], groups: [], version: "", answered: false, readAt: null, busy: false, error: "", msg: "", form: null };
 
   function $(id) { return document.getElementById(id); }
   function fmtTime(ts, withDate) {
@@ -64,7 +64,7 @@
   function loadChallenge(cb) {
     if (!S.cls) { if (cb) cb(); return; }
     api({ token: S.cred, action: "challenge", "class": S.cls }).then(function (j) {
-      if (j && j.ok) { S.challenge = withRoutes(j.challenge); S.presets = j.presets || []; S.groups = j.groups || []; }
+      if (j && j.ok) { S.challenge = withRoutes(j.challenge); S.presets = j.presets || []; S.groups = j.groups || []; S.version = j.version || ""; S.answered = true; }
       if (cb) cb(j && j.ok ? null : ((j && j.error) || "no answer"));
     }).catch(function (err) { if (cb) cb(String(err && err.message || err)); });
   }
@@ -151,7 +151,8 @@
   // ---- the page -------------------------------------------------------------------------------------------------------
   function render() {
     renderTop();
-    $("footer-status").textContent = S.records ? plural(S.records.length, "record") + " in the class record, read at " + fmtTime(S.readAt, false) + (S.error ? " · " + S.error : "") : "";
+    $("footer-status").textContent = (S.records ? plural(S.records.length, "record") + " in the class record, read at " + fmtTime(S.readAt, false) + (S.error ? " · " + S.error : "") : "") +
+      (S.answered ? " · script version " + (S.version || "unknown (an old deployment)") : "");
     renderClassBar();
     VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== S.view; });
     Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-view") === S.view); });
@@ -266,8 +267,11 @@
   function renderChallenge() {
     var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
     var n = Math.max(1, Math.min(f.routes.length, +f.n || 1)), used = f.routes.slice(0, n), checks = used.map(routeCheck), sug = suggestedPreset(S.cls);
-    var flOk = +f.flights >= 1 && +f.flights <= 12, ok = flOk && checks.every(function (c) { return c.ok; });
-    var h = '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
+    var oldScript = S.answered && !S.version;
+    var flOk = +f.flights >= 1 && +f.flights <= 12, ok = flOk && !oldScript && checks.every(function (c) { return c.ok; });
+    var h = (oldScript ? '<div class="error" id="old-script"><b>The script that answered is an old deployment</b> (it sent no version number), so it knows nothing of the routes. In the Apps Script editor, check that the first line of the code says VERSION 4 or later, then Deploy → Manage deployments → the pencil → Version: New version → Deploy. ' +
+                         'If the version at the bottom of this page stays unknown after that, the deployment you updated is not the one this page uses: its address is <span class="linkbox" style="display:inline">' + esc(ENDPOINT) + '</span>. Settings cannot be saved until this is fixed.</div>' : '') +
+            '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
     h += '<div class="row" style="margin-bottom:6px;align-items:end">' +
          '<div><label for="preset">Preset</label><select id="preset"' + (locked || !S.presets.length ? " disabled" : "") + '><option value="">' + (S.presets.length ? "choose a set of routes…" : "the script sent no presets") + '</option>' +
          S.presets.map(function (p, i) { return '<option value="' + i + '"' + (f.preset === String(i) ? " selected" : "") + '>' + esc(p.name || ("Set " + (i + 1))) + ': ' + esc(p.routes.map(function (r) { return r.label; }).join(", ")) + (i === sug ? " (suggested for this class)" : "") + '</option>'; }).join("") + '</select></div>' +
@@ -404,5 +408,5 @@
     });
   }
   document.addEventListener("DOMContentLoaded", init);
-  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords };
+  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords, render: function () { render(); } };
 })();
