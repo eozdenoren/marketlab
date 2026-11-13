@@ -12,16 +12,13 @@
   var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
   var VIEWS = ["challenge", "overview", "question", "group", "setup"];
   var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
-  // Three new routes with round numbers (WeezyJet's only direct flights; none had a scheduled nonstop from London
-  // in November 2026): the hidden demand Q = a - b P, and the trial fare on it (the passengers it carried follow);
-  // the demand differs, so the answer differs from one stream to the next.
-  // In each the trial fare is well below the best (a gain of 12-15% a flight), about 100 seats fly empty at it (the
-  // temptation to cut), demand +40% leaves the best fare unchanged and doubled demand fills the plane.
-  var PRESETS = [
-    { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480, flights: 6 },
-    { label: "London–Zanzibar", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550, flights: 6 },
-    { label: "London–Bali", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700, flights: 6 }];
-  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, readAt: null, busy: false, error: "", msg: "", form: null };
+  // The instructor's steps, in order; each puts the class in the phase named.
+  var STEPS = [["open", "1. Open round 1"], ["closed", "2. Close round 1"], ["revealed", "3. Reveal the demand"], ["round2", "4. Open round 2"]];
+  // The routes and their hidden demands are not in this page (everyone can read its source): the script sends its
+  // preset sets once the instructor has signed in. A class runs up to three routes at once; each group prices the
+  // route its number gives it. This one route only stands in when the script sends no preset.
+  var FALLBACK_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480 };
+  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, presets: [], groups: [], readAt: null, busy: false, error: "", msg: "", form: null };
 
   function $(id) { return document.getElementById(id); }
   function fmtTime(ts, withDate) {
@@ -58,10 +55,16 @@
       S.records = j.records || []; S.readAt = Date.now() / 1000; rebuild(); cb(null);
     }).catch(function (err) { S.busy = false; cb(String(err && err.message || err)); });
   }
+  // A script deployed before the routes sends one route's numbers beside `flights`: read that as one route.
+  function withRoutes(ch) {
+    if (ch && ch.settings && !ch.settings.routes) ch.settings = { flights: ch.settings.flights, routes: [ch.settings] };
+    if (ch && !ch.flights) ch.flights = [];
+    return ch;
+  }
   function loadChallenge(cb) {
     if (!S.cls) { if (cb) cb(); return; }
     api({ token: S.cred, action: "challenge", "class": S.cls }).then(function (j) {
-      if (j && j.ok) { S.challenge = j.challenge; S.defaults = j.defaults; }
+      if (j && j.ok) { S.challenge = withRoutes(j.challenge); S.presets = j.presets || []; S.groups = j.groups || []; }
       if (cb) cb(j && j.ok ? null : ((j && j.error) || "no answer"));
     }).catch(function (err) { if (cb) cb(String(err && err.message || err)); });
   }
@@ -170,81 +173,136 @@
   function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p; }
 
   // ---- the challenge ------------------------------------------------------------------------------------------------
-  // The form holds the demand (a, b) and the trial fare; the script stores the trial fare's passengers q0 = a - b p0
-  // and recovers a from them, exactly, since q0 is a whole number.
+  // The form holds, per route, the demand (a, b) and the trial fare; the script stores the trial fare's passengers
+  // q0 = a - b p0 and recovers a from them, exactly, since q0 is a whole number. `n` routes of the list are used.
+  function routeForm(r) { return { label: r.label || "", mc: r.mc, seats: r.seats, a: r.a != null ? r.a : C.intercept(r), b: r.b, p0: r.p0 }; }
+  // The preset suggested for a class: the sets in turn down the class list, so no two streams share a set.
+  function suggestedPreset(cls) { var i = S.classes.indexOf(cls); return S.presets.length ? (i < 0 ? 0 : i) % S.presets.length : -1; }
+  function formFromPreset(k) { var p = S.presets[k]; return { flights: 6, routes: p.routes.map(routeForm), n: p.routes.length, preset: String(k) }; }
   function formValues() {
-    var f = S.form; if (f) return f;
-    var s = S.challenge ? S.challenge.settings : PRESETS[0];
-    S.form = { label: s.label || "", mc: s.mc, seats: s.seats, a: s.a != null ? s.a : C.intercept(s), b: s.b, p0: s.p0, flights: s.flights };
+    if (S.form) return S.form;
+    var ch = S.challenge, k = suggestedPreset(S.cls);
+    if (ch) S.form = { flights: ch.settings.flights, routes: ch.settings.routes.map(routeForm), n: ch.settings.routes.length, preset: "" };
+    else S.form = k >= 0 ? formFromPreset(k) : { flights: 6, routes: [routeForm(FALLBACK_ROUTE)], n: 1, preset: "" };
     return S.form;
   }
   function derived(s) {
     var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats }, best = C.bestFare(d), sq = C.statusQuoProfit(s);
-    var fill = Math.ceil((d.a - s.seats) / s.b);
+    var fill = C.fillFare(d);
     return { d: d, best: best, sq: sq, choke: C.chokePrice(d), fill: fill, fillProfit: C.profitAt(d, fill), up: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 1.4 }), dbl: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }) };
   }
-  // The demand line and the profit curve for a set of settings: what the students see at the reveal.
+  // One route of the form, checked: {ok, s (what the script stores), error}.
+  function routeCheck(f) {
+    var q0 = +f.a - +f.b * +f.p0, s = { label: String(f.label || ""), mc: +f.mc, seats: +f.seats, p0: +f.p0, q0: Math.round(q0), b: +f.b };
+    var whole = Math.abs(q0 - Math.round(q0)) < 1e-9, ok = s.b > 0 && s.seats > 0 && +f.a > 0 && s.p0 > s.mc && q0 > 0 && q0 <= s.seats && whole;
+    return { ok: ok, s: s, error: ok ? "" : (!whole ? 'The passengers at the trial fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
+                                           : q0 > s.seats ? 'At the trial fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
+                                           : 'The intercept, the slope and the capacity must be positive, the trial fare above the cost, and the demand at the trial fare positive.') };
+  }
+  // The demand line and the profit curve of a route: what the students see at the reveal.
   function settingsCharts(s, v) {
     var d = v.d;
-    var demand = C.chart({ title: "The demand", h: 340, x: { max: Math.max(d.a, s.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: v.choke * 1.05, label: "Fare (£)" },
+    var demand = C.chart({ title: "The demand", h: 300, x: { max: Math.max(d.a, s.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: v.choke * 1.05, label: "Fare (£)" },
                            lines: [{ pts: [[0, v.choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + s.b + " × fare" }],
                            hlines: [{ y: s.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: s.seats, label: "capacity", color: C.COLORS.orange }],
                            markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare", label: money(s.p0) + " / " + fmt(s.q0) },
                                      { x: v.best.passengers, y: v.best.fare, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) + " / " + fmt(v.best.passengers) }] });
-    return '<div>' + demand + '</div><div>' + C.profitChartHtml(d, { fare: s.p0, profit: v.sq }, [], { h: 340 }) + '</div>';
+    return demand + C.profitChartHtml(d, { fare: s.p0, profit: v.sq }, [], { h: 300 });
+  }
+  function groupNumber(g) { var m = /(\d+)\s*$/.exec(String(g)); return m ? Number(m[1]) : 1; }
+  function routeOf(group, n) { return ((groupNumber(group) - 1) % n + n) % n; }   // the script's rule (routeIndex)
+  // The groups registered for the class that price route i when the class runs n routes.
+  function teamsOf(i, n) {
+    return S.groups.filter(function (g) { return routeOf(g, n) === i; }).sort(function (x, y) { return groupNumber(x) - groupNumber(y); });
+  }
+  function routeCard(f, i, n, locked) {
+    var chk = routeCheck(f), teams = teamsOf(i, n);
+    var h = '<div class="route-card"><h3>' + (n > 1 ? 'Route ' + (i + 1) + ': ' : '') + esc(f.label || "(no name)") + '</h3>' +
+      '<p class="caption" style="margin:0 0 4px">' + (n > 1 ? (teams.length ? plural(teams.length, "registered team") + ': ' + esc(teams.map(function (g) { return String(g).replace(/^Group\s*/, ""); }).join(", ")) + '.' : 'No registered group has a number for this route yet.')
+                                                         : 'Every group prices this route.') + '</p>';
+    h += ['label|Route (shown to students, as London–Place)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number',
+          'a|Demand intercept a: passengers at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The trial fare (£), a point on that demand|number'].map(function (spec) {
+      var parts = spec.split("|"), id = 'f-' + parts[0] + '-' + i;
+      return '<label for="' + id + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="' + id + '" data-f="' + parts[0] + '" data-r="' + i + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '>';
+    }).join("");
+    if (chk.ok) {
+      var s = chk.s, v = derived(s), fl = +S.form.flights || 6;
+      h += '<div class="note">Told: ' + money(s.p0) + ' carried ' + fmt(s.q0) + ' on average; ' + fmt(s.seats - s.q0) + ' seats empty; ' + money(v.sq) + ' a flight. ' +
+           'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P; nobody flies above ' + money(v.choke) + '. ' +
+           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' a flight over the trial fare (' + money((v.best.profit - v.sq) * fl) + ' over ' + fl + ' flights). ' +
+           'Filling the plane: ' + money(v.fill) + ', ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
+           'Round 2: +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>' +
+           settingsCharts(s, v);
+    } else h += '<div class="error">' + chk.error + '</div>';
+    return h + '</div>';
+  }
+  // Each group's flights summed, best first.
+  function boardOf(flights) {
+    var by = {};
+    flights.forEach(function (fl) { var g = by[fl.group] || (by[fl.group] = { group: fl.group, n: 0, gain: 0, fares: [], flights: [] }); g.n++; g.gain += fl.gain; g.fares.push(fl.fare); g.flights.push(fl); });
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (x, y) { return y.gain - x.gain || groupNumber(x.group) - groupNumber(y.group); });
+  }
+  function leaderboards(ch) {
+    var routes = ch.settings.routes, n = routes.length, flights = ch.flights, all = [];
+    var h = '<div class="qblock"><h3>Leaderboard' + (n > 1 ? 's' : '') + ': ' + plural(boardOf(flights).length, "group") + ', ' + plural(flights.length, "flight") + '</h3><div class="routes-grid">';
+    routes.forEach(function (r, i) {
+      var mine = flights.filter(function (fl) { return (fl.route != null ? fl.route : routeOf(fl.group, n)) === i; }), board = boardOf(mine), d = derived(r);
+      var possible = (d.best.profit - d.sq) * ch.settings.flights;
+      board.forEach(function (g) { all.push({ group: g.group, label: r.label, n: g.n, gain: g.gain, possible: possible, share: possible > 0 ? g.gain / possible : 0 }); });
+      h += '<div class="route-card"><h3>' + esc(r.label) + ' <span class="badge">' + plural(board.length, "team") + ', ' + plural(mine.length, "flight") + '</span></h3>';
+      if (!mine.length) { h += '<p class="caption">No flights on this route yet.</p></div>'; return; }
+      h += '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best flown</th></tr></thead><tbody>' +
+           board.map(function (g, k) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (k + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>' +
+           C.profitChartHtml(d.d, { fare: r.p0, profit: d.sq }, mine.map(function (fl) { return { fare: fl.fare, profit: fl.profit, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }; }), { r: 4, h: 300 }) + '</div>';
+    });
+    h += '</div>';
+    if (n > 1 && all.length) {
+      all.sort(function (x, y) { return y.share - x.share || groupNumber(x.group) - groupNumber(y.group); });
+      h += '<h3 style="margin-top:10px">Every team: share of the gain its route allowed</h3><div class="wide"><table class="grid board overall"><thead><tr><th class="rank">#</th><th>Group</th><th>Route</th><th class="num">Flights</th><th class="num">Score</th><th class="num">Best possible</th><th class="num">Share</th></tr></thead><tbody>' +
+           all.map(function (r, k) { return '<tr><td class="rank">' + (k + 1) + '</td><td>' + esc(r.group) + '</td><td>' + esc(r.label) + '</td><td class="num">' + r.n + '</td><td class="num">' + money(r.gain, 0, true) + '</td><td class="num">' + money(r.possible) + '</td><td class="num">' + fmt(100 * r.share) + '%</td></tr>'; }).join("") + '</tbody></table></div>';
+    }
+    return h + '<div class="row" style="margin-top:6px"><button type="button" id="csv-flights">Download the flights (CSV)</button></div></div>';
   }
   function renderChallenge() {
     var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
+    var n = Math.max(1, Math.min(f.routes.length, +f.n || 1)), used = f.routes.slice(0, n), checks = used.map(routeCheck), sug = suggestedPreset(S.cls);
+    var flOk = +f.flights >= 1 && +f.flights <= 12, ok = flOk && checks.every(function (c) { return c.ok; });
     var h = '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
-    h += '<div class="row" style="margin-bottom:6px"><label for="preset" style="margin:0">Preset</label><select id="preset"' + (locked ? " disabled" : "") + '><option value="">choose a route…</option>' + PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p.label) + ': demand Q = ' + p.a + ' − ' + p.b + ' P, cost ' + p.mc + ', capacity ' + p.seats + ', trial fare ' + p.p0 + '</option>'; }).join("") + '</select></div>';
-    h += '<p class="caption">The demand is hidden from the students. They are consulting teams pricing WeezyJet\'s new route; they are told the cost, the plane\'s capacity, the trial fare and the passengers a trial flight carried on average (from the demand and the trial fare), and how many seats flew empty. One point, so nothing about the slope: the first flight is how they learn it.</p>';
-    h += '<form id="settings" class="cols" style="gap:10px 20px">' +
-      ['label|Route (shown to students, as London–Place)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number', 'flights|Flights in round 1|number',
-       'a|Demand intercept a: passengers who want to fly at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The trial fare (£): what the trial flights charged, a point on that demand|number'].map(function (spec) {
-        var parts = spec.split("|");
-        return '<div><label for="f-' + parts[0] + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="f-' + parts[0] + '" data-f="' + parts[0] + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '></div>';
-      }).join("") + '</form>';
-    var q0 = +f.a - +f.b * +f.p0, s = { mc: +f.mc, seats: +f.seats, p0: +f.p0, q0: q0, b: +f.b, flights: +f.flights };
-    var whole = Math.abs(q0 - Math.round(q0)) < 1e-9, ok = s.b > 0 && s.seats > 0 && +f.a > 0 && s.p0 > s.mc && q0 > 0 && q0 <= s.seats && whole;
-    if (ok) {
-      var v = derived(s);
-      h += '<div class="note">The students are told: the trial fare ' + money(s.p0) + ' carried ' + fmt(q0) + ' passengers on average; about ' + fmt(s.seats - q0) + ' seats flew empty; ' + money(v.sq) + ' per flight after passenger costs. ' +
-           'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P: nobody flies above ' + money(v.choke) + '. ' +
-           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, profit ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' per flight over the trial fare (' + money((v.best.profit - v.sq) * s.flights) + ' over ' + s.flights + ' flights). ' +
-           'Filling the plane: fare ' + money(v.fill) + ', profit ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
-           'Round 2: demand +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>' +
-           '<div class="cols">' + settingsCharts(s, v) + '</div><p class="caption">The two charts the students see at the reveal, without the flights.</p>';
-    } else h += '<div class="error">' + (!whole ? 'The passengers at the trial fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
-                                        : q0 > s.seats ? 'At the trial fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
-                                        : 'The intercept, the slope and the capacity must be positive, the trial fare above the cost, and the demand at the trial fare positive.') + '</div>';
+    h += '<div class="row" style="margin-bottom:6px;align-items:end">' +
+         '<div><label for="preset">Preset</label><select id="preset"' + (locked || !S.presets.length ? " disabled" : "") + '><option value="">' + (S.presets.length ? "choose a set of routes…" : "the script sent no presets") + '</option>' +
+         S.presets.map(function (p, i) { return '<option value="' + i + '"' + (f.preset === String(i) ? " selected" : "") + '>' + esc(p.name || ("Set " + (i + 1))) + ': ' + esc(p.routes.map(function (r) { return r.label; }).join(", ")) + (i === sug ? " (suggested for this class)" : "") + '</option>'; }).join("") + '</select></div>' +
+         '<div><label for="f-n">Routes run at once</label><select id="f-n"' + (locked ? " disabled" : "") + '>' + f.routes.map(function (r, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === n ? " selected" : "") + '>' + (i + 1) + '</option>'; }).join("") + '</select></div>' +
+         '<div><label for="f-flights">Flights in round 1</label><input type="number" id="f-flights" min="1" max="12" step="1" style="width:110px" value="' + esc(f.flights) + '"' + (locked ? " disabled" : "") + '></div></div>';
+    h += '<p class="caption">' + (n > 1 ? 'The class runs ' + n + ' contests at once. A group prices the route its number gives it, in turn (Group 1 the first route, Group 2 the second, and so on), and competes only with the groups on that route. '
+                                        : 'One contest: every group prices the same route. ') +
+         'The demand is hidden from the students. They are told the cost, the plane\'s capacity, the trial fare and the passengers a trial flight carried on average, and how many seats flew empty: one point, so nothing about the slope. ' +
+         'Use a different set for each stream, so that a fare passed on from an earlier stream is wrong.</p>';
+    h += '<div class="routes-grid" id="settings">' + used.map(function (r, i) { return routeCard(r, i, n, locked); }).join("") + '</div>';
+    if (!flOk) h += '<div class="error">The flights in round 1 must be between 1 and 12.</div>';
     h += '<div class="row">' + (locked ? '<span class="caption">Settings are locked while flights exist; reset the flights to change them.</span>' : '<button type="button" class="primary" id="save-settings"' + (ok ? "" : " disabled") + '>Save settings</button>') + '</div></div>';
-    h += '<div class="qblock"><h3>Phase</h3><div class="row">' + PHASES.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && ch.phase === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
-         '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + ' style="margin-left:auto">Delete the flights and start over</button></div>' +
-         '<p class="caption">Open round 1 when the groups have read the briefing; close it when time is up (unflown flights count as zero); Reveal sends the demand to every page; Round 2 unlocks the two scenarios. Settings are read when a flight is flown, so change them before opening.</p>' +
+    var cur = ch ? ch.phase : "", order = PHASES.map(function (p) { return p[0]; }), next = order[order.indexOf(cur) + 1];
+    h += '<div class="qblock"><h3>Run the challenge' + (ch ? ' <span class="phase ' + esc(ch.phase) + '">Now: ' + esc(phaseLabel(ch.phase)) + '</span>' : '') + '</h3><div class="row">' +
+         STEPS.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && next === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
+         '<span style="margin-left:auto" class="row"><button type="button" class="small" data-phase="setup"' + (!ch ? " disabled" : "") + '>Back to not open</button>' +
+         '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + '>Delete the flights and start over</button></span></div>' +
+         '<p class="caption">' + (!ch ? 'Save the settings first. ' : '') + 'The steps in order: open round 1 when the groups have read the briefing (each group then flies its flights at its own pace); close it when time is up (flights not flown score nothing); reveal the demand, which sends it to every page and to the projector; open round 2 after the theory, for the two scenarios on the revealed demand. The button for the next step is highlighted.</p>' +
          (S.msg ? '<div class="' + (/Could not|refused|error/i.test(S.msg) ? "error" : "success") + '">' + esc(S.msg) + '</div>' : "") + '</div>';
-    if (ch && flights.length) {
-      var d = derived(ch.settings), byGroup = {};
-      flights.forEach(function (fl) { var g = byGroup[fl.group] || (byGroup[fl.group] = { group: fl.group, n: 0, gain: 0, fares: [], flights: [] }); g.n++; g.gain += fl.gain; g.fares.push(fl.fare); g.flights.push(fl); });
-      var board = Object.keys(byGroup).map(function (k) { return byGroup[k]; }).sort(function (x, y) { return y.gain - x.gain; });
-      h += '<div class="qblock"><h3>Leaderboard: ' + plural(board.length, "group") + ', ' + plural(flights.length, "flight") + '</h3>' +
-           '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best fare flown</th></tr></thead><tbody>' +
-           board.map(function (g, i) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>';
-      h += C.profitChartHtml(d.d, { fare: ch.settings.p0, profit: d.sq }, flights.map(function (fl) { return { fare: fl.fare, profit: fl.profit, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }; }), { r: 4 }) +
-           '<div class="row" style="margin-top:6px"><button type="button" id="csv-flights">Download the flights (CSV)</button></div></div>';
-    }
+    if (ch && flights.length) h += leaderboards(ch);
     el.innerHTML = h;
-    $("preset").onchange = function () { var p = PRESETS[+this.value]; if (!p) return; S.form = { label: p.label, mc: p.mc, seats: p.seats, a: p.a, b: p.b, p0: p.p0, flights: p.flights }; renderChallenge(); };
-    Array.prototype.forEach.call(el.querySelectorAll("#settings input"), function (inp) { inp.addEventListener("change", function () { S.form[inp.getAttribute("data-f")] = inp.type === "number" ? inp.value : inp.value; renderChallenge(); }); });
+    $("preset").onchange = function () { if (this.value === "" || !S.presets[+this.value]) return; var keep = S.form.flights; S.form = formFromPreset(+this.value); S.form.flights = keep; renderChallenge(); };
+    $("f-n").onchange = function () { S.form.n = +this.value; renderChallenge(); };
+    $("f-flights").addEventListener("change", function () { S.form.flights = this.value; renderChallenge(); });
+    Array.prototype.forEach.call(el.querySelectorAll("#settings input"), function (inp) { inp.addEventListener("change", function () { S.form.routes[+inp.getAttribute("data-r")][inp.getAttribute("data-f")] = inp.value; S.form.preset = ""; renderChallenge(); }); });
     if ($("save-settings")) $("save-settings").onclick = function () {
-      post({ token: S.cred, action: "challenge_set", "class": S.cls, settings: { label: f.label, mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, b: s.b, flights: s.flights } })
-        .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = j.challenge; S.form = null; S.msg = "Settings saved for " + S.cls + "."; render(); })
+      post({ token: S.cred, action: "challenge_set", "class": S.cls, settings: { flights: +f.flights, routes: checks.map(function (c) { return c.s; }) } })
+        .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = withRoutes(j.challenge); S.form = null; S.msg = "Settings saved for " + S.cls + "."; render(); })
         .catch(function (err) { S.msg = "Could not save: " + String(err && err.message || err); renderChallenge(); });
     };
     Array.prototype.forEach.call(el.querySelectorAll("button[data-phase]"), function (b) {
       b.onclick = function () {
         var phase = b.getAttribute("data-phase");
         post({ token: S.cred, action: "challenge_phase", "class": S.cls, phase: phase })
-          .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = j.challenge; S.msg = "Class " + S.cls + ": " + phaseLabel(phase) + "."; render(); schedulePoll(); })
+          .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.challenge = withRoutes(j.challenge); S.msg = "Class " + S.cls + ": " + phaseLabel(phase) + "."; render(); schedulePoll(); })
           .catch(function (err) { S.msg = "Could not change the phase: " + String(err && err.message || err); renderChallenge(); });
       };
     });
@@ -255,7 +313,8 @@
         .catch(function (err) { S.msg = "Could not reset: " + String(err && err.message || err); renderChallenge(); });
     };
     if ($("csv-flights")) $("csv-flights").onclick = function () {
-      download("flights_" + S.cls + ".csv", csv([["class", "time", "group", "flight", "fare", "passengers", "profit", "gain"]].concat(ch.flights.map(function (fl) { return [S.cls, fmtTime(fl.ts), fl.group, fl.n, fl.fare, fl.passengers, fl.profit, fl.gain]; }))));
+      var routes = ch.settings.routes;
+      download("flights_" + S.cls + ".csv", csv([["class", "time", "group", "route", "flight", "fare", "passengers", "profit", "gain"]].concat(ch.flights.map(function (fl) { var r = routes[fl.route != null ? fl.route : routeOf(fl.group, routes.length)]; return [S.cls, fmtTime(fl.ts), fl.group, r ? r.label : "", fl.n, fl.fare, fl.passengers, fl.profit, fl.gain]; }))));
     };
   }
 
@@ -345,5 +404,5 @@
     });
   }
   document.addEventListener("DOMContentLoaded", init);
-  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords, PRESETS: PRESETS };
+  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords };
 })();

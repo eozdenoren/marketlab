@@ -70,24 +70,83 @@ check(/<svg/.test(svg) && /legend-item/.test(svg) && svg.indexOf("line</span>") 
 var table = C.bookTable([{ id: "x", label: "Flight", measures: { Fare: 680, Profit: 180000 } }, { id: "y", label: "Flight", measures: { Fare: 580, Note: "status quo" } }], { removable: true });
 check(/Flight \(2\)/.test(table) && /remove-entry/.test(table) && /status quo/.test(table) && /180,000/.test(table), "the lab-book table: duplicate labels numbered, text cells kept");
 
-// ---- the instructor page's presets (src/pricing_instructor.js), as agreed with the user on 2026-11-11
+// ---- the preset routes. The public example set (backend/Pricing.gs), by the numbers worked by hand:
+var fs = require("fs"), vm = require("vm");
+function presetsOf(file) { var ctx = {}; vm.createContext(ctx); vm.runInContext(fs.readFileSync(file, "utf8"), ctx); return vm.runInContext("PRESET_SETS", ctx); }
+var EXAMPLE = presetsOf(path.join(__dirname, "..", "backend", "Pricing.gs"));
+check(EXAMPLE.length === 1 && EXAMPLE[0].routes.length === 3, "the public script holds one example set of three routes");
 [["Anchorage", 80, 500, 640, 0.5, 480, 400, 160000, 680, 300, 180000, 280, 100000, [680, 420, false], [780, 500, true]],
  ["Zanzibar", 100, 480, 600, 0.4, 550, 380, 171000, 800, 280, 196000, 300, 96000, [800, 392, false], [900, 480, true]],
- ["Bali", 80, 400, 480, 0.25, 700, 305, 189100, 1000, 230, 211600, 320, 96000, [1000, 322, false], [1120, 400, true]]].forEach(function (p) {
+ ["Bali", 80, 400, 480, 0.25, 700, 305, 189100, 1000, 230, 211600, 320, 96000, [1000, 322, false], [1120, 400, true]]].forEach(function (p, k) {
+  var r = EXAMPLE[0].routes[k];
+  check(r.label === "London–" + p[0] && r.mc === p[1] && r.seats === p[2] && r.a === p[3] && r.b === p[4] && r.p0 === p[5], "the example set's route " + (k + 1) + " is " + p[0] + ": " + JSON.stringify(r));
   var s0 = { mc: p[1], seats: p[2], p0: p[5], q0: p[3] - p[4] * p[5], b: p[4] }, dd = { a: p[3], b: p[4], mc: p[1], seats: p[2] }, bb = C.bestFare(dd);
   var up = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 1.4 }), dbl = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 2 });
   check(s0.q0 === p[6] && C.statusQuoProfit(s0) === p[7] && p[2] - s0.q0 >= 95, p[0] + ": trial fare carries " + p[6] + ", profit " + p[7] + ", about 100 empty");
   check(bb.fare === p[8] && bb.passengers === p[9] && bb.profit === p[10], p[0] + ": best " + p[8] + " / " + p[9] + " / " + p[10] + ": " + JSON.stringify(bb));
-  check((bb.profit - C.statusQuoProfit(s0)) / C.statusQuoProfit(s0) > 0.1, p[0] + ": the best beats the trial fare by more than 10%");
   check(C.fillFare(dd) === p[11] && C.profitAt(dd, p[11]) === p[12], p[0] + ": the plane fills at " + p[11] + ", profit " + p[12]);
   check(up.fare === p[13][0] && up.passengers === p[13][1] && up.capped === p[13][2], p[0] + ": +40% keeps the best fare: " + JSON.stringify(up));
   check(dbl.fare === p[14][0] && dbl.passengers === p[14][1] && dbl.capped === p[14][2], p[0] + ": doubled fills the plane: " + JSON.stringify(dbl));
 });
 
-var INS = require("fs").readFileSync(__dirname + "/../src/pricing_instructor.js", "utf8");
-["London–Anchorage\", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480", "London–Zanzibar\", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550", "London–Bali\", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700"].forEach(function (p) {
-  check(INS.indexOf('label: "' + p) >= 0, "the instructor page has the preset " + p.split('"')[0]);
-});
+// Every route of every set, by what the game needs of it (no numbers here: the class sets are private).
+function whole(x) { return Math.abs(x - Math.round(x)) < 1e-9; }
+function routeFacts(r) {
+  var q0 = Math.round(r.a - r.b * r.p0), s0 = { mc: r.mc, seats: r.seats, p0: r.p0, q0: q0, b: r.b }, dd = { a: r.a, b: r.b, mc: r.mc, seats: r.seats };
+  return { q0: q0, s0: s0, d: dd, sq: C.statusQuoProfit(s0), best: C.bestFare(dd), fill: C.fillFare(dd), up: C.bestFare({ a: r.a, b: r.b, mc: r.mc, seats: r.seats, scale: 1.4 }), dbl: C.bestFare({ a: r.a, b: r.b, mc: r.mc, seats: r.seats, scale: 2 }) };
+}
+function checkRoute(r, name) {
+  var f = routeFacts(r), empty = r.seats - f.q0;
+  check(whole(r.a - r.b * r.p0) && Math.abs(C.intercept(f.s0) - r.a) < 1e-9, name + ": whole passengers at the trial fare, and the script recovers the intercept");
+  check(empty >= 80 && empty <= 110, name + ": about 100 seats fly empty at the trial fare (" + empty + ")");
+  check(whole(f.best.exactFare) && whole(f.best.exactQ) && !f.best.capped && f.best.fare > r.p0 + 100, name + ": the best fare is a whole fare with whole passengers, well above the trial fare");
+  check((f.best.profit - f.sq) / f.sq > 0.1, name + ": the best fare beats the trial fare by more than 10%");
+  check(whole((r.a - r.seats) / r.b) && f.fill < r.p0 && f.fill > r.mc && C.profitAt(f.d, f.fill) < f.sq, name + ": filling the plane takes a whole fare below the trial fare and makes less");
+  check(f.up.fare === f.best.fare && !f.up.capped, name + ": demand +40% leaves the best fare unchanged");
+  check(f.dbl.capped && f.dbl.passengers === r.seats && whole(f.dbl.exactFare) && f.dbl.fare > f.best.fare, name + ": doubled demand fills the plane at a higher, whole fare");
+  check([50, 40, 20, 10].some(function (x) { return whole(r.b * x); }), name + ": a round step off the best fare loses whole passengers");
+  return f;
+}
+function distinct(xs) { return xs.every(function (x, i) { return xs.indexOf(x) === i; }); }
+function checkSets(sets, where) {
+  sets.forEach(function (set) {
+    var facts = set.routes.map(function (r) { return checkRoute(r, where + " " + set.name + " " + r.label); });
+    check(set.routes.length === 3 && distinct(set.routes.map(function (r) { return r.label; })), where + " " + set.name + ": three routes with different names");
+    check(distinct(set.routes.map(function (r) { return r.b; })) && distinct(set.routes.map(function (r) { return r.p0; })) && distinct(facts.map(function (f) { return f.best.fare; })),
+          where + " " + set.name + ": the three routes differ in slope, trial fare and best fare");
+  });
+}
+checkSets(EXAMPLE, "public");
+var LOCAL = path.join(__dirname, "..", "backend", "Pricing.local.gs");
+if (fs.existsSync(LOCAL)) {
+  var SETS = presetsOf(LOCAL), classSets = SETS.filter(function (x) { return !/example|rehearsal/i.test(x.name); });
+  checkSets(SETS, "private");
+  check(classSets.length === 3 && SETS.length === 4 && /rehearsal/i.test(SETS[3].name), "the private script holds three class sets and the rehearsal set last (so the fourth class of the list, LIVE-TEST, is offered it)");
+  check(JSON.stringify(SETS[3].routes) === JSON.stringify(EXAMPLE[0].routes), "the rehearsal set is the public example");
+  [0, 1, 2].forEach(function (k) {   // the same route in the three streams: nothing carries over
+    var rs = classSets.map(function (x) { return x.routes[k]; }), fx = rs.map(routeFacts);
+    check(distinct(rs.map(function (r) { return r.label; })) === false && rs[0].label === rs[1].label && rs[1].label === rs[2].label, "route " + (k + 1) + " has the same name in the three class sets");
+    check(distinct(rs.map(function (r) { return r.b; })) && distinct(rs.map(function (r) { return r.p0; })) && distinct(fx.map(function (f) { return f.best.fare; })) && distinct(fx.map(function (f) { return f.best.fare - rs[fx.indexOf(f)].p0; })),
+          "route " + (k + 1) + ": the three streams differ in slope, trial fare, best fare and the step from one to the other");
+    rs.forEach(function (r) { check(!EXAMPLE[0].routes.some(function (e) { return e.a === r.a && e.b === r.b; }), "a class route is not a published example route"); });
+  });
+  // the class curves must not sit in anything public: the pages, their sources, the tests, the script template
+  var ROOT = path.join(__dirname, ".."), publicFiles = [];
+  ["docs", "src", "tests", "tools"].forEach(function (dir) { if (fs.existsSync(path.join(ROOT, dir))) fs.readdirSync(path.join(ROOT, dir)).forEach(function (f) { if (/\.(html|js|py|css|json|gs|md)$/.test(f) && f !== "cases.json") publicFiles.push(path.join(ROOT, dir, f)); }); });
+  publicFiles.push(path.join(ROOT, "backend", "Pricing.gs"), path.join(ROOT, "build.py"));
+  var leaks = [];
+  publicFiles.forEach(function (file) {
+    if (!fs.existsSync(file)) return;
+    fs.readFileSync(file, "utf8").split("\n").forEach(function (line, n) {
+      if (line.length > 4000) return;   // inlined data and minified lines hold every number
+      classSets.forEach(function (set) { set.routes.forEach(function (r) {
+        var has = function (x) { return new RegExp("(^|[^0-9.])" + String(x).replace(".", "\\.") + "([^0-9.]|$)").test(line); };
+        if (has(r.a) && has(r.b) && has(r.p0)) leaks.push(path.relative(ROOT, file) + ":" + (n + 1));
+      }); });
+    });
+  });
+  check(leaks.length === 0, "no public file holds a class curve (intercept, slope and trial fare on one line): " + leaks.slice(0, 5).join(", "));
+} else console.log("(backend/Pricing.local.gs is not on this machine: the class sets were not checked)");
 
 console.log("pricing core:", failures ? failures + " checks failed" : "OK");
 process.exit(failures ? 1 : 0);

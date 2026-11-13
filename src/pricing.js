@@ -349,13 +349,15 @@
     var parts = label.split(/\s*[–—-]\s*/);
     return parts.length === 2 && parts[0] && parts[1] ? 'between <b>' + esc(parts[0]) + ' and ' + esc(parts[1]) + '</b>' : 'on the <b>' + esc(label) + '</b> route';
   }
-  function briefing(t) {
+  function para(lead, body) { return '<p style="margin:0 0 8px"><b>' + lead + '</b> ' + body + '</p>'; }
+  // nroutes: how many routes the class runs; with more than one, the group competes on its own route only.
+  function briefing(t, nroutes) {
     var sq = (t.p0 - t.mc) * t.q0, empty = t.seats - t.q0, pct = Math.round(100 * empty / t.seats);
     var nf = numWord(t.flights) + (t.flights === 1 ? " flight" : " flights");
-    var para = function (lead, body) { return '<p style="margin:0 0 8px"><b>' + lead + '</b> ' + body + '</p>'; };
     return '<div class="briefing">' +
       para("The contest.", AIRLINE + ' has just opened the only direct flight ' + routePhrase(t.label) + '. The route is new and the airline isn\'t sure its fare is right, so it has invited consulting teams to compete for the pricing contract. ' +
-           'Each team prices ' + nf + ', and the team whose fares make the most money wins.') +
+           'Each team prices ' + nf + ', and the team whose fares make the most money wins.' +
+           (nroutes > 1 ? ' Your class is split across ' + numWord(nroutes) + ' routes: you compete only with the teams pricing <b>' + esc(t.label) + '</b>, and the other routes have different numbers.' : '')) +
       para("What the airline knows.", 'Very little, because the route is new. So far it has run a few trial flights. A flight carried on average <b>' + fmt(t.q0) + ' passengers at ' + money(t.p0) + '</b>, ' +
            'so about <b>' + fmt(empty) + ' of the ' + fmt(t.seats) + ' seats flew empty</b> on every flight. Each passenger costs the airline <b>' + money(t.mc) + '</b> (fuel, catering, airport fees). ' +
            'The aircraft and the crew cost the same however many fly. At ' + money(t.p0) + ' a flight made ' + money(sq) + ' after passenger costs.') +
@@ -381,33 +383,39 @@
     h += '<tr><td><b>Total</b></td><td></td><td></td><td class="opt"></td><td class="opt"></td><td></td><td class="num"><b>' + money(total, 0, true) + '</b></td>' + (d ? "<td></td>" : "") + '</tr></tbody></table></div>';
     return h;
   }
-  function boardTable(ch) {
-    var b = ch.board || [];
-    if (!b.length) return '<p class="caption">No flights flown yet in class ' + esc(S.classCode) + '.</p>';
-    var revealed = ch.phase === "revealed" || ch.phase === "round2", me = groupKey();
-    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score: profit over the trial fare</th>' + (revealed ? '<th>Fares</th>' : "") + '</tr></thead><tbody>';
+  // v: {board, told} (the challenge itself, or one route of the class view); compact: short headings, for the
+  // boards side by side.
+  function boardTable(v, phase, compact) {
+    var b = v.board || [];
+    if (!b.length) return '<p class="caption">No flights flown yet ' + (compact ? 'on this route.' : 'in class ' + esc(S.classCode) + '.') + '</p>';
+    var revealed = phase === "revealed" || phase === "round2", me = groupKey();
+    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial fare') + '</th>' + (revealed ? '<th>Fares</th>' : "") + '</tr></thead><tbody>';
     b.forEach(function (g, i) {
-      h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (ch.told ? " / " + ch.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td>' +
+      h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (v.told ? " / " + v.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td>' +
            (revealed ? '<td class="num-note">' + (g.fares || []).map(function (f) { return money(f); }).join(", ") + '</td>' : "") + '</tr>';
     });
     return h + '</tbody></table>';
   }
+  function boardTitle(ch) { return "Leaderboard" + (ch.nroutes > 1 && ch.told ? ": " + esc(ch.told.label) : ""); }
+  function demandChartHtml(t, d, best, h) {
+    var choke = C.chokePrice(d);
+    return C.chart({ title: "The demand", h: h, x: { max: Math.max(d.a, t.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: choke * 1.05, label: "Fare (£)" },
+                     lines: [{ pts: [[0, choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
+                     hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
+                     markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
+  }
   function revealSection(ch) {
     var t = ch.told, d = demandOf(ch), best = C.bestFare(d), sq = C.statusQuoProfit(t), choke = C.chokePrice(d);
-    var fillFare = Math.ceil((d.a - t.seats) / d.b), fillProfit = C.profitAt(d, fillFare);
+    var fillFare = C.fillFare(d), fillProfit = C.profitAt(d, fillFare);
     var mine = S.projector ? null : (ch.mine || []), all = [];
     (ch.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { all.push({ group: g.group, fare: f }); }); });
     var flightDots = mine ? mine.map(function (f) { return { fare: f.fare, profit: f.profit, name: "Your flights", title: "Flight " + f.n + ": " + money(f.fare) + ", " + fmt(f.passengers) + " passengers" }; })
                           : all.map(function (f) { return { fare: f.fare, profit: C.profitAt(d, f.fare), name: "Flights flown", title: f.group + ": " + money(f.fare) }; });
     var profitChart = C.profitChartHtml(d, { fare: t.p0, profit: sq }, flightDots, { r: mine ? undefined : 4 });
-    var dLine = [[0, choke], [d.a, 0]], qmax = Math.max(d.a, t.seats) * 1.05;
-    var demandChart = C.chart({ title: "The demand", h: 360, x: { max: qmax, label: "Passengers who want to fly" }, y: { max: choke * 1.05, label: "Fare (£)" },
-                                lines: [{ pts: dLine, color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
-                                hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
-                                markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
+    var demandChart = demandChartHtml(t, d, best, 360);
     var step = [50, 40, 20, 10].filter(function (x) { return Math.abs(d.b * x - Math.round(d.b * x)) < 1e-9; })[0] || 50;   // whole passengers lost
     var h = '<h2>The demand you were facing</h2>' +
-      '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b) + '). ' +
+      '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b, Math.abs(10 * d.b - Math.round(10 * d.b)) < 1e-9 ? 0 : 1) + '). ' +
       'The trial fare of ' + money(t.p0) + ' with its ' + fmt(t.q0) + ' passengers is on that line.</p>' +
       '<p class="reveal-line">The best fare is <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and a profit of <b>' + money(best.profit) + '</b> per flight, ' + money(best.profit - sq) + ' more than the trial fare earned, ' +
       money((best.profit - sq) * t.flights) + ' over ' + t.flights + ' flights. Filling the plane takes a fare of ' + money(fillFare) + ' and earns ' + money(fillProfit) + ', ' + money(sq - fillProfit) + ' less than the trial fare. ' +
@@ -420,8 +428,63 @@
     }
     h += '<div class="cols"><div>' + profitChart + '</div><div>' + demandChart + '</div></div>';
     if (mine) h += '<h2>Your flights</h2>' + flightsTable(mine, t, d);
-    h += '<h2>Leaderboard</h2>' + boardTable(ch);
+    h += '<h2>' + boardTitle(ch) + '</h2>' + boardTable(ch, ch.phase);
     if (!S.projector) h += '<div id="challenge-pin-wrap"></div>';
+    return h;
+  }
+  // ---- the class as a whole, when it runs several routes: for the projector and for a page with no group yet.
+  // The contest, a table of the routes and a board per route; at the reveal each route's demand, best fare and
+  // profit curve with its flights, then every team by its share of the gain its route allowed.
+  function routesTable(R) {
+    return '<div class="wide"><table class="grid routes"><thead><tr><th>Route</th><th class="num">Cost per passenger</th><th class="num">Plane\'s capacity</th><th class="num">Trial fare</th><th class="num">Passengers per trial flight</th><th class="num">Seats empty</th><th class="num">A trial flight made</th></tr></thead><tbody>' +
+      R.map(function (v) { var t = v.told; return '<tr><td>' + esc(t.label) + '</td><td class="num">' + money(t.mc) + '</td><td class="num">' + fmt(t.seats) + '</td><td class="num">' + money(t.p0) + '</td><td class="num">' + fmt(t.q0) + '</td><td class="num">' + fmt(t.seats - t.q0) + '</td><td class="num">' + money((t.p0 - t.mc) * t.q0) + '</td></tr>'; }).join("") +
+      '</tbody></table></div>';
+  }
+  function classBriefing(ch) {
+    var R = ch.routes, fl = R[0].told.flights, nf = numWord(fl) + (fl === 1 ? " flight" : " flights");
+    return '<div class="briefing">' +
+      para("The contest.", AIRLINE + ' has just opened ' + numWord(R.length) + ' new routes, each the only direct flight between its two cities. The routes are new and the airline isn\'t sure its fares are right, so it has invited consulting teams to compete for the pricing contracts. ' +
+           'Each team is given one route and prices ' + nf + ' on it. On each route, the team whose fares make the most money wins.') +
+      para("What the airline knows.", 'Very little, because the routes are new. So far it has run a few trial flights on each route. The table shows what a trial flight carried on average, how many seats flew empty and what the flight made after passenger costs. ' +
+           'Each passenger costs the airline the amount shown (fuel, catering, airport fees). The aircraft and the crew cost the same however many fly.') +
+      routesTable(R) +
+      '<p style="margin:10px 0 0"><b>Your brief.</b> You set the fare for each of your ' + nf + ', one at a time. After each flight you see how many passengers flew and what the flight made. ' +
+      'Demand is steady: on each route, how many people want to fly depends only on the fare, the same way on every flight. Every flight counts. ' +
+      'Your score is what your ' + nf + ' make minus what the trial fare would have made. The trial flights are all the airline can tell you. Anything more you learn about demand, you learn from your own flights.</p></div>';
+  }
+  function routeReveal(v) {
+    var t = v.told, d = demandOf(v), best = C.bestFare(d), sq = C.statusQuoProfit(t), fill = C.fillFare(d), dots = [];
+    (v.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { dots.push({ fare: f, profit: C.profitAt(d, f), name: "Flights flown", title: g.group + ": " + money(f) }); }); });
+    return '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly; nobody above ' + money(C.chokePrice(d)) + '.</p>' +
+      '<p class="reveal-line">Best fare <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and <b>' + money(best.profit) + '</b> a flight, ' + money(best.profit - sq) + ' more than the trial fare of ' + money(t.p0) + '. ' +
+      'Filling the plane takes ' + money(fill) + ' and makes ' + money(C.profitAt(d, fill)) + '.</p>' +
+      C.profitChartHtml(d, { fare: t.p0, profit: sq }, dots, { r: 4, h: 300 }) + demandChartHtml(t, d, best, 280);
+  }
+  function overallTable(ch) {
+    var rows = [], fl = ch.routes[0].told.flights;
+    ch.routes.forEach(function (v) {
+      var d = demandOf(v); if (!d) return;
+      var possible = (C.bestFare(d).profit - C.statusQuoProfit(v.told)) * v.told.flights;
+      (v.board || []).forEach(function (g) { rows.push({ group: g.group, label: v.told.label, gain: g.gain, possible: possible, share: possible > 0 ? g.gain / possible : 0 }); });
+    });
+    if (!rows.length) return "";
+    rows.sort(function (x, y) { return y.share - x.share || x.group.localeCompare(y.group, undefined, { numeric: true }); });
+    return '<h2>Every team: share of the gain its route allowed</h2><p class="caption">A team\'s score as a share of what the best fare on all ' + numWord(fl) + ' flights would have scored on its route.</p>' +
+      '<div class="wide"><table class="grid board overall"><thead><tr><th class="rank">#</th><th>Group</th><th>Route</th><th class="num">Score</th><th class="num">Best possible</th><th class="num">Share</th></tr></thead><tbody>' +
+      rows.map(function (r, i) { return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(r.group) + '</td><td>' + esc(r.label) + '</td><td class="num">' + money(r.gain, 0, true) + '</td><td class="num">' + money(r.possible) + '</td><td class="num">' + fmt(100 * r.share) + '%</td></tr>'; }).join("") +
+      '</tbody></table></div>';
+  }
+  function classSection(ch) {
+    var R = ch.routes, revealed = ch.phase === "revealed" || ch.phase === "round2", h = classBriefing(ch);
+    if (!S.projector) h += '<div class="info">' + (S.group ? 'The page could not confirm your group\'s PIN, so it cannot show your route. Use Change at the top of the page to enter it again.'
+                                                           : 'Enter your group number at the top of the page to see your route and its briefing.') + '</div>';
+    if (ch.phase === "setup") h += '<div class="info">Round 1 has not opened yet. Read the briefing and agree how you will choose your fares.</div>';
+    if (ch.phase === "closed") h += '<div class="info">Round 1 is closed. The demand is revealed next.</div>';
+    if (ch.phase === "open" || ch.phase === "closed")
+      h += '<h2>Leaderboards</h2><div class="routes-grid">' + R.map(function (v) { return '<div class="route-card"><h3>' + esc(v.told.label) + '</h3>' + boardTable(v, ch.phase, true) + '</div>'; }).join("") + '</div>';
+    if (revealed)
+      h += '<h2>The demands the teams were facing</h2><div class="routes-grid">' +
+           R.map(function (v) { return '<div class="route-card"><h3>' + esc(v.told.label) + '</h3>' + routeReveal(v) + '<h4>Leaderboard</h4>' + boardTable(v, ch.phase, true) + '</div>'; }).join("") + '</div>' + overallTable(ch);
     return h;
   }
   function round2Section(ch) {
@@ -447,10 +510,11 @@
     if (!S.classCode || S.classInvalid) h = '<div class="info">The challenge runs in class, under your class\'s link.</div>';
     else if (!ENDPOINT) h = '<div class="info">Offline copy: the challenge needs the class record.</div>';
     else if (!ch) h = '<p class="caption">Reading the challenge…</p>';
-    else if (!ch.told) h = '<div class="info">The challenge is not set up for class ' + esc(S.classCode) + ' yet. The instructor opens it in class.</div>';
+    else if (!ch.told && !(ch.routes && ch.routes.length)) h = '<div class="info">The challenge is not set up for class ' + esc(S.classCode) + ' yet. The instructor opens it in class.</div>';
+    else if (!ch.told) h += '<h2 style="margin-top:4px">The pricing challenge <span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span></h2>' + classSection(ch);
     else {
       var t = ch.told, badge = '<span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span>';
-      h += '<h2 style="margin-top:4px">The pricing challenge ' + badge + '</h2>' + briefing(t);
+      h += '<h2 style="margin-top:4px">The pricing challenge ' + badge + '</h2>' + briefing(t, ch.nroutes || 1);
       if (ch.phase === "setup") h += '<div class="info">Round 1 has not opened yet. Read the briefing and agree how you will choose your fares.</div>';
       if (ch.phase === "open" && !S.projector) {
         if (!S.group) h += '<div class="info">Enter your group number at the top of the page to fly.</div>';
@@ -463,13 +527,13 @@
           } else h += '<div class="success">All ' + t.flights + ' flights flown. Wait for the instructor to close the round and reveal the demand.</div>';
           h += '<h2>Your flights</h2>' + flightsTable(mine, t, null);
         }
-        h += '<details class="panel" open><summary>Leaderboard</summary>' + boardTable(ch) + '</details>';
+        h += '<details class="panel" open><summary>' + boardTitle(ch) + '</summary>' + boardTable(ch, ch.phase) + '</details>';
       }
-      if (ch.phase === "open" && S.projector) h += '<h2>Leaderboard</h2>' + boardTable(ch);
+      if (ch.phase === "open" && S.projector) h += '<h2>Leaderboard</h2>' + boardTable(ch, ch.phase);
       if (ch.phase === "closed") {
         h += '<div class="info">Round 1 is closed. The demand is revealed next.</div>';
         if (!S.projector && S.group) h += '<h2>Your flights</h2>' + flightsTable(ch.mine || [], t, null);
-        h += '<h2>Leaderboard</h2>' + boardTable(ch);
+        h += '<h2>' + boardTitle(ch) + '</h2>' + boardTable(ch, ch.phase);
       }
       if (ch.phase === "revealed" || ch.phase === "round2") {
         if (ch.phase === "round2" && !S.projector) h += round2Section(ch) + '<details class="panel"><summary>Round 1: the reveal and the leaderboard</summary>' + revealSection(ch).replace('<div id="challenge-pin-wrap"></div>', "") + '</details>';
@@ -507,12 +571,12 @@
         var measures, state;
         if (isR2) {
           if (!last) { S.pinMsg.challenge = "Test a fare first; the pin records the last fare you tested."; pinPanel("challenge", suggestion, qid); return; }
-          measures = { "Scenario": sc2[1], "Fare": last.fare, "Want to fly": last.want, "Carried": last.carried, "Plane full": last.carried >= t.seats ? "yes" : "no", "Revenue": last.fare * last.carried, "Cost": t.mc * last.carried, "Profit": last.profit };
+          measures = { "Route": t.label, "Scenario": sc2[1], "Fare": last.fare, "Want to fly": last.want, "Carried": last.carried, "Plane full": last.carried >= t.seats ? "yes" : "no", "Revenue": last.fare * last.carried, "Cost": t.mc * last.carried, "Profit": last.profit };
           state = { page: "challenge", round: 2, scenario: sc2[0], fare: last.fare, told: t, demand: ch.demand };
         } else {
           var mine = ch.mine || [], bestF = null, total = 0; mine.forEach(function (f) { total += f.gain; if (!bestF || f.profit > bestF.profit) bestF = f; });
           var best = C.bestFare(d), sq = C.statusQuoProfit(t);
-          measures = { "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
+          measures = { "Route": t.label, "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
                        "Score: profit over the trial fare": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
           state = { page: "challenge", round: 1, flights: mine, told: t, demand: ch.demand };
         }

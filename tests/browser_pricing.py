@@ -1,7 +1,8 @@
 """Real-browser check of the Pricing Laboratory: docs/pricing.html, its projector mode and docs/pricing_instructor.html,
-against the real backend/Pricing.gs served by tests/pricing_server.js (node vm, fake sheets). Two groups sign in with
-their Marketplace Laboratory registrations, the instructor sets up and runs the challenge, the groups fly, the demand
-is revealed, round 2 opens, Mocha is priced, pins and answers reach the record, the projector shows the board.
+against the real backend/Pricing.gs served by tests/pricing_server.js (node vm, fake sheets). Three groups sign in with
+their Marketplace Laboratory registrations: Groups 13 and 7 price the first route of the example set, Group 8 the
+second. The instructor sets up and runs the challenge, the groups fly, the demand is revealed, round 2 opens, Mocha is
+priced, pins and answers reach the record, the projector shows a board per route.
     python3 tests/browser_pricing.py [shots_dir]"""
 import http.server
 import json
@@ -38,7 +39,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 def main():
     dist = tempfile.mkdtemp(prefix="pricinglab_")
     seed = os.path.join(dist, "seed.json")
-    json.dump({"marketlab_groups": [[CLS, "Group 12", "1234", "Ana, Bo", "2026-11-09T10:00:00Z"], [CLS, "Group 7", "0777", "", "2026-11-09T10:05:00Z"]], "password": "Sesame-42"}, open(seed, "w"))
+    json.dump({"marketlab_groups": [[CLS, "Group 13", "1234", "Ana, Bo", "2026-11-09T10:00:00Z"], [CLS, "Group 7", "0777", "", "2026-11-09T10:05:00Z"], [CLS, "Group 8", "0888", "", "2026-11-09T10:06:00Z"]], "password": "Sesame-42"}, open(seed, "w"))
     srv = subprocess.Popen(["node", os.path.join(HERE, "pricing_server.js"), seed], stdout=subprocess.PIPE, text=True)
     info = json.loads(srv.stdout.readline())
     endpoint = "http://127.0.0.1:%d/exec" % info["port"]
@@ -75,13 +76,13 @@ def main():
             check(pg0.locator("#group-form").count() == 0 and pg0.locator("#group-panel a.button").count() == 2, "no sign-in without a class code; links to the classes")
             ctx0.close()
 
-            # ---- Group 12 signs in with its Marketplace registration
+            # ---- Group 13 signs in with its Marketplace registration
             ctx1, s1 = fresh()
             s1.goto(app_url + "/pricing.html?class=cm03aut26a")
             s1.wait_for_selector("#group-form")
             check(s1.url.endswith("?class=" + CLS), "the class code is cleaned in the address bar")
-            s1.fill("#group-number", "12"); s1.fill("#group-pin", "1234"); s1.click("#group-save")
-            s1.get_by_text("Your group: Group 12", exact=False).wait_for()
+            s1.fill("#group-number", "13"); s1.fill("#group-pin", "1234"); s1.click("#group-save")
+            s1.get_by_text("Your group: Group 13", exact=False).wait_for()
             check("Ana, Bo" in s1.locator("#group-panel").inner_text(), "the names come from the Marketplace registration")
             s1.get_by_text("not set up for class", exact=False).wait_for()
             s1.screenshot(path=os.path.join(OUT, "01_student_signed_in.png"), full_page=True)
@@ -94,8 +95,16 @@ def main():
             ins.fill("#pw", "Sesame-42"); ins.click("#signin-btn")
             ins.wait_for_selector("#main:not([hidden])")
             check(ins.locator("#class-pick").input_value() == CLS, "the first class of the list is selected")
+            ins.wait_for_selector("#settings .route-card")
+            check(ins.locator("#preset").input_value() == "0" and "suggested for this class" in ins.locator("#preset").inner_text(), "the first class is offered the first set of routes")
             ins.select_option("#preset", "0")
             ins.get_by_text("Best fare £680", exact=False).first.wait_for()
+            st = ins.locator("#view-challenge").inner_text()
+            check(ins.locator("#settings .route-card").count() == 3 and "Best fare £800" in st and "Best fare £1,000" in st, "three routes, each with its best fare")
+            check("2 registered teams: 7, 13" in st and "1 registered team: 8" in st, "the routes list their teams by group number: %r" % st[:600])
+            check("1. Open round 1" in st and "4. Open round 2" in st, "the steps are numbered")
+            src = open(os.path.join(dist, "pricing_instructor.html")).read() + open(os.path.join(dist, "pricing.html")).read()
+            check("London–Zanzibar" not in src and "a: 600" not in src and "PRESET_SETS" not in src, "the pages' source holds no preset routes: they come from the script after sign-in")
             ins.screenshot(path=os.path.join(OUT, "02_instructor_settings.png"), full_page=True)
             ins.click("#save-settings")
             ins.get_by_text("Settings saved", exact=False).wait_for()
@@ -105,6 +114,7 @@ def main():
             # ---- the student page picks the opening up by polling and flies
             s1.get_by_text("Fare for flight 1 of 6", exact=False).wait_for(timeout=15000)
             brief = s1.locator("#tab-challenge .briefing").inner_text()
+            check("between London and Anchorage" in brief and "Your class is split across three routes" in brief, "Group 13 prices the first route and is told the class is split: %r" % brief[:400])
             check("WeezyJet has just opened the only direct flight between" in brief and "consulting teams" in brief and "trial flights" in brief
                   and "the next six flights" in brief and "after passenger costs" in brief and "£470" not in brief and "old fare" not in brief.lower(),
                   "the briefing: WeezyJet's new route, the consulting contest, the trial flights, six flights: %r" % brief[:500])
@@ -117,13 +127,15 @@ def main():
             s1.get_by_text("Fare for flight 3 of 6", exact=False).wait_for()
             row2 = s1.locator("table.flights tbody tr").nth(1).inner_text()
             check("500" in row2 and "(full)" in row2 and "-£60,000" in row2, "flight 2 fills the plane and loses 60,000: %r" % row2)
-            check("Group 12" in s1.locator("table.board").inner_text(), "the student's leaderboard lists the group")
+            check("Group 13" in s1.locator("table.board").inner_text() and "Leaderboard: London–Anchorage" in s1.locator("#tab-challenge").inner_text(), "the student's leaderboard is its route's and lists the group")
             s1.screenshot(path=os.path.join(OUT, "04_student_flown.png"), full_page=True)
 
             # ---- Group 7 on a phone
             ctx3, s2 = fresh(width=390)
             s2.goto(app_url + "/pricing.html?class=" + CLS)
             s2.wait_for_selector("#group-form")
+            s2.get_by_text("to see your route and its briefing", exact=False).wait_for(timeout=15000)
+            check(s2.locator("table.routes tbody tr").count() == 3 and s2.locator("#fare").count() == 0, "before signing in: the three routes, no fare box")
             s2.fill("#group-number", "7"); s2.fill("#group-pin", "0777"); s2.click("#group-save")
             s2.get_by_text("Your group: Group 7", exact=False).wait_for()
             s2.wait_for_selector("#fare", timeout=15000)
@@ -132,13 +144,38 @@ def main():
             s2.screenshot(path=os.path.join(OUT, "05_phone_flown.png"), full_page=True)
             check(s2.evaluate("document.documentElement.scrollWidth <= 390"), "the phone page does not overflow sideways")
 
-            # ---- the projector shows the board without fares
+            # ---- Group 8 prices the second route: its own numbers, its own board
+            ctx6, s4 = fresh()
+            s4.goto(app_url + "/pricing.html?class=" + CLS)
+            s4.wait_for_selector("#group-form")
+            s4.fill("#group-number", "8"); s4.fill("#group-pin", "0888"); s4.click("#group-save")
+            s4.get_by_text("Your group: Group 8", exact=False).wait_for()
+            s4.wait_for_selector("#fare", timeout=15000)
+            brief4 = s4.locator("#tab-challenge .briefing").inner_text()
+            check("between London and Zanzibar" in brief4 and "380 passengers at £550" in brief4 and "100 of the 480 seats" in brief4, "Group 8 is briefed on the second route: %r" % brief4[:400])
+            s4.fill("#fare", "800"); s4.click("#fly")
+            s4.get_by_text("Fare for flight 2 of 6", exact=False).wait_for()
+            row4 = s4.locator("table.flights tbody tr").first.inner_text()
+            check("280" in row4 and "£196,000" in row4 and "+£25,000" in row4, "Group 8 flies the second route's demand: 800 carries 280, +25,000: %r" % row4)
+            b4 = s4.locator("table.board").inner_text()
+            check("Group 8" in b4 and "Group 13" not in b4 and "Group 7" not in b4, "Group 8's board holds its route only: %r" % b4)
+            s1.get_by_text("Group 7", exact=False).first.wait_for(timeout=15000)
+            b1 = s1.locator("table.board").inner_text()
+            check("Group 7" in b1 and "Group 8" not in b1, "Group 13's board holds Groups 13 and 7, not Group 8: %r" % b1)
+            s4.screenshot(path=os.path.join(OUT, "05b_second_route.png"), full_page=True)
+
+            # ---- the projector shows a board per route, without fares
             ctx4, proj = fresh(width=1400)
             proj.goto(app_url + "/pricing.html?class=" + CLS + "&projector=1")
             proj.wait_for_selector("table.board")
-            check(proj.locator("#group-form").count() == 0 and "Fares" not in proj.locator("table.board").inner_text(), "the projector shows the board, no sign-in, no fares yet")
-            board = proj.locator("table.board tbody tr").all_inner_texts()
-            check(len(board) == 2 and board[0].startswith("1\tGroup 7"), "Group 7 leads with its one flight: %r" % board)
+            ptxt = proj.locator("#tab-challenge").inner_text()
+            check(proj.locator("#group-form").count() == 0 and "Fares" not in ptxt and "three new routes" in ptxt and "to see your route" not in ptxt, "the projector shows the contest, no sign-in, no fares yet")
+            check(proj.locator(".route-card").count() == 3 and proj.locator("table.routes tbody tr").count() == 3, "three routes on the projector")
+            board = proj.locator(".route-card").nth(0).locator("table.board tbody tr").all_inner_texts()
+            check(len(board) == 2 and board[0].startswith("1\tGroup 7"), "first route: Group 7 leads with its one flight: %r" % board)
+            board2 = proj.locator(".route-card").nth(1).locator("table.board tbody tr").all_inner_texts()
+            check(len(board2) == 1 and "Group 8" in board2[0] and "No flights flown yet on this route" in proj.locator(".route-card").nth(2).inner_text(), "second route: Group 8; third: nobody yet: %r" % board2)
+            check(proj.evaluate("document.documentElement.scrollWidth <= 1400"), "the projector page does not overflow sideways")
             proj.screenshot(path=os.path.join(OUT, "06_projector_board.png"), full_page=True)
 
             # ---- the instructor closes and reveals
@@ -146,7 +183,11 @@ def main():
             s1.get_by_text("Round 1 is closed", exact=False).wait_for(timeout=15000)
             check(s1.locator("#fare").count() == 0, "no fare box after the close")
             ins.click("button[data-phase=revealed]"); ins.get_by_text("Demand revealed.", exact=False).wait_for()
-            check("Leaderboard" in ins.locator("#view-challenge").inner_text() and ins.locator("#view-challenge svg").count() == 3, "the instructor sees the board, the two settings charts and the profit curve with the flights: %d svg" % ins.locator("#view-challenge svg").count())
+            itxt = ins.locator("#view-challenge").inner_text()
+            check("Leaderboards" in itxt and ins.locator("#view-challenge svg").count() == 8, "the instructor sees two settings charts per route and the profit curve of the two routes flown: %d svg" % ins.locator("#view-challenge svg").count())
+            overall = ins.locator("table.overall tbody tr").all_inner_texts()
+            check(len(overall) == 3 and "Group 8" in overall[0] and "London–Zanzibar" in overall[0] and "Group 13" in overall[2], "every team by its share of the possible gain: %r" % overall)
+            check("Now: Demand revealed" in itxt, "the phase block says where the class is")
             ins.screenshot(path=os.path.join(OUT, "07_instructor_revealed.png"), full_page=True)
             s1.get_by_text("The demand you were facing", exact=False).wait_for(timeout=15000)
             txt = s1.locator("#tab-challenge").inner_text()
@@ -155,9 +196,13 @@ def main():
             check(s1.locator("#tab-challenge svg").count() == 2, "two charts at the reveal")
             check("£680, £280" in s1.locator("table.board").inner_text(), "fares shown on the board once revealed")
             s1.screenshot(path=os.path.join(OUT, "08_student_revealed.png"), full_page=True)
-            proj.get_by_text("The demand you were facing", exact=False).wait_for(timeout=15000)
-            check(proj.locator("#tab-challenge svg").count() == 2 and "£700" in proj.locator("table.board").inner_text(),
-                  "the projector shows the reveal with every group's fares: %d svg, board %r" % (proj.locator("#tab-challenge svg").count(), proj.locator("table.board").inner_text()[:120]))
+            proj.get_by_text("The demands the teams were facing", exact=False).wait_for(timeout=15000)
+            card0 = proj.locator(".route-card").nth(0).inner_text()
+            check(proj.locator("#tab-challenge svg").count() == 6 and "£700" in card0 and "640 − 0.5 × P" in card0 and "Best fare £680" in card0,
+                  "the projector shows each route's demand, two charts and every group's fares: %d svg, first route %r" % (proj.locator("#tab-challenge svg").count(), card0[:200]))
+            check("600 − 0.4 × P" in proj.locator(".route-card").nth(1).inner_text() and "480 − 0.25 × P" in proj.locator(".route-card").nth(2).inner_text(), "the other two routes' demands")
+            pov = proj.locator("table.overall tbody tr").all_inner_texts()
+            check(len(pov) == 3 and "Group 8" in pov[0] and "17%" in pov[0], "the projector ranks every team by its share of the possible gain: %r" % pov)
             proj.screenshot(path=os.path.join(OUT, "09_projector_revealed.png"), full_page=True)
             # pin round 1
             s1.click("#challenge-pin")
@@ -213,7 +258,7 @@ def main():
             s1.click("#main-tabs button[data-tab=book]")
             s1.wait_for_selector("#tab-book table.labbook")
             sec = s1.locator("section[data-q=c1]")
-            check("Round 1: my flights" in sec.inner_text() and "180,000" in sec.inner_text(), "the round 1 pin sits under question 1 with the best profit")
+            check("Round 1: my flights" in sec.inner_text() and "180,000" in sec.inner_text() and "London–Anchorage" in sec.inner_text(), "the round 1 pin sits under question 1 with the route and the best profit")
             check("Demand rises 40%: fare £680" in s1.locator("section[data-q=c2]").inner_text(), "the round 2 pin sits under question 2")
             check("Your stream: price £35" in s1.locator("section[data-q=m1]").inner_text() and "Gain from separate prices" in s1.locator("section[data-q=m1]").inner_text(), "the Mocha pin with the segmentation numbers")
             s1.fill("#ans-c1", "Our first test at £280 cost us £60,000.")
@@ -224,14 +269,14 @@ def main():
             answers = [r for r in recs if r["state"].get("labbook", {}).get("kind") == "answers"]
             check(any(r["state"]["answers"].get("c1", "").startswith("Our first test") for r in answers), "the answer is in the record")
             pins = [r for r in recs if r["state"].get("labbook", {}).get("measures")]
-            check(len(pins) == 3 and all(r["group"] == "Group 12" for r in pins), "three pins in the record: %d" % len(pins))
+            check(len(pins) == 3 and all(r["group"] == "Group 13" for r in pins), "three pins in the record: %d" % len(pins))
             s1.screenshot(path=os.path.join(OUT, "13_student_book.png"), full_page=True)
-            # a second device of Group 12 sees the pins
+            # a second device of Group 13 sees the pins
             ctx5, s3 = fresh()
             s3.goto(app_url + "/pricing.html?class=" + CLS)
             s3.wait_for_selector("#group-form")
-            s3.fill("#group-number", "12"); s3.fill("#group-pin", "1234"); s3.click("#group-save")
-            s3.get_by_text("Your group: Group 12", exact=False).wait_for()
+            s3.fill("#group-number", "13"); s3.fill("#group-pin", "1234"); s3.click("#group-save")
+            s3.get_by_text("Your group: Group 13", exact=False).wait_for()
             s3.click("#main-tabs button[data-tab=book]")
             s3.wait_for_selector("#tab-book table.labbook")
             check("Round 1: my flights" in s3.locator("section[data-q=c1]").inner_text() and "Our first test" in s3.locator("#ans-c1").input_value(), "a second device restores pins and answers")
@@ -242,10 +287,10 @@ def main():
             ins.click("#views button[data-view=overview]")
             ins.wait_for_selector("#view-overview table")
             ov = ins.locator("#view-overview").inner_text()
-            check("Group 12" in ov and "Ana, Bo" in ov and "1/7" in ov, "overview: Group 12 with one answer: %r" % ov[:300])
+            check("Group 13" in ov and "Ana, Bo" in ov and "1/7" in ov, "overview: Group 13 with one answer: %r" % ov[:300])
             ins.click("#views button[data-view=question]")
             ins.wait_for_selector("#q-pick")
-            check("Our first test" in ins.locator("#view-question").inner_text() and "Group 12: Round 1: my flights" in ins.locator("#view-question").inner_text(), "by question: the pin and the answer")
+            check("Our first test" in ins.locator("#view-question").inner_text() and "Group 13: Round 1: my flights" in ins.locator("#view-question").inner_text(), "by question: the pin and the answer")
             ins.click("#views button[data-view=group]")
             ins.wait_for_selector("#g-pick")
             check("Your stream: price £35" in ins.locator("#view-group").inner_text(), "one group: the Mocha pin")
@@ -255,9 +300,9 @@ def main():
             ins.click("#views button[data-view=challenge]")
             ins.on("dialog", lambda d: d.accept())
             ins.click("#reset-flights")
-            ins.get_by_text("3 flights deleted", exact=False).wait_for()
+            ins.get_by_text("4 flights deleted", exact=False).wait_for()
             check(admin({"action": "challenge", "class": CLS})["challenge"]["phase"] == "setup", "the reset puts the class back to setup")
-            for c in (ctx1, ctx2, ctx3, ctx4):
+            for c in (ctx1, ctx2, ctx3, ctx4, ctx6):
                 c.close()
             browser.close()
     finally:

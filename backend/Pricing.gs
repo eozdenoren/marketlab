@@ -20,12 +20,20 @@
    minus the trial fare's (p0 - mc) q0. Phases: setup -> open (round 1) -> closed -> revealed (the demand is sent
    to the pages) -> round2 (the exercise on the revealed demand). Settings cannot change while flights exist.
 
+   A class may run several routes at once (settings: {flights, routes: [{label, mc, seats, p0, q0, b}, ...]}): a
+   group prices the route its number gives it, in turn (Group 1 the first route, Group 2 the second, ...), and
+   competes only with the groups on that route; each route has its own hidden demand and its own board. A page
+   with a group's PIN gets that group's route; a page without one (the projector) gets every route's told numbers
+   and board. The routes offered as presets on the instructor page are PRESET_SETS below, sent to the instructor
+   only: the pages are public, so no demand may sit in them.
+
    GET  ?token=<page>&action=check&class=&group=&pin=       -> {status:"new"} | {status:"ok", names, records, challenge}
         ?token=<page>&action=challenge&class=[&group=&pin=]  -> {challenge: phase, told numbers, board, revealed demand
                                                                once revealed, and the group's own flights if given}
         ?token=<admin>[&class=]                              -> every record
         ?token=<admin>&action=groups[&class=]                -> groups registered on the pricing page
-        ?token=<admin>&action=challenge&class=               -> settings, phase and every flight of the class
+        ?token=<admin>&action=challenge&class=               -> settings, phase and every flight of the class (with
+                                                                its route), the preset sets, the class's groups
    POST {token:<page>, action:"register", class, group, pin, names}        -> registers here (refused if taken)
         {token:<page>, action:"fly", class, group, pin, fare}              -> flies one flight (phase open)
         {token:<page>, records:[{group, question, finding, state, pin}]}   -> appended if the PIN matches
@@ -39,7 +47,17 @@ var TOKEN = "PAGE-TOKEN";          // same value as "token" under "pricing" in t
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor page only
 var LOCK_AFTER = 10, LOCK_MINUTES = 15;
 var PHASES = ["setup", "open", "closed", "revealed", "round2"];
-var DEFAULT_SETTINGS = { mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5, flights: 6, label: "London–Anchorage" };
+var MAX_ROUTES = 6, DEFAULT_FLIGHTS = 6;
+var DEFAULT_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5 };
+// The sets of routes the instructor page offers: per route the label, the cost per passenger, the plane's capacity,
+// the hidden demand Q = a - b P and the trial fare (the passengers it carried follow). This file is public, so it
+// holds one example set only; the sets used in class are in the deployed copy and nowhere else.
+var PRESET_SETS = [
+  { name: "Example set", routes: [
+    { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480 },
+    { label: "London–Zanzibar", mc: 100, seats: 480, a: 600, b: 0.4, p0: 550 },
+    { label: "London–Bali", mc: 80, seats: 400, a: 480, b: 0.25, p0: 700 }] }
+];
 
 function sheet(name, header) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -113,18 +131,27 @@ function groupRecords(cls, group) {
 }
 
 // ---- the challenge ----------------------------------------------------------------------------------------------
-function cleanSettings(s) {
-  s = s || {};
-  var out = {};
-  Object.keys(DEFAULT_SETTINGS).forEach(function (k) {
-    if (k === "label") { out.label = String(s.label || ""); return; }
-    var v = Number(s[k]); out[k] = isNaN(v) ? DEFAULT_SETTINGS[k] : v;
-  });
-  out.flights = Math.max(1, Math.min(12, Math.round(out.flights)));
-  if (!(out.b > 0)) out.b = DEFAULT_SETTINGS.b;
+function cleanRoute(r) {
+  r = r || {};
+  var out = { label: String(r.label || "") };
+  ["mc", "seats", "p0", "q0", "b"].forEach(function (k) { var v = Number(r[k]); out[k] = isNaN(v) ? DEFAULT_ROUTE[k] : v; });
+  if (!(out.b > 0)) out.b = DEFAULT_ROUTE.b;
   return out;
 }
-function intercept(s) { return s.q0 + s.b * s.p0; }                          // Q = a - b P through the status quo
+// {flights, routes: [...]}; a row saved before the routes (one route, its numbers beside `flights`) reads as one route.
+function cleanSettings(s) {
+  s = s || {};
+  var list = (s.routes && s.routes.length) ? s.routes.slice(0, MAX_ROUTES) : [s];
+  var fl = Number(s.flights); if (isNaN(fl)) fl = DEFAULT_FLIGHTS;
+  return { flights: Math.max(1, Math.min(12, Math.round(fl))), routes: list.map(cleanRoute) };
+}
+// The route a group prices: by its number, in turn, so a stream's consecutive numbers split evenly over the routes
+// and nobody has to allocate them.
+function routeIndex(group, n) {
+  var m = /(\d+)\s*$/.exec(String(group || "")), k = m ? Number(m[1]) : 1;
+  return ((k - 1) % n + n) % n;
+}
+function intercept(s) { return s.q0 + s.b * s.p0; }                          // Q = a - b P through the trial point; s is a route
 function passengersAt(s, fare) { return Math.max(0, Math.min(s.seats, Math.round(intercept(s) - s.b * fare))); }
 function profitAt(s, fare) { return (fare - s.mc) * passengersAt(s, fare); }
 function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
@@ -162,14 +189,45 @@ function board(flights, withFares) {
   out.sort(function (x, y) { return y.gain - x.gain || x.group.localeCompare(y.group, undefined, { numeric: true }); });
   return out;
 }
-// What the pages may know: the told numbers always, the demand once revealed, the board (fares once revealed).
+// What the pages may know: the told numbers always, the demand once revealed, the board (fares once revealed). With
+// a group (its PIN checked by the caller), or in a class with one route: that route. Otherwise every route.
 function publicChallenge(cls, group) {
   var c = readChallenge(cls);
   if (!c) return { phase: "setup", told: null };
-  var s = c.settings, revealed = c.phase === "revealed" || c.phase === "round2", flights = classFlights(cls);
-  var out = { phase: c.phase, told: { mc: s.mc, seats: s.seats, p0: s.p0, q0: s.q0, flights: s.flights, label: s.label }, board: board(flights, revealed) };
-  if (revealed) out.demand = { a: intercept(s), b: s.b };
-  if (group) out.mine = flights.filter(function (f) { return f.group === group; });
+  var s = c.settings, n = s.routes.length, revealed = c.phase === "revealed" || c.phase === "round2", flights = classFlights(cls);
+  var byRoute = s.routes.map(function () { return []; });
+  flights.forEach(function (f) { byRoute[routeIndex(f.group, n)].push(f); });
+  function view(i) {
+    var r = s.routes[i], v = { told: { mc: r.mc, seats: r.seats, p0: r.p0, q0: r.q0, flights: s.flights, label: r.label }, board: board(byRoute[i], revealed) };
+    if (revealed) v.demand = { a: intercept(r), b: r.b };
+    return v;
+  }
+  var out = { phase: c.phase, nroutes: n };
+  if (group || n === 1) {
+    var i = group ? routeIndex(group, n) : 0, v = view(i);
+    out.route = i; out.told = v.told; out.board = v.board;
+    if (v.demand) out.demand = v.demand;
+    if (group) out.mine = flights.filter(function (f) { return f.group === group; });
+  } else out.routes = s.routes.map(function (r, i) { return view(i); });
+  return out;
+}
+// What the instructor sees: the settings with each route's intercept, and every flight with its route.
+function adminChallenge(cls, phase, settings, flights) {
+  var n = settings.routes.length;
+  return { phase: phase,
+           settings: { flights: settings.flights, routes: settings.routes.map(function (r) { return { label: r.label, mc: r.mc, seats: r.seats, p0: r.p0, q0: r.q0, b: r.b, a: intercept(r) }; }) },
+           flights: (flights || classFlights(cls)).map(function (f) { f.route = routeIndex(f.group, n); return f; }) };
+}
+// The groups registered for a class, in the Marketplace Laboratory or here (names only).
+function classGroups(cls) {
+  var seen = {}, out = [];
+  [marketlabGroupsRows(), groupsSheet().getDataRange().getValues()].forEach(function (values) {
+    if (!values) return;
+    for (var i = 1; i < values.length; i++) {
+      var g = String(values[i][1]);
+      if (String(values[i][0]) === cls && !seen[g]) { seen[g] = true; out.push(g); }
+    }
+  });
   return out;
 }
 
@@ -188,9 +246,8 @@ function doGet(e) {
       return reply({ ok: true, groups: groups });
     }
     if (p.action === "challenge") {
-      var c = readChallenge(String(p["class"] || ""));
-      return reply({ ok: true, challenge: c ? { phase: c.phase, settings: c.settings, a: intercept(c.settings), flights: classFlights(String(p["class"] || "")) } : null,
-                     defaults: DEFAULT_SETTINGS });
+      var ccls = String(p["class"] || ""), c = readChallenge(ccls);
+      return reply({ ok: true, challenge: c ? adminChallenge(ccls, c.phase, c.settings) : null, presets: PRESET_SETS, groups: classGroups(ccls) });
     }
     return reply({ ok: true, records: groupRecords(p["class"], undefined) });
   }
@@ -234,7 +291,7 @@ function doPost(e) {
       fare = Math.round(fare);
       var mine = classFlights(cls).filter(function (f) { return f.group === group; });
       if (mine.length >= c.settings.flights) return reply({ ok: false, error: "all flights flown", challenge: publicChallenge(cls, group) });
-      var s = c.settings, q = passengersAt(s, fare), profit = (fare - s.mc) * q, gain = profit - statusQuoProfit(s);
+      var r = c.settings.routes[routeIndex(group, c.settings.routes.length)], q = passengersAt(r, fare), profit = (fare - r.mc) * q, gain = profit - statusQuoProfit(r);
       flightsSheet().appendRow([String(Date.now() / 1000), cls, group, mine.length + 1, fare, q, profit, gain]);
       return reply({ ok: true, flight: { n: mine.length + 1, fare: fare, passengers: q, profit: profit, gain: gain }, challenge: publicChallenge(cls, group) });
     }
@@ -248,21 +305,21 @@ function doPost(e) {
       if (classFlights(cls).length) return reply({ ok: false, error: "flights have been flown in this class; reset the challenge first" });
       var settings = cleanSettings(data.settings), prev = readChallenge(cls);
       writeChallenge(cls, prev ? prev.phase : "setup", settings);
-      return reply({ ok: true, challenge: { phase: prev ? prev.phase : "setup", settings: settings, a: intercept(settings), flights: [] } });
+      return reply({ ok: true, challenge: adminChallenge(cls, prev ? prev.phase : "setup", settings, []) });
     }
     if (data.action === "challenge_phase" && admin) {
       var phase = String(data.phase || "");
       if (!cls || PHASES.indexOf(phase) < 0) return reply({ ok: false, error: "class and a phase (" + PHASES.join(", ") + ") required" });
-      var cur = readChallenge(cls), st = cur ? cur.settings : cleanSettings(DEFAULT_SETTINGS);
+      var cur = readChallenge(cls), st = cur ? cur.settings : cleanSettings(null);
       writeChallenge(cls, phase, st);
-      return reply({ ok: true, challenge: { phase: phase, settings: st, a: intercept(st), flights: classFlights(cls) } });
+      return reply({ ok: true, challenge: adminChallenge(cls, phase, st) });
     }
     if (data.action === "challenge_reset" && admin) {
       if (!cls) return reply({ ok: false, error: "class required" });
       var fs = flightsSheet(), vals = fs.getDataRange().getValues(), removed = 0;
       for (var i = vals.length - 1; i >= 1; i--) if (String(vals[i][1]) === cls) { fs.deleteRow(i + 1); removed++; }
       var old = readChallenge(cls);
-      writeChallenge(cls, "setup", old ? old.settings : cleanSettings(DEFAULT_SETTINGS));
+      writeChallenge(cls, "setup", old ? old.settings : cleanSettings(null));
       return reply({ ok: true, removed: removed });
     }
     var records = (data.records || []).slice(0, 50), rows = [], rejected = 0, now = Date.now() / 1000;

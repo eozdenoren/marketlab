@@ -28,3 +28,13 @@ body.projector h1 { font-size: 2rem; }
 .flights td.best { font-weight: 600; color: #1f6b2a; }
 .reveal-line { font-size: 1.05rem; margin: 6px 0; }
 .legend-item { cursor: default; }
+/* several routes in one class: the routes side by side (projector, class view, instructor settings) */
+.routes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; margin: 8px 0; }
+.route-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: #fff; min-width: 0; }
+.route-card h3 { margin: 0 0 6px; font-size: 1.05rem; } .route-card h4 { margin: 10px 0 4px; font-size: 0.95rem; }
+.route-card .reveal-line { font-size: 0.98rem; }
+.route-card label { margin-top: 6px; }
+body.projector .route-card table.grid.board { font-size: 1.05rem; } body.projector .route-card table.grid.board th { font-size: 0.85rem; }
+body.projector table.grid.board.overall { font-size: 1.15rem; }
+.briefing table.grid.routes { background: #fff; margin: 4px 0; }
+.route-card table.grid.board th, .route-card table.grid.board td { white-space: nowrap; } .route-card table.grid.board td.num-note { white-space: normal; }

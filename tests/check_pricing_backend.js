@@ -61,7 +61,7 @@ check(get({ token: PAGE, action: "check", "class": "A", group: "Group 5", pin: "
 var bad = post({ token: PAGE, action: "challenge_set", "class": "A", settings: { b: 1 } });
 check(!bad.ok || !bad.challenge, "the page token cannot set the challenge");
 var setr = post({ token: ADMIN, action: "challenge_set", "class": "A", settings: { mc: 80, seats: 450, p0: 580, q0: 350, b: 0.5, flights: 6 } });
-check(setr.ok && setr.challenge.a === 640 && setr.challenge.phase === "setup", "settings set, intercept 640: " + JSON.stringify(setr));
+check(setr.ok && setr.challenge.settings.routes.length === 1 && setr.challenge.settings.routes[0].a === 640 && setr.challenge.settings.flights === 6 && setr.challenge.phase === "setup", "settings set (the older flat form reads as one route), intercept 640: " + JSON.stringify(setr));
 var fly0 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 680 });
 check(!fly0.ok && /not open/.test(fly0.error), "cannot fly before round 1 opens");
 check(post({ token: ADMIN, action: "challenge_phase", "class": "A", phase: "open" }).ok, "round 1 opened");
@@ -70,6 +70,9 @@ check(pub.phase === "open" && pub.told.p0 === 580 && pub.told.q0 === 350 && pub.
 check(pub.told.history === undefined, "no fare range is sent (it would give the slope away)");
 check(pub.told.b === undefined && pub.told.a === undefined, "the slope and the intercept are not sent");
 check(pub.demand === undefined, "the demand is not sent while round 1 is open");
+check(pub.nroutes === 1 && pub.route === 0 && pub.routes === undefined, "a class with one route: the page gets that route, group or not");
+var pubRaw = get({ token: PAGE, action: "challenge", "class": "A" });
+check(pubRaw.presets === undefined && pubRaw.groups === undefined, "the page token gets no presets and no group list");
 var f1 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 680 });
 check(f1.ok && f1.flight.passengers === 300 && f1.flight.profit === 180000 && f1.flight.gain === 5000, "fare 680: 300 passengers, profit 180,000, gain 5,000: " + JSON.stringify(f1.flight));
 var f2 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 380 });
@@ -99,13 +102,53 @@ check(pub.board[0].fares && pub.board[0].fares.length === 1 && pub.board[1].fare
 check(post({ token: ADMIN, action: "challenge_phase", "class": "A", phase: "round2" }).ok && get({ token: PAGE, action: "challenge", "class": "A" }).challenge.demand.a === 640, "round 2 keeps the demand");
 check(post({ token: ADMIN, action: "challenge_phase", "class": "A", phase: "nonsense" }).ok === false, "an unknown phase is refused");
 var adm = get({ token: ADMIN, action: "challenge", "class": "A" }).challenge;
-check(adm.settings.b === 0.5 && adm.flights.length === 7 && adm.phase === "round2", "the instructor sees settings and every flight");
+check(adm.settings.routes[0].b === 0.5 && adm.settings.routes[0].a === 640 && adm.flights.length === 7 && adm.flights[0].route === 0 && adm.phase === "round2", "the instructor sees settings and every flight");
+var admRaw = get({ token: ADMIN, action: "challenge", "class": "A" });
+check(admRaw.presets.length >= 1 && admRaw.presets[0].routes.length === 3 && admRaw.presets[0].routes[0].a > 0 && admRaw.presets[0].routes[0].b > 0, "the instructor gets the preset sets");
+check(["Group 5", "Group 13", "Group 7"].every(function (g) { return admRaw.groups.indexOf(g) >= 0; }) && admRaw.groups.length === 3, "the instructor gets the class's groups, from both sheets: " + JSON.stringify(admRaw.groups));
 check(get({ token: ADMIN, action: "challenge", "class": "B" }).challenge === null, "a class without a challenge");
 var rs = post({ token: ADMIN, action: "challenge_reset", "class": "A" });
 check(rs.ok && rs.removed === 7 && get({ token: ADMIN, action: "challenge", "class": "A" }).challenge.flights.length === 0, "reset removes the flights");
 check(get({ token: PAGE, action: "challenge", "class": "A" }).challenge.phase === "setup", "reset puts the class back to setup");
-check(post({ token: ADMIN, action: "challenge_set", "class": "A", settings: { b: 0.4, mc: 100, seats: 420, p0: 650, q0: 340 } }).challenge.a === 600, "settings can change after a reset");
-check(post({ token: ADMIN, action: "challenge_set", "class": "B", settings: { b: -1, flights: 99 } }).challenge.settings.b === 0.5, "a bad slope falls back to the default");
+check(post({ token: ADMIN, action: "challenge_set", "class": "A", settings: { b: 0.4, mc: 100, seats: 420, p0: 650, q0: 340 } }).challenge.settings.routes[0].a === 600, "settings can change after a reset");
+var badS = post({ token: ADMIN, action: "challenge_set", "class": "B", settings: { b: -1, flights: 99 } }).challenge.settings;
+check(badS.routes[0].b === 0.5 && badS.flights === 12, "a bad slope falls back to the default, the flights are capped at 12");
+
+// ---- several routes in one class: a group prices the route its number gives it and competes on that route only
+for (var gn = 1; gn <= 5; gn++) post({ token: PAGE, action: "register", "class": "R", group: "Group " + gn, pin: "1111" });
+var three = { flights: 2, routes: [{ label: "X–One", mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5 }, { label: "X–Two", mc: 100, seats: 480, p0: 550, q0: 380, b: 0.4 }, { label: "X–Three", mc: 80, seats: 400, p0: 700, q0: 305, b: 0.25 }] };
+var set3 = post({ token: ADMIN, action: "challenge_set", "class": "R", settings: three });
+check(set3.ok && set3.challenge.settings.routes.map(function (r) { return r.a; }).join() === "640,600,480" && set3.challenge.settings.flights === 2, "three routes saved with their intercepts: " + JSON.stringify(set3.challenge.settings));
+post({ token: ADMIN, action: "challenge_phase", "class": "R", phase: "open" });
+function asGroup(n, pin) { return get({ token: PAGE, action: "challenge", "class": "R", group: "Group " + n, pin: pin || "1111" }).challenge; }
+var r1 = asGroup(1), r2 = asGroup(2), r3 = asGroup(3), r4 = asGroup(4);
+check(r1.route === 0 && r1.told.label === "X–One" && r1.told.p0 === 480 && r1.nroutes === 3 && r1.routes === undefined, "Group 1 prices the first route: " + JSON.stringify(r1.told));
+check(r2.route === 1 && r2.told.p0 === 550 && r2.told.seats === 480 && r3.route === 2 && r3.told.q0 === 305 && r4.route === 0 && r4.told.flights === 2, "Groups 2, 3, 4 price routes two, three and one");
+var anon = get({ token: PAGE, action: "challenge", "class": "R" }).challenge;
+check(anon.told === undefined && anon.routes.length === 3 && anon.routes[1].told.p0 === 550 && anon.routes[2].told.label === "X–Three" && anon.mine === undefined, "without a group the page gets every route's told numbers");
+check(!/"(a|b|demand)":/.test(JSON.stringify(anon)) && !/"(a|b|demand)":/.test(JSON.stringify(r2)), "no slope, intercept or demand before the reveal, on any route");
+check(asGroup(2, "0000").routes.length === 3, "a wrong PIN gets the general view, not a route");
+function flyR(n, fare) { return post({ token: PAGE, action: "fly", "class": "R", group: "Group " + n, pin: "1111", fare: fare }); }
+var fr1 = flyR(1, 680), fr2 = flyR(2, 800), fr3 = flyR(3, 1000), fr4 = flyR(4, 700);
+check(fr1.flight.passengers === 300 && fr1.flight.gain === 20000, "Group 1 flies its own demand: 680 carries 300, +20,000: " + JSON.stringify(fr1.flight));
+check(fr2.flight.passengers === 280 && fr2.flight.profit === 196000 && fr2.flight.gain === 25000, "Group 2 flies the second demand: 800 carries 280, +25,000: " + JSON.stringify(fr2.flight));
+check(fr3.flight.passengers === 230 && fr3.flight.profit === 211600 && fr3.flight.gain === 22500, "Group 3 flies the third demand: 1000 carries 230, +22,500: " + JSON.stringify(fr3.flight));
+check(fr4.flight.passengers === 290 && fr4.flight.gain === 19800, "Group 4 is on the first route: 700 carries 290, +19,800");
+check(fr1.challenge.board.length === 1 && fr4.challenge.board.length === 2 && fr4.challenge.board[0].group === "Group 1" && fr4.challenge.board[1].group === "Group 4", "the first route's board holds Groups 1 and 4 only");
+check(asGroup(2).board.length === 1 && asGroup(2).board[0].group === "Group 2" && asGroup(5).board.length === 1 && asGroup(5).mine.length === 0, "Group 5 (second route) sees Group 2's flight, none of its own");
+anon = get({ token: PAGE, action: "challenge", "class": "R" }).challenge;
+check(anon.routes.map(function (v) { return v.board.length; }).join() === "2,1,1" && anon.routes[0].board[0].fares === undefined, "the general view has a board per route, fares hidden");
+flyR(1, 690);
+check(/all flights/.test(flyR(1, 700).error), "the flights per group apply on every route");
+var admR = get({ token: ADMIN, action: "challenge", "class": "R" });
+check(admR.challenge.flights.map(function (f) { return f.group + ":" + f.route; }).join() === "Group 1:0,Group 2:1,Group 3:2,Group 4:0,Group 1:0", "the instructor's flights carry their route");
+check(admR.groups.length === 5, "the class's five groups are listed");
+post({ token: ADMIN, action: "challenge_phase", "class": "R", phase: "revealed" });
+check(asGroup(2).demand.a === 600 && asGroup(2).demand.b === 0.4 && asGroup(3).demand.a === 480 && asGroup(4).demand.b === 0.5, "each group gets its own route's demand at the reveal");
+anon = get({ token: PAGE, action: "challenge", "class": "R" }).challenge;
+check(anon.routes[0].demand.a === 640 && anon.routes[2].demand.b === 0.25 && anon.routes[0].board[0].fares.join() === "680,690", "the general view gets every demand and the fares at the reveal");
+check(post({ token: ADMIN, action: "challenge_reset", "class": "R" }).removed === 5, "the reset removes the class's five flights");
+check(post({ token: ADMIN, action: "challenge_set", "class": "R", settings: { flights: 3, routes: [three.routes[1]] } }).challenge.settings.routes.length === 1 && asGroup(3).told.p0 === 550 && asGroup(3).route === 0, "back to one route: every group prices it");
 
 // ---- records (pins and answers)
 var s = post({ token: PAGE, records: [{ group: "Group 5", question: "Challenge", finding: "f", pin: "0001", state: { "class": "A", labbook: { id: "p1", kind: "pin", tab: "challenge" } } }] });
