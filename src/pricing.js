@@ -386,15 +386,15 @@
     return h;
   }
   // v: {board, told} (the challenge itself, or one route of the class view); compact: short headings, for the
-  // boards side by side.
+  // boards side by side. The board never lists the fares a group flew, not even after the reveal: the flights are
+  // the dots on the profit chart, and the fare by fare record is on the instructor's page.
   function boardTable(v, phase, compact) {
     var b = v.board || [];
     if (!b.length) return '<p class="caption">No flights flown yet ' + (compact ? 'on this route.' : 'in class ' + esc(S.classCode) + '.') + '</p>';
-    var revealed = phase === "revealed" || phase === "round2", me = groupKey();
-    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial fare') + '</th>' + (revealed ? '<th>Fares</th>' : "") + '</tr></thead><tbody>';
+    var me = groupKey();
+    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial fare') + '</th></tr></thead><tbody>';
     b.forEach(function (g, i) {
-      h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (v.told ? " / " + v.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td>' +
-           (revealed ? '<td class="num-note">' + (g.fares || []).map(function (f) { return money(f); }).join(", ") + '</td>' : "") + '</tr>';
+      h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (v.told ? " / " + v.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td></tr>';
     });
     return h + '</tbody></table>';
   }

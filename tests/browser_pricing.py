@@ -200,13 +200,15 @@ def main():
             check("640 − 0.5 × P" in txt and "£1,280" in txt and "best fare is £680" in txt, "the reveal states the demand and the best fare")
             check("Two points were enough" in txt, "the line through the status quo and the first flight is the demand")
             check(s1.locator("#tab-challenge svg").count() == 2, "two charts at the reveal")
-            check("£680, £280" in s1.locator("table.board").inner_text(), "fares shown on the board once revealed")
+            check("£680" not in s1.locator("table.board").inner_text() and "Fares" not in s1.locator("table.board").inner_text() and "Group 7" in s1.locator("table.board").inner_text(), "the board lists no fares, even once revealed")
             check(s1.locator("table.flights td.best").count() == 1 and "£680" in s1.locator("table.flights td.best").inner_text(), "after the reveal the group's most profitable flight is marked")
             s1.screenshot(path=os.path.join(OUT, "08_student_revealed.png"), full_page=True)
             proj.get_by_text("The demands the teams were facing", exact=False).wait_for(timeout=15000)
             card0 = proj.locator(".route-card").nth(0).inner_text()
-            check(proj.locator("#tab-challenge svg").count() == 6 and "£700" in card0 and "640 − 0.5 × P" in card0 and "Best fare £680" in card0,
-                  "the projector shows each route's demand, two charts and every group's fares: %d svg, first route %r" % (proj.locator("#tab-challenge svg").count(), card0[:200]))
+            check(proj.locator("#tab-challenge svg").count() == 6 and "640 − 0.5 × P" in card0 and "Best fare £680" in card0 and "Flights flown" in card0,
+                  "the projector shows each route's demand and two charts, with the flights as dots: %d svg, first route %r" % (proj.locator("#tab-challenge svg").count(), card0[:200]))
+            pb = proj.locator(".route-card").nth(0).locator("table.board").inner_text()
+            check("Group 7" in pb and "£700" not in pb and "Fares" not in pb, "the projector's boards list no fares: %r" % pb)
             check("600 − 0.4 × P" in proj.locator(".route-card").nth(1).inner_text() and "480 − 0.25 × P" in proj.locator(".route-card").nth(2).inner_text(), "the other two routes' demands")
             pov = proj.locator("table.overall tbody tr").all_inner_texts()
             check(len(pov) == 3 and "Group 8" in pov[0] and "17%" in pov[0], "the projector ranks every team by its share of the possible gain: %r" % pov)
