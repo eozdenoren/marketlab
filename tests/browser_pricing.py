@@ -132,6 +132,7 @@ def main():
             s1.get_by_text("Fare for flight 3 of 6", exact=False).wait_for()
             row2 = s1.locator("table.flights tbody tr").nth(1).inner_text()
             check("500" in row2 and "(full)" in row2 and "-£60,000" in row2, "flight 2 fills the plane and loses 60,000: %r" % row2)
+            check(s1.locator("table.flights td.best").count() == 0, "no fare is marked during the round, not even the group's best so far (here the best fare itself)")
             check("Group 13" in s1.locator("table.board").inner_text() and "Leaderboard: London–Anchorage" in s1.locator("#tab-challenge").inner_text(), "the student's leaderboard is its route's and lists the group")
             s1.screenshot(path=os.path.join(OUT, "04_student_flown.png"), full_page=True)
 
@@ -200,6 +201,7 @@ def main():
             check("Two points were enough" in txt, "the line through the status quo and the first flight is the demand")
             check(s1.locator("#tab-challenge svg").count() == 2, "two charts at the reveal")
             check("£680, £280" in s1.locator("table.board").inner_text(), "fares shown on the board once revealed")
+            check(s1.locator("table.flights td.best").count() == 1 and "£680" in s1.locator("table.flights td.best").inner_text(), "after the reveal the group's most profitable flight is marked")
             s1.screenshot(path=os.path.join(OUT, "08_student_revealed.png"), full_page=True)
             proj.get_by_text("The demands the teams were facing", exact=False).wait_for(timeout=15000)
             card0 = proj.locator(".route-card").nth(0).inner_text()

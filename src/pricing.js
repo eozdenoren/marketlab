@@ -371,7 +371,9 @@
   }
   function flightsTable(flights, t, d) {
     if (!flights || !flights.length) return '<p class="caption">No flights yet.</p>';
-    var bestF = null; flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
+    // The group's most profitable flight is marked only once the demand is revealed (d given): during the round a
+    // green fare reads as "this is the best fare", which the group must not be told.
+    var bestF = null; if (d) flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
     var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Fare</th><th class="num">Passengers</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against the trial fare</th>' + (d ? '<th class="num">Off the best fare</th>' : "") + '</tr></thead><tbody>';
     var total = 0;
     flights.forEach(function (f) {
