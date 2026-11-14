@@ -48,7 +48,13 @@
   function mergeStored(d) {
     if (!d) return;
     if (d.tab) S.tab = d.tab;
-    if (d.mocha && typeof d.mocha === "object") Object.keys(d.mocha).forEach(function (k) { S.mocha[k] = d.mocha[k]; });
+    // What a page from before the tick box for the bids at the cap remembered about bids to ignore is dropped: a
+    // forgotten "bids above 49" there left the bids at 50 out whatever the box said, so the box seemed to do nothing.
+    if (d.mocha && typeof d.mocha === "object") {
+      var old = !("dropCap" in d.mocha);
+      Object.keys(d.mocha).forEach(function (k) { if (!(old && (k === "above" || k === "dropZero"))) S.mocha[k] = d.mocha[k]; });
+      if (S.mocha.dataset === "madeup") { S.mocha.dataset = ""; S.mocha.price = ""; S.mocha.split = ""; }      // a visit starts on the class's own bids
+    }
   }
 
   // ---- class record: the sign-in ------------------------------------------------------------------------------
@@ -444,7 +450,15 @@
     if (mine) out.push({ key: "mine", label: "Your stream (" + mine.label + ", " + mine.bids.length + " bids)", parts: [mine] });
     DATA.streams.forEach(function (s) { if (!mine || s.code !== mine.code) out.push({ key: s.code, label: s.label + ", " + DATA.year + " (" + s.bids.length + " bids)", parts: [s] }); });
     if (DATA.streams.length > 1) out.push({ key: "all", label: "All " + DATA.streams.length + " streams, " + DATA.year + " (" + DATA.streams.reduce(function (n, s) { return n + s.bids.length; }, 0) + " bids)", parts: DATA.streams });
+    var made = C.madeUpBids();
+    out.push({ key: "madeup", label: "A made-up market with two kinds of buyer (" + made.length + " bids)", parts: [{ bids: made, max: null }], madeUp: true });
     return out;
+  }
+  // What the made-up market is, in words (the numbers are the core's).
+  function madeUpNote() {
+    var f = C.MADE_UP.fans, o = C.MADE_UP.others, nf = (f.to - f.from + 1) * f.each, no = (o.to - o.from + 1) * o.each;
+    function each(g) { return g.each === 1 ? "one at each pound" : numWord(g.each) + " at each pound"; }
+    return "Made up, to show what two lines are for; nobody's bids. " + nf + " fans who would pay " + money(f.from) + " to " + money(f.to) + " (" + each(f) + ") and " + no + " others who would pay " + money(o.from) + " to " + money(o.to) + " (" + each(o) + ").";
   }
   // The bids at the most the auction accepted, over some streams: how many, and that maximum when the streams share it.
   function capInfo(streams) {
@@ -473,7 +487,7 @@
     var typed = m.split === "" || m.split == null ? null : parseFloat(m.split);
     if (typed != null && isNaN(typed)) typed = null;
     var best = C.bestPrice(bids, mc), line = C.fitLine(bids);
-    return { sets: sets, ds: ds, mc: mc, cap: capInfo(ds.parts), bids: bids, price: price, buyers: C.buyersAt(bids, price), profit: C.profitAtPrice(bids, price, mc), best: best,
+    return { sets: sets, ds: ds, mc: mc, madeUp: !!ds.madeUp, cap: capInfo(ds.parts), total: ds.parts.reduce(function (n, s) { return n + s.bids.length; }, 0), bids: bids, price: price, buyers: C.buyersAt(bids, price), profit: C.profitAtPrice(bids, price, mc), best: best,
              line: line, lp: C.linePricing(line, bids, mc), typed: typed, auto: C.bestSplit(bids), range: C.splitRange(bids), two: C.twoLines(bids, mc, typed) };
   }
   function buildMocha() {
@@ -485,7 +499,9 @@
       '<div class="cols-5-7"><div><div class="panel">' +
       '<label for="mo-price" style="margin-top:0">Your price (£)</label><input type="number" id="mo-price" step="1" min="0" style="font-size:1.3rem">' +
       '<label for="mo-data">Bids</label><select id="mo-data"></select>' +
+      '<p class="caption" id="mo-note" style="margin:4px 0 0" hidden></p>' +
       '<div class="radio" id="mo-cap-row" style="margin-top:8px"><label><input type="checkbox" id="mo-cap"> <span id="mo-cap-text"></span></label></div>' +
+      '<p class="caption" id="mo-count" style="margin:2px 0 0"></p>' +
       '<label for="mo-cost">Cost per ' + esc(DATA.item || "Mocha") + ' (£)</label><input type="number" id="mo-cost" step="1" min="0">' +
       '<details class="how" id="mo-ignore"' + (S.mocha.dropZero || S.mocha.above !== "" ? " open" : "") + '><summary>Ignore other bids</summary>' +
       '<div class="radio"><label><input type="checkbox" id="mo-zero"> Bids of £0</label></div>' +
@@ -543,19 +559,29 @@
     }
     return C.chart({ title: "Demand from the bids", h: 380, x: { max: n * 1.04, label: "Buyers (bids at least the price)" }, y: { max: ytop * 1.08, label: "Price (£)" }, lines: lines, hlines: hlines, markers: markers });
   }
-  // Profit against the price, with the price each method gives.
-  function profitChartMocha(r) {
-    // The losses at prices far below the cost run off the bottom of the chart: they would flatten the part that matters.
-    var K = C.COLORS, top = Math.max.apply(null, r.bids), pts = C.profitCurve(r.bids, r.mc), high = Math.max(r.best.profit, 1), ymin = 0;
+  // Profit against the price, at the whole-pound prices that can be charged, with the price each method gives.
+  // The view of a line also shows the profit that line expects at each price: for a straight-line demand that is
+  // a parabola (the "quadratic" one can see in the bumpy curve), and the line's price is its top.
+  function profitChartMocha(r, mode) {
+    var K = C.COLORS, top = Math.ceil(Math.max.apply(null, r.bids)), pts = [], high = Math.max(r.best.profit, 1), ymin = 0;
+    for (var p = 0; p <= top; p++) pts.push([p, C.profitAtPrice(r.bids, p, r.mc)]);
+    pts.push([top + 1, 0]);                      // above the highest bid nobody buys
     pts.forEach(function (xy) { ymin = Math.min(ymin, xy[1]); });
-    ymin = Math.max(ymin, -0.3 * high);
-    pts.push([top * 1.04, 0]);
+    function hill(line, from, to) { var out = []; for (var x = from; x <= to + 1e-9; x += 0.25) out.push([x, (x - r.mc) * Math.max(0, (line.a - x) / line.b)]); return out; }
+    var lines = [{ pts: pts, color: K.blue, width: 2, name: "Profit at each whole-pound price" }];
+    if (mode === "line" && r.line && r.lp) { lines.push({ pts: hill(r.line, 0, Math.min(r.line.a, top + 1)), color: K.purple, width: 2, dash: "dash", name: "What the line expects" }); high = Math.max(high, r.lp.expected); }
+    if (mode === "two" && r.two) {
+      lines.push({ pts: hill(r.two.high, r.two.split, Math.min(r.two.high.a, top)), color: K.orange, width: 2, dash: "dash", name: "What the high line expects" });
+      lines.push({ pts: hill(r.two.low, 0, Math.min(r.two.low.a, r.two.split)), color: K.blue, width: 2, dash: "dash", name: "What the low line expects" });
+      high = Math.max(high, r.two.high.expected, r.two.low.expected);
+    }
+    ymin = Math.max(ymin, -0.3 * high);          // the losses far below the cost run off the bottom: they would flatten the part that matters
     var markers = [{ x: r.price, y: r.profit, color: K.black, name: "Your price", title: "Your price " + money(r.price) + ": profit " + C.fareText(r.profit) },
                    { x: r.best.price, y: r.best.profit, color: K.green, hollow: true, name: "1. Every price: the best", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": profit " + money(r.best.profit) }];
     if (r.lp) markers.push({ x: r.lp.rounded, y: r.lp.profit, color: K.purple, hollow: true, name: "2. One line's price", title: "One line: " + money(r.lp.rounded) + ", profit " + money(r.lp.profit) });
     if (r.two) markers.push({ x: r.two.rounded, y: r.two.profit, color: K.orange, hollow: true, name: "3. Two lines' price", title: "Two lines: " + money(r.two.rounded) + ", profit " + money(r.two.profit) });
-    return C.chart({ title: "Profit against the price", h: 340, x: { max: top * 1.04, label: "Price (£)" }, y: { min: ymin, max: high * 1.1, label: "Profit (£)" },
-                     lines: [{ pts: pts, color: K.blue, width: 2, name: "Profit at each price" }], vlines: [{ x: r.mc, label: "cost", color: K.grey }], markers: markers });
+    return C.chart({ title: "Profit against the price", h: 340, x: { max: top + 2, label: "Price (£)" }, y: { min: ymin, max: high * 1.1, label: "Profit (£)" },
+                     lines: lines, vlines: [{ x: r.mc, label: "cost", color: K.grey }], markers: markers });
   }
   // The three methods side by side on the bids in view; the method whose view is open is marked.
   function methodsTable(r, mode) {
@@ -638,6 +664,10 @@
     sel.innerHTML = r.sets.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === r.ds.key ? " selected" : "") + '>' + esc(s.label) + '</option>'; }).join("");
     $("mo-cost").value = r.mc; $("mo-price").value = r.price; $("mo-zero").checked = !!m.dropZero; $("mo-above").value = m.above;
     $("mo-cap").checked = !!m.dropCap; $("mo-cap-row").hidden = !r.cap.n; $("mo-cap-text").textContent = "Leave out the " + capWords(r.cap);
+    // How many bids count is always in view, so that every box is seen to act; the folded boxes open when they are in use.
+    $("mo-count").textContent = r.bids.length === r.total ? r.total + " bids counted" : r.bids.length + " of " + r.total + " bids counted";
+    $("mo-note").hidden = !r.madeUp; $("mo-note").textContent = r.madeUp ? madeUpNote() : "";
+    if (m.dropZero || m.above !== "") $("mo-ignore").open = true;
     var el = $("mo-results"), n = r.bids.length;
     if (!n) { el.innerHTML = '<div class="info">No bids are left: every bid is left out. Change the boxes on the left.</div>'; saveLocal(); return; }
     var h = '<div class="metrics">' + metric("Buyers at " + money(r.price), r.buyers, { sub: Math.round(100 * r.buyers / n) + "% of " + n + " bids" }) + metric("Revenue", r.price * r.buyers, { money: true }) +
@@ -655,7 +685,7 @@
     } else if (m.inner === "segments") h += segmentsPanel(r).html;
     else {
       h += (m.inner === "two" ? splitControl(r) : "") + demandChart(r, m.inner) +
-           (m.inner === "direct" ? directText(r) : m.inner === "line" ? lineTextHtml(r) : twoTextHtml(r)) + methodsTable(r, m.inner) + profitChartMocha(r);
+           (m.inner === "direct" ? directText(r) : m.inner === "line" ? lineTextHtml(r) : twoTextHtml(r)) + methodsTable(r, m.inner) + profitChartMocha(r, m.inner);
     }
     el.innerHTML = h;
     saveLocal();

@@ -82,11 +82,15 @@ var y5 = C.twoLines(syn, 5, null), y19 = C.twoLines(syn, 19, null);
 check(C.bestSplit(syn) === 21 && near(y5.sse, 0, 1e-6) && near(y5.high.a, 31) && near(y5.high.b, 1) && near(y5.low.a, 73 / 3) && near(y5.low.b, 1 / 3), "an exact kink is found: split 21, P = 31 - Q and P = 24.33 - Q/3");
 check(y5.high.where === "below" && y5.high.price === 21 && near(y5.high.expected, 160) && y5.pick === "low" && near(y5.price, 44 / 3) && near(y5.expected, 29 * 29 / 3) && y5.rounded === 15 && y5.buyers === 28 && y5.profit === 280, "cost 5: the low line's 14.67 (expected 280.33) beats the split's 160; charged as 15, 28 buy, 280");
 check(y19.low.where === "above" && y19.low.price === 21 && near(y19.low.expected, 20) && y19.pick === "high" && near(y19.price, 25) && y19.rounded === 25 && y19.buyers === 6 && near(y19.profit, 36), "cost 19: the high line's 25, 6 buyers, 36");
-// the profit curve, exactly: straight up to each bid value, a drop just above it
-check(JSON.stringify(C.profitCurve([0, 5, 5, 10], 2)) === "[[0,-8],[0,-6],[5,9],[5,3],[10,8],[10,0]]" && JSON.stringify(C.profitCurve([5, 10], 2)) === "[[0,-4],[5,6],[5,3],[10,8],[10,0]]", "the profit curve of four bids, by hand");
-var pc = C.profitCurve(ALL, 15);
-check(Math.max.apply(null, pc.map(function (xy) { return xy[1]; })) === 700 && pc[pc.length - 1][0] === 50 && pc[pc.length - 1][1] === 0 && pc.every(function (xy, i) { return i === 0 || xy[0] >= pc[i - 1][0]; }), "the curve's highest point is the best price's profit, and it ends at nothing above the highest bid");
-check(pc.filter(function (xy) { return xy[0] === 35; }).some(function (xy) { return xy[1] === 700; }) && pc.filter(function (xy) { return xy[0] === 35; }).some(function (xy) { return xy[1] === (35 - 15) * C.buyersAt(ALL, 36); }), "at 35 the curve holds 700 and, just above, what is left once the 35 bidders are lost");
+// the made-up market with two kinds of buyer: 8 others at each of 1..14, one fan at each of 38..57 (worked in Python
+// too, 2026-11-14). One line is dragged down by buyers nobody would serve; two lines find the fans' price.
+var M = C.madeUpBids(), mBest = C.bestPrice(M, 15), mLine = C.fitLine(M), mLp = C.linePricing(mLine, M, 15), mTwo = C.twoLines(M, 15, null);
+check(M.length === 132 && C.buyersAt(M, 15) === 20 && C.buyersAt(M, 38) === 20 && C.buyersAt(M, 14) === 28 && C.median(M) === 9 && C.MADE_UP.fans.from === 38 && C.MADE_UP.others.each === 8, "the made-up market: 112 others up to 14, 20 fans from 38");
+check(mBest.price === 38 && mBest.buyers === 20 && mBest.profit === 460, "its best price is 38: all 20 fans, 460");
+check(near(mLine.a, 41.254, 0.001) && near(mLine.b, 0.3849, 0.0001) && near(mLp.price, 28.127, 0.001) && mLp.rounded === 28 && mLp.buyers === 20 && mLp.profit === 260, "one line says 28: the 20 fans at too low a price, 260 (57% of the best): " + JSON.stringify(mLp));
+check(mTwo.split === 27 && mTwo.pick === "high" && mTwo.high.where === "inside" && mTwo.low.where === "inside" && near(mTwo.high.a, 60.169, 0.001) && near(mTwo.high.b, 1.3099, 0.0001) && near(mTwo.price, 37.585, 0.001) && mTwo.rounded === 38 && mTwo.buyers === 20 && mTwo.profit === 460,
+      "two lines, split at 27, say 38: the best: " + JSON.stringify(mTwo));
+check(C.profitCurve === undefined, "the saw-tooth profit curve is gone: the page draws the profit at whole-pound prices");
 check(C.buyersAt(A, 0) === 69 && C.buyersAt(A, 50) === 6 && C.buyersAt(A, 51) === 0, "buyers at 0, at the cap, above it");
 check(C.clean(A, { dropZero: true }).length === 68 && C.clean(A, { above: 49 }).length === 63, "cleaning: one zero, six at the cap");
 // ---- without the bids at the most the auction accepted (50), which is how the page starts: a bid of the maximum

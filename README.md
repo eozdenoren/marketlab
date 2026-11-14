@@ -68,13 +68,18 @@ record is never touched while an assignment runs on it.
   schedule, where MR = MC and the midpoint rule give the same price; (3) fit
   two lines, a high and a low segment split at a price (the best-fitting
   split to start with, and the user can move it). A table sets the three
-  against each other on the actual bids, and the profit curve carries the
-  three prices. A line's price is charged to the nearest pound, the bids
+  against each other on the actual bids, and the profit chart (profit at
+  each whole-pound price) carries the three prices; on a line's view it
+  also shows the profit hill that line expects, a parabola. The Bids list
+  ends with a made-up market with two kinds of buyer (20 fans at 38 to 57,
+  112 others at 1 to 14; `madeUpBids` in the core), where one line earns
+  57% of the best and two lines all of it: on the class's own bids two
+  lines add little. A line's price is charged to the nearest pound, the bids
   being in whole pounds (to the penny, 30.21 would lose everyone who bid
   30). The bids at the most the auction accepted (50) are left out unless
   a box is unticked: a pile sits at the maximum whatever the maximum is, so
   those bids say "at any price", not what the student would pay (the user's
-  decision, 14 November 2026). Also: other bids to ignore, and one price for
+  decision, 14 November 2026); how many bids count is always in view. Also: other bids to ignore, and one price for
   the three streams against a price per stream. No demand can be typed in:
   nothing on these pages answers an exam question.
 * **No lab book** (removed 14 November 2026): nothing is pinned or answered
