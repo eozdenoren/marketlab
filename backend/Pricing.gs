@@ -1,4 +1,4 @@
-// ==== PRICING LAB SCRIPT, VERSION 4 (13 Nov 2026): three routes per class ====
+// ==== PRICING LAB SCRIPT, VERSION 5 (14 Nov 2026): teams choose the seats to sell ====
 // (The pricing instructor page shows this version number at the bottom once this code is the live deployment.)
 /* Pricing Laboratory: class record endpoint (Google Apps Script, bound to the Pricing Lab's own Google Sheet).
 
@@ -13,14 +13,17 @@
    Tabs: "records"   (ts | group | question | finding | state)       the lab books: pins, answers, notes
          "groups"    (class | group | pin | names | registered)      groups registered on the pricing page
          "challenge" (class | phase | settings | updated)            one row per class: the pricing challenge
-         "flights"   (ts | class | group | n | fare | passengers | profit | gain)   round 1 flights
+         "flights"   (ts | class | group | n | fare | passengers | profit | gain)   the teams' flights
 
    The challenge: each group is a consulting team pricing a new route. It is told the cost per passenger (mc),
    the seats, and the trial flights' fare p0 with the q0 passengers they carried on average (a single point,
    so nothing about the slope); the demand Q = a - b P is hidden (b in the
-   settings, a = q0 + b p0). It flies `flights` flights at fares of its choice; each flight's gain is its profit
-   minus the trial fare's (p0 - mc) q0. Phases: setup -> open (round 1) -> closed -> revealed (the demand is sent
-   to the pages) -> round2 (the exercise on the revealed demand). Settings cannot change while flights exist.
+   settings, a = q0 + b p0). It flies `flights` flights. For each it chooses how many seats to sell (1 to the
+   plane's seats); the fare is then the highest at which that many people buy, (a - seats) / b, to the penny, and
+   the profit (fare - mc) x seats to the pound. (A page from before version 5 sends a fare instead: the passengers
+   are then a - b x fare, rounded and capped by the seats.) Each flight's gain is its profit minus a trial
+   flight's, (p0 - mc) q0. Phases: setup -> open -> closed -> revealed (the demand is sent to the pages);
+   "round2" is a phase older pages could set and reads as revealed. Settings cannot change while flights exist.
 
    A class may run several routes at once (settings: {flights, routes: [{label, mc, seats, p0, q0, b}, ...]}): a
    group prices the route its number gives it, in turn (Group 1 the first route, Group 2 the second, ...), and
@@ -37,7 +40,9 @@
         ?token=<admin>&action=challenge&class=               -> settings, phase and every flight of the class (with
                                                                 its route), the preset sets, the class's groups
    POST {token:<page>, action:"register", class, group, pin, names}        -> registers here (refused if taken)
-        {token:<page>, action:"fly", class, group, pin, fare}              -> flies one flight (phase open)
+        {token:<page>, action:"fly", class, group, pin, seats}             -> flies one flight selling that many seats
+                                                                              (phase open); `fare` in place of `seats`
+                                                                              is the older form
         {token:<page>, records:[{group, question, finding, state, pin}]}   -> appended if the PIN matches
         {token:<admin>, records:[...]}                                     -> appended, no PIN
         {token:<admin>, action:"challenge_set", class, settings}           -> sets the settings (no flights yet)
@@ -48,7 +53,7 @@ var RECORDS = "records", GROUPS = "groups", CHALLENGE = "challenge", FLIGHTS = "
 var TOKEN = "PAGE-TOKEN";          // same value as "token" under "pricing" in the page's build config
 var ADMIN_TOKEN = "ADMIN-TOKEN";   // instructor page only
 var LOCK_AFTER = 10, LOCK_MINUTES = 15;
-var VERSION = "4 (13 Nov 2026)";   // sent with every reply; the same number as in the first line of this file
+var VERSION = "5 (14 Nov 2026)";   // sent with every reply; the same number as in the first line of this file
 var PHASES = ["setup", "open", "closed", "revealed", "round2"];
 var MAX_ROUTES = 6, DEFAULT_FLIGHTS = 6;
 var DEFAULT_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, p0: 480, q0: 400, b: 0.5 };
@@ -158,6 +163,12 @@ function intercept(s) { return s.q0 + s.b * s.p0; }                          // 
 function passengersAt(s, fare) { return Math.max(0, Math.min(s.seats, Math.round(intercept(s) - s.b * fare))); }
 function profitAt(s, fare) { return (fare - s.mc) * passengersAt(s, fare); }
 function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
+// A flight that sells q seats: everyone pays the highest fare at which q people buy, (a - q) / b. The fare is
+// kept to the penny and the profit to the pound (the profit is worked from the exact fare).
+function seatsFlight(s, q) {
+  var exact = (intercept(s) - q) / s.b;
+  return { fare: Math.round(exact * 100) / 100, passengers: q, profit: Math.round((exact - s.mc) * q) };
+}
 function readChallenge(cls) {
   var values = challengeSheet().getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
@@ -184,15 +195,16 @@ function classFlights(cls) {
 function board(flights, withFares) {
   var by = {};
   flights.forEach(function (f) {
-    var g = by[f.group] || (by[f.group] = { group: f.group, n: 0, gain: 0, fares: [] });
-    g.n++; g.gain += f.gain; g.fares.push(f.fare);
+    var g = by[f.group] || (by[f.group] = { group: f.group, n: 0, gain: 0, fares: [], sold: [] });
+    g.n++; g.gain += f.gain; g.fares.push(f.fare); g.sold.push(f.passengers);
   });
   var out = Object.keys(by).map(function (k) { return by[k]; });
-  if (!withFares) out.forEach(function (g) { delete g.fares; });
+  if (!withFares) out.forEach(function (g) { delete g.fares; delete g.sold; });
   out.sort(function (x, y) { return y.gain - x.gain || x.group.localeCompare(y.group, undefined, { numeric: true }); });
   return out;
 }
-// What the pages may know: the told numbers always, the demand once revealed, the board (fares once revealed). With
+// What the pages may know: the told numbers always, the demand once revealed, the board (each team's seats sold
+// and fares once revealed). With
 // a group (its PIN checked by the caller), or in a class with one route: that route. Otherwise every route.
 function publicChallenge(cls, group) {
   var c = readChallenge(cls);
@@ -288,15 +300,25 @@ function doPost(e) {
     if (data.action === "fly" && !admin) {
       if (!pinOk(cls, group, data.pin)) return reply({ ok: false, error: "bad pin" });
       var c = readChallenge(cls);
-      if (!c || c.phase !== "open") return reply({ ok: false, error: "round 1 is not open", challenge: publicChallenge(cls, group) });
-      var fare = Number(data.fare);
-      if (isNaN(fare) || fare < 0 || fare > 1e6) return reply({ ok: false, error: "the fare must be a number of pounds" });
-      fare = Math.round(fare);
+      if (!c || c.phase !== "open") return reply({ ok: false, error: "the challenge is not open", challenge: publicChallenge(cls, group) });
+      var r = c.settings.routes[routeIndex(group, c.settings.routes.length)], fl;
+      if (data.seats !== undefined) {                       // the team chooses the seats to sell
+        var q = Number(data.seats), most = Math.min(r.seats, Math.floor(intercept(r)));
+        if (isNaN(q) || q !== Math.round(q) || q < 1 || q > r.seats) return reply({ ok: false, error: "the seats to sell must be a whole number from 1 to " + r.seats });
+        if (q > most) return reply({ ok: false, error: "at most " + most + " people would fly this route, whatever the fare" });
+        fl = seatsFlight(r, q);
+      } else {                                              // a page from before version 5 sends the fare
+        var fare = Number(data.fare);
+        if (isNaN(fare) || fare < 0 || fare > 1e6) return reply({ ok: false, error: "the fare must be a number of pounds" });
+        fare = Math.round(fare);
+        fl = { fare: fare, passengers: passengersAt(r, fare) };
+        fl.profit = (fare - r.mc) * fl.passengers;
+      }
       var mine = classFlights(cls).filter(function (f) { return f.group === group; });
       if (mine.length >= c.settings.flights) return reply({ ok: false, error: "all flights flown", challenge: publicChallenge(cls, group) });
-      var r = c.settings.routes[routeIndex(group, c.settings.routes.length)], q = passengersAt(r, fare), profit = (fare - r.mc) * q, gain = profit - statusQuoProfit(r);
-      flightsSheet().appendRow([String(Date.now() / 1000), cls, group, mine.length + 1, fare, q, profit, gain]);
-      return reply({ ok: true, flight: { n: mine.length + 1, fare: fare, passengers: q, profit: profit, gain: gain }, challenge: publicChallenge(cls, group) });
+      var gain = fl.profit - statusQuoProfit(r);
+      flightsSheet().appendRow([String(Date.now() / 1000), cls, group, mine.length + 1, fl.fare, fl.passengers, fl.profit, gain]);
+      return reply({ ok: true, flight: { n: mine.length + 1, fare: fl.fare, passengers: fl.passengers, profit: fl.profit, gain: gain }, challenge: publicChallenge(cls, group) });
     }
     if (data.action === "reset" && admin) {
       var g = findGroupIn(groupsSheet().getDataRange().getValues(), cls, group, "pricing");

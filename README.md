@@ -50,27 +50,31 @@ number and PIN as the Marketplace Laboratory, but a script and Google Sheet
 of its own (`backend/Pricing.gs`, see `backend/README.md`), so the Marketplace
 record is never touched while an assignment runs on it.
 
-* **Challenge.** Each group is an airline's pricing team: told the cost per
-  passenger, the seats and last month's fare and passengers, it sets the fare
-  for six flights against a demand it cannot see (linear, hidden in the
-  script, different per class); every flight counts, scored against keeping
-  last month's fare; live leaderboard on the projector. The instructor opens
-  round 1, closes it and reveals the demand (the true profit curve with every
-  fare flown on it). That is the end of the challenge: there is no round 2
-  (demand up 40% and demand doubled are a class question on the slides).
+* **Challenge.** Each group is a consulting team running six flights on a
+  new route: told the plane's seats, the cost per passenger and the trial
+  flights (seats sold and fare), it chooses **how many seats to sell** on
+  each flight, and the fare is the highest at which that many people buy,
+  on a demand it cannot see (linear, hidden in the script, different per
+  class and per route). The slides argue in quantities (MR = MC, and Cournot
+  later), so the game does too. Every flight counts, scored against the
+  trial flights; live leaderboards on the projector. The instructor opens
+  the challenge, closes it and reveals the demand (the profit against the
+  seats sold, with every flight on it). There is no second round (demand up
+  40% and demand doubled are a class question on the slides).
 * **Mocha.** Pricing on the class's own Session 1 bids (`src/mocha_data.js`,
   written by `tools/mocha_data.py` from the auction sheet, amounts only):
   demand from the bids, the best price by trying every price, the straight
   line fitted to the schedule and MR = MC on it, bids to ignore, and one price
   for the three streams against a price per stream. No demand can be typed
   in: nothing on these pages answers an exam question.
-* **Lab book** with pins and answers, as in the Marketplace Laboratory
-  (`src/pricing_questions.js`).
-* `src/pricing_core.js` — the arithmetic, the SVG chart and the lab-book
-  table, shared by both pages; `src/pricing.js`, `src/pricing.html`,
-  `src/pricing.css` — the class page; `src/pricing_instructor.js`,
-  `src/pricing_instructor.html` — the instructor page (challenge settings
-  and phases, leaderboard, lab books, links and QR).
+* **No lab book** (removed 14 November 2026): nothing is pinned or answered
+  on these pages, and the only things they send to the script are group
+  registrations and flights. Work on an assignment is handed in on Canvas.
+  The script still accepts lab-book records, unused.
+* `src/pricing_core.js` — the arithmetic and the SVG chart, shared by both
+  pages; `src/pricing.js`, `src/pricing.html`, `src/pricing.css` — the class
+  page; `src/pricing_instructor.js`, `src/pricing_instructor.html` — the
+  instructor page (challenge settings and phases, leaderboard, links and QR).
 
     python3 tests/gen_cases.py && node tests/check_engine.js
     python3 tests/check_qr.py

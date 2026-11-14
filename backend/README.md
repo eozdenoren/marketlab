@@ -70,10 +70,12 @@ that sheet. Set-up, once:
 
    then `python3 build.py --config config.json` and publish `docs/`.
 
-Tabs the script creates in its sheet: `records` (the lab books), `groups`
+Tabs the script creates in its sheet: `records` (lab-book records; unused
+since the pricing pages lost their lab book on 14 November 2026), `groups`
 (groups registered on the pricing page, when a number is not in the
 Marketplace sheet), `challenge` (one row per class: phase and settings),
-`flights` (round 1). The instructor page sets the challenge up and moves it
+`flights` (each team's flights: the seats it chose to sell, the fare they
+sold at, the profit). The instructor page sets the challenge up and moves it
 through its phases; the student pages poll `?action=challenge` every few
 seconds while the Challenge tab is open.
 

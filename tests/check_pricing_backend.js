@@ -63,7 +63,7 @@ check(!bad.ok || !bad.challenge, "the page token cannot set the challenge");
 var setr = post({ token: ADMIN, action: "challenge_set", "class": "A", settings: { mc: 80, seats: 450, p0: 580, q0: 350, b: 0.5, flights: 6 } });
 check(setr.ok && setr.challenge.settings.routes.length === 1 && setr.challenge.settings.routes[0].a === 640 && setr.challenge.settings.flights === 6 && setr.challenge.phase === "setup", "settings set (the older flat form reads as one route), intercept 640: " + JSON.stringify(setr));
 var fly0 = post({ token: PAGE, action: "fly", "class": "A", group: "Group 5", pin: "0001", fare: 680 });
-check(!fly0.ok && /not open/.test(fly0.error), "cannot fly before round 1 opens");
+check(!fly0.ok && /not open/.test(fly0.error), "cannot fly before the challenge opens");
 check(post({ token: ADMIN, action: "challenge_phase", "class": "A", phase: "open" }).ok, "round 1 opened");
 var pub = get({ token: PAGE, action: "challenge", "class": "A" }).challenge;
 check(pub.phase === "open" && pub.told.p0 === 580 && pub.told.q0 === 350 && pub.told.mc === 80 && pub.told.seats === 450 && pub.told.flights === 6, "told numbers: " + JSON.stringify(pub.told));
@@ -160,6 +160,36 @@ check(g5.records.length === 1 && g5.records[0].state.labbook.id === "p1", "Group
 check(get({ token: ADMIN, "class": "A" }).records.length === 1 && get({ token: ADMIN, "class": "B" }).records.length === 0, "the instructor reads a class's records");
 check(post({ token: ADMIN, action: "reset", "class": "A", group: "Group 7" }).reset === true && get({ token: PAGE, action: "check", "class": "A", group: "Group 7", pin: "0777" }).status === "new", "a pricing registration can be reset");
 check(post({ token: ADMIN, action: "reset", "class": "A", group: "Group 5" }).reset === false, "a Marketplace registration is never touched");
+
+// ---- version 5: a team chooses the seats to sell, and the fare is the highest at which that many people buy.
+// A made-up route (not a class's): cost 100, 400 seats, trial flights 300 seats at 800, demand Q = 540 - 0.3 P.
+for (var sg = 1; sg <= 2; sg++) post({ token: PAGE, action: "register", "class": "S", group: "Group " + sg, pin: "2222" });
+check(post({ token: ADMIN, action: "challenge_set", "class": "S", settings: { flights: 4, routes: [{ label: "X–Seats", mc: 100, seats: 400, p0: 800, q0: 300, b: 0.3 }] } }).challenge.settings.routes[0].a === 540, "the seats route is saved");
+post({ token: ADMIN, action: "challenge_phase", "class": "S", phase: "open" });
+function sell(n, seats) { return post({ token: PAGE, action: "fly", "class": "S", group: "Group " + n, pin: "2222", seats: seats }); }
+var s1 = sell(1, 255);
+check(s1.ok && s1.flight.passengers === 255 && s1.flight.fare === 950 && s1.flight.profit === 216750 && s1.flight.gain === 6750, "255 seats sell at 950: profit 216,750, 6,750 over a trial flight: " + JSON.stringify(s1.flight));
+var s2 = sell(1, 256);
+check(s2.ok && s2.flight.fare === 946.67 && s2.flight.profit === 216747 && s2.flight.profit < s1.flight.profit, "256 seats: the fare to the penny (946.67), the profit to the pound from the exact fare (216,747)");
+check(sell(1, 254).flight.profit === 216747, "254 seats: one seat the other side of the best costs the same");
+var s4 = sell(1, 400);
+check(s4.ok && s4.flight.passengers === 400 && s4.flight.fare === 466.67 && s4.flight.profit === 146667, "a full plane: 400 seats at 466.67, profit 146,667: " + JSON.stringify(s4.flight));
+check(/all flights/.test(sell(1, 300).error), "the flights are counted as before");
+check(/whole number from 1 to 400/.test(sell(2, 401).error) && /whole number/.test(sell(2, 0).error) && /whole number/.test(sell(2, 2.5).error) && /whole number/.test(sell(2, "abc").error), "more seats than the plane has, none, half a seat and a word are refused");
+check(sell(2, "300").flight.gain === 0 && sell(2, 300).flight.fare === 800, "the trial flights' seats give the trial fare and a gain of zero");
+var sp = get({ token: PAGE, action: "challenge", "class": "S", group: "Group 1", pin: "2222" }).challenge;
+check(sp.mine.length === 4 && sp.mine[1].fare === 946.67 && sp.board[0].sold === undefined && sp.board[0].fares === undefined && sp.demand === undefined, "during the challenge the board lists neither seats nor fares");
+post({ token: ADMIN, action: "challenge_phase", "class": "S", phase: "revealed" });
+sp = get({ token: PAGE, action: "challenge", "class": "S" }).challenge;
+var g1 = sp.board.filter(function (g) { return g.group === "Group 1"; })[0];
+check(g1.sold.join() === "255,256,254,400" && g1.fares.join() === "950,946.67,953.33,466.67" && sp.demand.a === 540 && sp.demand.b === 0.3, "once revealed the board carries each team's seats and fares: " + JSON.stringify(g1));
+// a plane with more seats than people who would fly for nothing
+post({ token: ADMIN, action: "challenge_set", "class": "T", settings: { flights: 2, routes: [{ label: "X–Small", mc: 10, seats: 500, p0: 100, q0: 300, b: 1 }] } });
+post({ token: ADMIN, action: "challenge_phase", "class": "T", phase: "open" });
+post({ token: PAGE, action: "register", "class": "T", group: "Group 1", pin: "3333" });
+check(/at most 400 people/.test(post({ token: PAGE, action: "fly", "class": "T", group: "Group 1", pin: "3333", seats: 450 }).error), "no fare sells more seats than there are people who would fly for nothing");
+var t0 = post({ token: PAGE, action: "fly", "class": "T", group: "Group 1", pin: "3333", seats: 400 });
+check(t0.ok && t0.flight.fare === 0 && t0.flight.profit === -4000, "selling to everyone takes a fare of zero");
 
 // ---- the password and the lock
 props.INSTRUCTOR_PASSWORD = "Sesame-42";

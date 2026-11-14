@@ -1,4 +1,4 @@
-/* Checks src/pricing_core.js: the challenge arithmetic against the numbers worked by hand, and the Mocha pricing
+/* Checks src/pricing_core.js: the challenge arithmetic (seats in, fare out) against the numbers worked by hand, and the Mocha pricing
    against the figures computed independently in Python (numpy) on the same bids.
        node tests/check_pricing_core.js */
 "use strict";
@@ -9,39 +9,36 @@ var failures = 0;
 function check(cond, msg) { if (!cond) { failures++; console.log("FAIL:", msg); } }
 function near(a, b, tol) { return Math.abs(a - b) <= (tol || 1e-6); }
 
-// ---- the challenge: cost 80, 450 seats, status quo 580 / 350, slope 0.5
+// ---- the challenge: cost 80, 450 seats, trial flights 350 seats at 580, slope 0.5. A team chooses the seats to
+// sell; the fare is the highest at which that many people buy.
 var s = { mc: 80, seats: 450, p0: 580, q0: 350, b: 0.5 };
 var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats };
-check(d.a === 640, "intercept 640");
-check(C.passengersAt(d, 580) === 350, "the status quo is on the line");
-check(C.passengersAt(d, 380) === 450 && C.passengersAt(d, 379) === 450, "the plane is full from 380 down");
-check(C.passengersAt(d, 1280) === 0 && C.passengersAt(d, 2000) === 0, "nobody flies at the choke price");
-check(C.passengersAt(d, 601) === 340, "odd fares round to the whole passenger (339.5 -> 340)");
-var best = C.bestFare(d);
-check(best.fare === 680 && best.passengers === 300 && best.profit === 180000 && !best.capped, "best fare 680, 300 passengers, 180,000: " + JSON.stringify(best));
-check(C.statusQuoProfit(s) === 175000, "status quo profit 175,000");
-check(C.profitAt(d, 630) === 178750 && C.profitAt(d, 730) === 178750, "fifty pounds either side costs 1,250");
-check(C.profitAt(d, 380) === 135000, "filling the plane earns 135,000");
-var up = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 1.4 }, bu = C.bestFare(up);
-check(bu.fare === 680 && bu.passengers === 420 && !bu.capped, "demand up 40%: still 680, 420 passengers: " + JSON.stringify(bu));
-var dbl = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }, bd = C.bestFare(dbl);
-check(bd.fare === 830 && bd.passengers === 450 && bd.capped, "demand doubled: the seats bind, 830: " + JSON.stringify(bd));
-var curve = C.profitCurve(d);
-check(curve[0][0] === 0 && curve[curve.length - 1][0] === 1280 && curve.some(function (p) { return p[0] === 680 && p[1] === 180000; }), "the profit curve runs from 0 to the choke price through the best fare");
-var win = C.focusWindow(d);
-check(C.fillFare(d) === 380 && win.x0 === 365 && win.x1 === 995 && win.fill === 380, "the chart window runs from just below the fill-the-plane fare to its mirror beyond the best: " + JSON.stringify([win.x0, win.x1]));
-check(win.y0 < 135000 && win.y0 > 120000 && win.y1 > 180000 && win.y1 < 185000, "profits from the fill-the-plane level up, not from zero: " + JSON.stringify([win.y0, win.y1]));
-check(win.curve[0][0] === 365 && win.curve[win.curve.length - 1][0] === 995, "the curve covers the window");
-var pc = C.profitChartHtml(d, { fare: 580, profit: 175000 }, [{ fare: 680, profit: 180000, title: "Flight 1: £680" }, { fare: 1200, profit: 16000, title: "Flight 2: £1,200" }], {});
-check(/<svg/.test(pc) && /Off the chart: Flight 2: £1,200 \(profit £16,000\)/.test(pc) && pc.indexOf("Flight 1") > 0, "flights inside the window are drawn, the others listed");
+check(d.a === 640 && C.chokePrice(d) === 1280, "intercept 640, nobody flies above 1,280");
+check(C.fareFor(d, 350) === 580, "the trial flights are on the line");
+check(C.fareFor(d, 450) === 380 && C.maxSeats(d) === 450, "a full plane (450 seats) sells at 380");
+check(C.maxSeats({ a: 400, b: 1, mc: 10, seats: 500 }) === 400, "no more seats than people who would fly for nothing");
+var best = C.bestSeats(d);
+check(best.seats === 300 && best.fare === 680 && best.profit === 180000 && !best.capped, "best: 300 seats at 680, 180,000: " + JSON.stringify(best));
+check(C.statusQuoProfit(s) === 175000, "a trial flight made 175,000");
+check(C.profitSelling(d, 275) === 178750 && C.profitSelling(d, 325) === 178750, "25 seats either side costs 1,250");
+check(C.profitSelling(d, 301) - C.profitSelling(d, 300) === -2 && C.profitSelling(d, 401) - C.profitSelling(d, 400) === -402, "the 301st seat loses 2, the 401st loses 402 (MR - MC)");
+var full = C.fullPlane(d);
+check(full.seats === 450 && full.fare === 380 && full.profit === 135000, "a full plane earns 135,000");
+var tight = C.bestSeats({ a: 640, b: 0.5, mc: 80, seats: 250 });
+check(tight.seats === 250 && tight.capped && tight.fare === 780, "with 250 seats the best is a full plane, at 780: " + JSON.stringify(tight));
+var third = { a: 540, b: 0.3, mc: 100, seats: 400 }, bt = C.bestSeats(third);
+check(bt.seats === 255 && bt.fare === 950 && bt.profit === 216750 && C.profitSelling(third, 256) === 216747 && C.profitSelling(third, 254) === 216747, "a slope of 0.3: fares in pence, profits to the pound, the best still alone at the top: " + JSON.stringify(bt));
+check(C.fareText(680) === "£680" && C.fareText(946.6666) === "£946.67" && C.plain(2) === "2" && C.plain(2.5) === "2.5" && C.plain(1 / 0.3) === "3.33", "fares to the penny only when they are not whole; slopes without trailing zeros");
+check(C.inverseText(d) === "1,280 − 2 × Q" && C.inverseText(third) === "1,800 − 3.33 × Q", "the demand as the slides write it: " + C.inverseText(d) + "; " + C.inverseText(third));
+var pc = C.profitChartHtml(d, { seats: 350, profit: 175000 }, [{ seats: 300, profit: 180000, title: "Flight 1: 300 seats" }, { seats: 40, profit: 44800, title: "Flight 2: 40 seats" }], {});
+check(/<svg/.test(pc) && /Off the chart: Flight 2: 40 seats \(profit £44,800\)/.test(pc) && pc.indexOf("Flight 1") > 0 && /Seats sold/.test(pc) && /plane full/.test(pc), "the profit chart is against the seats sold; flights inside the window are drawn, the others listed");
+check(/fare = 1,280 − 2 × Q/.test(C.demandChartHtml(s, d, 300)), "the demand chart names the line");
 var line = C.lineThrough(580, 350, 780, 250);
 check(line && line.b === 0.5 && line.a === 640, "two flights give the line exactly");
 check(C.lineThrough(580, 350, 580, 350) === null, "no line from one point");
-var s2 = { mc: 100, seats: 420, p0: 650, q0: 340, b: 0.4 }, d2 = { a: C.intercept(s2), b: 0.4, mc: 100, seats: 420 }, b2 = C.bestFare(d2);
-check(d2.a === 600 && b2.fare === 800 && b2.passengers === 280 && b2.profit === 196000, "second preset: best 800 / 280 / 196,000");
-var s3 = { mc: 80, seats: 320, p0: 800, q0: 280, b: 0.25 }, d3 = { a: C.intercept(s3), b: 0.25, mc: 80, seats: 320 }, b3 = C.bestFare(d3);
-check(d3.a === 480 && b3.fare === 1000 && b3.passengers === 230 && b3.profit === 211600, "third preset: best 1000 / 230 / 211,600");
-check(C.historyRange === undefined, "no fare range any more: the students get one point, the trial flights' average");
+var lt = C.lineThrough(800, 300, 946.67, 256);
+check(lt && Math.abs(lt.a - 540) < 0.5 && Math.abs(lt.b - 0.3) < 0.001 && C.inverseText(lt) === "1,800 − 3.33 × Q", "a fare to the penny still gives the line: " + JSON.stringify(lt));
+check(C.bestFare === undefined && C.passengersAt === undefined, "the fare-first arithmetic is gone from the pages (the script keeps it for older pages)");
 
 // ---- Mocha: the figures numpy gave on the same bids (scratch analysis, 2026-11-10)
 function stream(code) { return D.streams.filter(function (x) { return x.code === code; })[0].bids; }
@@ -67,44 +64,46 @@ check(seg.total === 280 + 273 + 272 && seg.gain === 125, "three prices: 825, a g
 check(C.median(A) === 17 && C.histogram(A, 5).length === 11, "median 17, eleven bins of 5");
 var svg = C.chart({ x: { max: 100, label: "Price" }, y: { min: -10, max: 100, label: "Profit" }, lines: [{ pts: [[0, -10], [100, 100]], color: "#000", name: "line" }], markers: [{ x: 50, y: 45, color: "#f00", name: "dot" }] });
 check(/<svg/.test(svg) && /legend-item/.test(svg) && svg.indexOf("line</span>") > 0, "a chart renders with a legend");
-var table = C.bookTable([{ id: "x", label: "Flight", measures: { Fare: 680, Profit: 180000 } }, { id: "y", label: "Flight", measures: { Fare: 580, Note: "status quo" } }], { removable: true });
-check(/Flight \(2\)/.test(table) && /remove-entry/.test(table) && /status quo/.test(table) && /180,000/.test(table), "the lab-book table: duplicate labels numbered, text cells kept");
+check(C.bookTable === undefined, "the core has no lab-book table any more");
 
 // ---- the preset routes. The public example set (backend/Pricing.gs), by the numbers worked by hand:
 var fs = require("fs"), vm = require("vm");
 function presetsOf(file) { var ctx = {}; vm.createContext(ctx); vm.runInContext(fs.readFileSync(file, "utf8"), ctx); return vm.runInContext("PRESET_SETS", ctx); }
 var EXAMPLE = presetsOf(path.join(__dirname, "..", "backend", "Pricing.gs"));
 check(EXAMPLE.length === 1 && EXAMPLE[0].routes.length === 3, "the public script holds one example set of three routes");
-[["Anchorage", 80, 500, 640, 0.5, 480, 400, 160000, 680, 300, 180000, 280, 100000, [680, 420, false], [780, 500, true]],
- ["Zanzibar", 100, 480, 600, 0.4, 550, 380, 171000, 800, 280, 196000, 300, 96000, [800, 392, false], [900, 480, true]],
- ["Bali", 80, 400, 480, 0.25, 700, 305, 189100, 1000, 230, 211600, 320, 96000, [1000, 322, false], [1120, 400, true]]].forEach(function (p, k) {
+[["Anchorage", 80, 500, 640, 0.5, 480, 400, 160000, 300, 680, 180000, 280, 100000],
+ ["Zanzibar", 100, 480, 600, 0.4, 550, 380, 171000, 280, 800, 196000, 300, 96000],
+ ["Bali", 80, 400, 480, 0.25, 700, 305, 189100, 230, 1000, 211600, 320, 96000]].forEach(function (p, k) {
   var r = EXAMPLE[0].routes[k];
   check(r.label === "London–" + p[0] && r.mc === p[1] && r.seats === p[2] && r.a === p[3] && r.b === p[4] && r.p0 === p[5], "the example set's route " + (k + 1) + " is " + p[0] + ": " + JSON.stringify(r));
-  var s0 = { mc: p[1], seats: p[2], p0: p[5], q0: p[3] - p[4] * p[5], b: p[4] }, dd = { a: p[3], b: p[4], mc: p[1], seats: p[2] }, bb = C.bestFare(dd);
-  var up = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 1.4 }), dbl = C.bestFare({ a: p[3], b: p[4], mc: p[1], seats: p[2], scale: 2 });
-  check(s0.q0 === p[6] && C.statusQuoProfit(s0) === p[7] && p[2] - s0.q0 >= 95, p[0] + ": trial fare carries " + p[6] + ", profit " + p[7] + ", about 100 empty");
-  check(bb.fare === p[8] && bb.passengers === p[9] && bb.profit === p[10], p[0] + ": best " + p[8] + " / " + p[9] + " / " + p[10] + ": " + JSON.stringify(bb));
-  check(C.fillFare(dd) === p[11] && C.profitAt(dd, p[11]) === p[12], p[0] + ": the plane fills at " + p[11] + ", profit " + p[12]);
-  check(up.fare === p[13][0] && up.passengers === p[13][1] && up.capped === p[13][2], p[0] + ": +40% keeps the best fare: " + JSON.stringify(up));
-  check(dbl.fare === p[14][0] && dbl.passengers === p[14][1] && dbl.capped === p[14][2], p[0] + ": doubled fills the plane: " + JSON.stringify(dbl));
+  var s0 = { mc: p[1], seats: p[2], p0: p[5], q0: p[3] - p[4] * p[5], b: p[4] }, dd = { a: p[3], b: p[4], mc: p[1], seats: p[2] }, bb = C.bestSeats(dd), ff = C.fullPlane(dd);
+  check(s0.q0 === p[6] && C.statusQuoProfit(s0) === p[7] && p[2] - s0.q0 >= 95, p[0] + ": the trial flights sold " + p[6] + " seats, profit " + p[7] + ", about 100 empty");
+  check(bb.seats === p[8] && bb.fare === p[9] && bb.profit === p[10], p[0] + ": best " + p[8] + " seats at " + p[9] + ", " + p[10] + ": " + JSON.stringify(bb));
+  check(ff.fare === p[11] && ff.profit === p[12], p[0] + ": a full plane sells at " + p[11] + ", profit " + p[12]);
 });
+// The first example route is the slides' worked example (there called London-Honolulu), with its class question:
+// 40% more demand keeps the fare at 680 with 420 passengers; doubled demand fills the 500 seats at 780.
+(function () {
+  var A0 = 640, B0 = 0.5, mc = 80, seats = 500;
+  var q40 = 1.4 * (A0 - B0 * mc) / 2, q2 = 2 * (A0 - B0 * mc) / 2;
+  check(q40 === 420 && q40 <= seats && (1.4 * A0 - q40) / (1.4 * B0) === 680, "the slides: demand up 40% keeps the fare at 680, with 420 passengers");
+  check(q2 === 600 && q2 > seats && (2 * A0 - seats) / (2 * B0) === 780, "the slides: doubled demand fills the plane at 780");
+})();
 
 // Every route of every set, by what the game needs of it (no numbers here: the class sets are private).
 function whole(x) { return Math.abs(x - Math.round(x)) < 1e-9; }
 function routeFacts(r) {
   var q0 = Math.round(r.a - r.b * r.p0), s0 = { mc: r.mc, seats: r.seats, p0: r.p0, q0: q0, b: r.b }, dd = { a: r.a, b: r.b, mc: r.mc, seats: r.seats };
-  return { q0: q0, s0: s0, d: dd, sq: C.statusQuoProfit(s0), best: C.bestFare(dd), fill: C.fillFare(dd), up: C.bestFare({ a: r.a, b: r.b, mc: r.mc, seats: r.seats, scale: 1.4 }), dbl: C.bestFare({ a: r.a, b: r.b, mc: r.mc, seats: r.seats, scale: 2 }) };
+  return { q0: q0, s0: s0, d: dd, sq: C.statusQuoProfit(s0), best: C.bestSeats(dd), full: C.fullPlane(dd) };
 }
 function checkRoute(r, name) {
-  var f = routeFacts(r), empty = r.seats - f.q0;
-  check(whole(r.a - r.b * r.p0) && Math.abs(C.intercept(f.s0) - r.a) < 1e-9, name + ": whole passengers at the trial fare, and the script recovers the intercept");
-  check(empty >= 80 && empty <= 110, name + ": about 100 seats fly empty at the trial fare (" + empty + ")");
-  check(whole(f.best.exactFare) && whole(f.best.exactQ) && !f.best.capped && f.best.fare > r.p0 + 100, name + ": the best fare is a whole fare with whole passengers, well above the trial fare");
-  check((f.best.profit - f.sq) / f.sq > 0.1, name + ": the best fare beats the trial fare by more than 10%");
-  check(whole((r.a - r.seats) / r.b) && f.fill < r.p0 && f.fill > r.mc && C.profitAt(f.d, f.fill) < f.sq, name + ": filling the plane takes a whole fare below the trial fare and makes less");
-  check(f.up.fare === f.best.fare && !f.up.capped, name + ": demand +40% leaves the best fare unchanged");
-  check(f.dbl.capped && f.dbl.passengers === r.seats && whole(f.dbl.exactFare) && f.dbl.fare > f.best.fare, name + ": doubled demand fills the plane at a higher, whole fare");
-  check([50, 40, 20, 10].some(function (x) { return whole(r.b * x); }), name + ": a round step off the best fare loses whole passengers");
+  var f = routeFacts(r), empty = r.seats - f.q0, exact = (r.a - r.b * r.mc) / 2;
+  check(whole(r.a - r.b * r.p0) && Math.abs(C.intercept(f.s0) - r.a) < 1e-9, name + ": whole seats sold on the trial flights, and the script recovers the intercept");
+  check(empty >= 80 && empty <= 110, name + ": about 100 seats flew empty on the trial flights (" + empty + ")");
+  check(whole(exact) && f.best.seats === exact && !f.best.capped && whole(f.best.fare) && f.best.fare > r.p0 + 100 && f.best.seats < f.q0 - 50, name + ": the best is a whole number of seats at a whole fare, well away from the trial flights");
+  check(C.profitSelling(f.d, f.best.seats - 1) < f.best.profit && C.profitSelling(f.d, f.best.seats + 1) < f.best.profit, name + ": to the pound, the best number of seats is alone at the top");
+  check((f.best.profit - f.sq) / f.sq > 0.1, name + ": the best beats a trial flight by more than 10%");
+  check(f.full.seats === r.seats && f.full.fare > r.mc && f.full.fare < r.p0 && f.full.profit < f.sq, name + ": a full plane sells above cost, below the trial flights' fare, and makes less than a trial flight");
   return f;
 }
 function distinct(xs) { return xs.every(function (x, i) { return xs.indexOf(x) === i; }); }
@@ -113,7 +112,7 @@ function checkSets(sets, where) {
     var facts = set.routes.map(function (r) { return checkRoute(r, where + " " + set.name + " " + r.label); });
     check(set.routes.length === 3 && distinct(set.routes.map(function (r) { return r.label; })), where + " " + set.name + ": three routes with different names");
     check(distinct(set.routes.map(function (r) { return r.b; })) && distinct(set.routes.map(function (r) { return r.p0; })) && distinct(facts.map(function (f) { return f.best.fare; })),
-          where + " " + set.name + ": the three routes differ in slope, trial fare and best fare");
+          where + " " + set.name + ": the three routes differ in slope, trial flights' fare and best fare");
   });
 }
 checkSets(EXAMPLE, "public");
@@ -126,8 +125,9 @@ if (fs.existsSync(LOCAL)) {
   [0, 1, 2].forEach(function (k) {   // the same route in the three streams: nothing carries over
     var rs = classSets.map(function (x) { return x.routes[k]; }), fx = rs.map(routeFacts);
     check(distinct(rs.map(function (r) { return r.label; })) === false && rs[0].label === rs[1].label && rs[1].label === rs[2].label, "route " + (k + 1) + " has the same name in the three class sets");
-    check(distinct(rs.map(function (r) { return r.b; })) && distinct(rs.map(function (r) { return r.p0; })) && distinct(fx.map(function (f) { return f.best.fare; })) && distinct(fx.map(function (f) { return f.best.fare - rs[fx.indexOf(f)].p0; })),
-          "route " + (k + 1) + ": the three streams differ in slope, trial fare, best fare and the step from one to the other");
+    check(distinct(rs.map(function (r) { return r.b; })) && distinct(rs.map(function (r) { return r.p0; })) && distinct(fx.map(function (f) { return f.q0; })) &&
+          distinct(fx.map(function (f) { return f.best.seats; })) && distinct(fx.map(function (f) { return f.best.fare; })) && distinct(fx.map(function (f) { return f.q0 - f.best.seats; })),
+          "route " + (k + 1) + ": the three streams differ in slope, in the trial flights (seats and fare), in the best (seats and fare) and in the seats to cut from one to the other, so no number passed on from an earlier stream is right");
     rs.forEach(function (r) { check(!EXAMPLE[0].routes.some(function (e) { return e.a === r.a && e.b === r.b; }), "a class route is not a published example route"); });
   });
   // the class curves must not sit in anything public: the pages, their sources, the tests, the script template

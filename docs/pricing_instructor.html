@@ -154,8 +154,12 @@ body.projector table.grid.board { font-size: 1.35rem; } body.projector table.gri
 body.projector h1 { font-size: 2rem; }
 .briefing { background: var(--panel); border-radius: var(--radius); padding: 12px 16px; margin: 10px 0; }
 .briefing .metrics { margin-top: 8px; }
-.scenarios { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
-.scenarios button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.briefing .story { margin: 0 0 4px; }
+details.how { margin-top: 10px; }
+details.how summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+details.how[open] summary { color: inherit; }
+details.how ul { margin: 6px 0 0; padding-left: 20px; } details.how li { margin: 3px 0; }
+details.how .radio, details.how .row { margin-top: 6px; }
 .num-note { font-variant-numeric: tabular-nums; }
 .cols-5-7 { display: grid; grid-template-columns: 5fr 7fr; gap: 24px; align-items: start; }
 @media (max-width: 900px) { .cols-5-7 { grid-template-columns: 1fr; } }
@@ -188,7 +192,7 @@ body.projector table.grid.board.overall { font-size: 1.15rem; }
 <body>
 <div class="wrap">
   <div class="row between">
-    <div><h1>Pricing Laboratory: instructor view</h1><p class="caption" id="subtitle">The pricing challenge and the groups' lab books, straight from the class record.</p></div>
+    <div><h1>Pricing Laboratory: instructor view</h1><p class="caption" id="subtitle">The pricing challenge, straight from the class record.</p></div>
     <div id="topbar" class="row"></div>
   </div>
   <div id="signin"></div>
@@ -196,27 +200,22 @@ body.projector table.grid.board.overall { font-size: 1.15rem; }
     <div id="class-bar" class="panel shaded"></div>
     <nav class="tabs" id="views">
       <button type="button" data-view="challenge" class="active">Challenge</button>
-      <button type="button" data-view="overview">Lab books</button>
-      <button type="button" data-view="question">By question</button>
-      <button type="button" data-view="group">One group</button>
       <button type="button" data-view="setup">Links and QR</button>
     </nav>
     <section id="view-challenge"></section>
-    <section id="view-overview" hidden></section>
-    <section id="view-question" hidden></section>
-    <section id="view-group" hidden></section>
     <section id="view-setup" hidden></section>
   </div>
   <footer><span id="footer-status"></span></footer>
 </div>
 <script>window.PRICINGLAB_CONFIG = {"endpoint": "https://script.google.com/macros/s/AKfycbwK_KNABFuJpX-aNw_ZdMltYGmqVbpWCIbfP1cgCoclLdBcGxSmJ4BGhd_bJ0bYmFbz3w/exec", "app_url": "https://eozdenoren.github.io/marketlab", "classes": ["CM03AUT26A", "CM03AUT26B", "CM03AUT26C", "LIVE-TEST"]};</script>
 <script>
-/* Pricing Laboratory: the arithmetic, the SVG chart and the lab-book table, shared by the class page
-   (pricing.js) and the instructor page (pricing_instructor.js). Plain script, no dependencies.
+/* Pricing Laboratory: the arithmetic and the SVG chart, shared by the class page (pricing.js) and the instructor
+   page (pricing_instructor.js). Plain script, no dependencies.
 
-   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights' fare p0 carrying q0 passengers on average,
-   and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). The same arithmetic as the
-   script's (backend/Pricing.gs): passengers are rounded to the whole and capped by the seats.
+   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights (q0 seats sold at a fare of
+   p0) and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). A team chooses how many seats to
+   sell; the fare is then the highest at which that many people buy, (a - seats) / b. The same arithmetic as the
+   script's (backend/Pricing.gs): the fare to the penny, the profit to the pound.
    Mocha: a list of bids (each the most one student would pay); at price p the buyers are the bids >= p. */
 var PricingCore = (function () {
   "use strict";
@@ -232,65 +231,63 @@ var PricingCore = (function () {
   function round(x, d) { var m = Math.pow(10, d || 0); return Math.round(x * m) / m; }
 
   // ---- the challenge ---------------------------------------------------------------------------------------
+  // demand d = {a, b, mc, seats}: Q = a - b P, so q seats sell at the fare (a - q) / b
   function intercept(s) { return s.q0 + s.b * s.p0; }
-  // demand d = {a, b, mc, seats, scale}: Q = scale (a - b P), capped by the seats
-  function passengersAt(d, fare) { return Math.max(0, Math.min(d.seats, Math.round((d.scale || 1) * (d.a - d.b * fare)))); }
-  function profitAt(d, fare) { return (fare - d.mc) * passengersAt(d, fare); }
   function chokePrice(d) { return d.a / d.b; }
-  // The best fare: MR = MC gives Q = scale (a - b mc) / 2; if that exceeds the seats, sell every seat at the fare
-  // that fills the plane. Fares in whole pounds, so the exact optimum is checked against its neighbours.
-  function bestFare(d) {
-    var scale = d.scale || 1, qStar = scale * (d.a - d.b * d.mc) / 2, capped = qStar > d.seats;
-    var q = capped ? d.seats : qStar, fare = (d.a - q / scale) / d.b, best = null;
-    [Math.floor(fare), Math.ceil(fare)].forEach(function (f) {
-      var pr = profitAt(d, f);
-      if (!best || pr > best.profit + 1e-9) best = { fare: f, passengers: passengersAt(d, f), profit: pr };
-    });
-    best.capped = capped; best.exactFare = fare; best.exactQ = q;
+  function fareFor(d, q) { return (d.a - q) / d.b; }
+  function profitSelling(d, q) { return Math.round((fareFor(d, q) - d.mc) * q); }
+  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }                      // what a trial flight made
+  // The most seats that can be sold: the plane's, or everyone who would fly for nothing.
+  function maxSeats(d) { return Math.max(1, Math.min(d.seats, Math.floor(d.a))); }
+  // The best number of seats: MR = MC gives (a - b mc) / 2; with fewer seats than that, a full plane. Whole seats,
+  // so every count is tried.
+  function bestSeats(d) {
+    var top = maxSeats(d), best = null;
+    for (var q = 1; q <= top; q++) { var pr = profitSelling(d, q); if (!best || pr > best.profit) best = { seats: q, profit: pr }; }
+    best.fare = fareFor(d, best.seats); best.capped = (d.a - d.b * d.mc) / 2 > d.seats;
     return best;
   }
-  function profitCurve(d, step, from) {
-    var top = Math.ceil(chokePrice(d)), pts = [], start = Math.max(0, Math.floor(from || 0));
-    step = step || Math.max(1, Math.ceil((top - start) / 1500));   // whole pounds up to a span of 1,500
-    for (var f = start; f <= top; f += step) pts.push([f, profitAt(d, f)]);
-    if (pts[pts.length - 1][0] !== top) pts.push([top, profitAt(d, top)]);
-    return pts;
-  }
-  // The fare below which the plane is full (demand at or above the capacity).
-  function fillFare(d) { var scale = d.scale || 1; return Math.ceil((scale * d.a - d.seats) / (scale * d.b)); }
-  // The window of fares worth looking at: from a little below the fare that fills the plane (below it every seat is
-  // sold and profit is a straight line) to the same distance beyond the best fare, where profit is back at the
-  // fill-the-plane level; profits from that level up, not from zero, so the hump fills the chart.
-  function focusWindow(d) {
-    var best = bestFare(d), fill = fillFare(d), choke = chokePrice(d), left = fill > 0 ? fill : d.mc;
-    var span = best.fare - left; if (span < 20) span = Math.max(20, 0.3 * best.fare);
-    var x0 = Math.max(0, Math.floor(left - 0.05 * span)), x1 = Math.min(Math.ceil(choke), Math.ceil(best.fare + 1.05 * span));
-    var curve = profitCurve(d, 1, x0).filter(function (p) { return p[0] <= x1; });
-    var ys = curve.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys), r = Math.max(1, hi - lo);
-    return { x0: x0, x1: x1, y0: lo - 0.08 * r, y1: hi + 0.06 * r, fill: fill, curve: curve, best: best };
-  }
-  // The profit chart in that window: the curve, the trial fare's profit as a dashed line and a hollow dot, the best fare,
-  // the fill-the-plane line, and the flights given as dots ({fare, profit, title, name}); flights outside the window
-  // are listed under the chart instead of stretching it.
+  function fullPlane(d) { var q = maxSeats(d); return { seats: q, fare: fareFor(d, q), profit: profitSelling(d, q) }; }
+  // A fare as text: whole pounds, or to the penny when it is not whole.
+  function fareText(x) { return money(x, Math.abs(x - Math.round(x)) < 0.005 ? 0 : 2); }
+  // A number with up to two decimals and no trailing zeros (the slope of the inverse demand: 2, 2.5, 3.33).
+  function plain(x) { return Math.abs(x - Math.round(x)) < 0.005 ? fmt(x) : (Math.abs(x * 10 - Math.round(x * 10)) < 0.05 ? fmt(x, 1) : fmt(x, 2)); }
+  // The demand as the slides write it: fare = choke - slope x Q.
+  function inverseText(d) { return fmt(Math.round(chokePrice(d))) + " − " + plain(1 / d.b) + " × Q"; }
+  // The profit chart: profit per flight against the seats sold, in a window centred on the best number of seats and
+  // ending at the full plane (when the best is a full plane, the last 60% of the seats). The trial flights are a
+  // hollow dot and a dashed line, the best a green dot, and the flights given are dots ({seats, profit, title,
+  // name}); flights left of the window are listed under the chart instead of stretching it.
   function profitChartHtml(d, old, flights, opts) {
     opts = opts || {};
-    var w = focusWindow(d), markers = [];
-    if (old) markers.push({ x: old.fare, y: old.profit, color: COLORS.grey, hollow: true, name: opts.oldName || "The trial fare", title: (opts.oldName || "The trial fare") + ": " + money(old.fare) + ", profit " + money(old.profit) });
-    markers.push({ x: w.best.fare, y: w.best.profit, color: COLORS.green, name: "Best fare " + money(w.best.fare), label: money(w.best.fare), title: "Best fare " + money(w.best.fare) + ": " + fmt(w.best.passengers) + " passengers, profit " + money(w.best.profit) });
-    var off = [];
+    var best = bestSeats(d), top = maxSeats(d), x0 = Math.max(0, best.seats < top ? 2 * best.seats - top : Math.round(0.4 * top));
+    if (old && old.seats < x0) x0 = Math.max(0, old.seats - 10);
+    var pts = [], lo = Infinity, hi = -Infinity;
+    for (var q = Math.max(1, x0); q <= top; q++) { var pr = profitSelling(d, q); pts.push([q, pr]); lo = Math.min(lo, pr); hi = Math.max(hi, pr); }
+    var r = Math.max(1, hi - lo), pad = Math.max(1, Math.round(0.03 * (top - x0))), markers = [], off = [];
+    if (old) markers.push({ x: old.seats, y: old.profit, color: COLORS.grey, hollow: true, name: "The trial flights", title: "The trial flights: " + fmt(old.seats) + " seats, profit " + money(old.profit) });
+    markers.push({ x: best.seats, y: best.profit, color: COLORS.green, r: 8, name: "Best: " + fmt(best.seats) + " seats", label: fmt(best.seats) + " seats", title: "Best: " + fmt(best.seats) + " seats at " + fareText(best.fare) + ", profit " + money(best.profit) });
     (flights || []).forEach(function (f) {
-      if (f.fare < w.x0 || f.fare > w.x1) { off.push(f); return; }
-      markers.push({ x: f.fare, y: f.profit, color: COLORS.red, r: opts.r, name: f.name || opts.flightName || "Flights", title: f.title || "" });
+      if (f.seats < x0) { off.push(f); return; }
+      markers.push({ x: f.seats, y: f.profit, color: COLORS.red, r: opts.r, name: f.name || "Flights", title: f.title || "" });
     });
-    var html = chart({ title: "Profit against the fare", h: opts.h, x: { min: w.x0, max: w.x1, label: "Fare (£)" }, y: { min: w.y0, max: w.y1, label: "Profit per flight (£)" },
-                       lines: [{ pts: w.curve, color: COLORS.blue, width: 2.5, name: "Profit at each fare" }],
-                       hlines: old ? [{ y: old.profit, label: (opts.oldName || "the trial fare") + "'s profit", color: COLORS.grey }] : [],
-                       vlines: w.fill > w.x0 ? [{ x: w.fill, label: "plane full below " + money(w.fill), color: COLORS.orange }] : [], markers: markers });
-    if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || money(f.fare)) + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
+    var html = chart({ title: "Profit against the seats sold", h: opts.h, x: { min: x0, max: top + pad, label: "Seats sold" }, y: { min: lo - 0.08 * r, max: hi + 0.08 * r, label: "Profit per flight (£)" },
+                       lines: [{ pts: pts, color: COLORS.blue, width: 2.5, name: "Profit at each number of seats" }],
+                       hlines: old ? [{ y: old.profit, label: "a trial flight's profit", color: COLORS.grey }] : [],
+                       vlines: top >= d.seats ? [{ x: top, label: "plane full", color: COLORS.orange, left: true }] : [], markers: markers });
+    if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || fmt(f.seats) + " seats") + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
     return html;
   }
-  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
-  // The line through the trial flights' average and one test flight: the group's own estimate of the demand.
+  // The demand line with the trial flights and the best point on it.
+  function demandChartHtml(t, d, h) {
+    var choke = chokePrice(d), best = bestSeats(d);
+    return chart({ title: "The demand", h: h, x: { max: Math.max(d.a, t.seats) * 1.05, label: "Seats sold" }, y: { max: choke * 1.05, label: "Fare (£)" },
+                   lines: [{ pts: [[0, choke], [d.a, 0]], color: COLORS.red, width: 2.5, name: "Demand: fare = " + inverseText(d) }],
+                   hlines: [{ y: t.mc, label: "cost per passenger", color: COLORS.grey }], vlines: [{ x: t.seats, label: "plane full", color: COLORS.orange }],
+                   markers: [{ x: t.q0, y: t.p0, color: COLORS.grey, hollow: true, name: "The trial flights", label: fmt(t.q0) + " at " + fareText(t.p0) },
+                             { x: best.seats, y: best.fare, color: COLORS.green, name: "Best", label: fmt(best.seats) + " at " + fareText(best.fare) }] });
+  }
+  // The line through the trial flights and one test flight: the group's own estimate of the demand.
   function lineThrough(p1, q1, p2, q2) {
     if (Math.abs(p2 - p1) < 1e-9) return null;
     var b = (q1 - q2) / (p2 - p1);
@@ -415,7 +412,7 @@ var PricingCore = (function () {
     (spec.vlines || []).forEach(function (l) {
       if (l.x < xmin || l.x > xmax) return;
       body.push('<line x1="' + X(l.x) + '" x2="' + X(l.x) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + (l.color || COLORS.text) + '" stroke-width="1.3"' + dashAttr("dashdot") + '/>');
-      if (l.label) body.push('<text x="' + (X(l.x) + 4) + '" y="' + (mt + 12) + '" class="tick">' + esc(l.label) + '</text>');
+      if (l.label) body.push('<text x="' + (X(l.x) + (l.left ? -4 : 4)) + '" y="' + (mt + 12) + '"' + (l.left ? ' text-anchor="end"' : "") + ' class="tick">' + esc(l.label) + '</text>');
     });
     (spec.markers || []).forEach(function (m) {
       if (m.x < xmin || m.x > xmax || m.y < ymin || m.y > ymax) return;
@@ -434,53 +431,14 @@ var PricingCore = (function () {
     return svg + lg;
   }
 
-  // ---- the lab-book table: rows are the measures in order of first appearance, columns the pinned entries -----
-  function bookTable(entries, opts) {
-    opts = opts || {};
-    var rows = [], seen = {};
-    entries.forEach(function (e) { Object.keys(e.measures || {}).forEach(function (k) { if (!seen[k]) { seen[k] = true; rows.push(k); } }); });
-    var labels = {}, h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + entries.map(function (e) {
-      var label = (e.label || "Experiment").trim(), n = (labels[label] || 0) + 1; labels[label] = n; if (n > 1) label += " (" + n + ")";
-      var mark = opts.mark && opts.mark[e.id] ? opts.mark[e.id] + " " : "";
-      var btn = opts.removable ? '<button type="button" class="small remove-entry" data-id="' + esc(e.id) + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(label) + '">✕</button>' : "";
-      return '<th>' + btn + mark + esc(label) + '</th>';
-    }).join("") + '</tr></thead><tbody>';
-    rows.forEach(function (m) {
-      h += '<tr><td>' + esc(m) + '</td>' + entries.map(function (e) {
-        var v = (e.measures || {})[m];
-        return '<td class="num">' + (v == null ? "–" : (typeof v === "number" ? fmt(v, Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 2) : esc(v))) + '</td>';
-      }).join("") + '</tr>';
-    });
-    return h + '</tbody></table></div>';
-  }
-
   return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
-           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, focusWindow: focusWindow, profitChartHtml: profitChartHtml,
-           statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
+           intercept: intercept, chokePrice: chokePrice, fareFor: fareFor, profitSelling: profitSelling, statusQuoProfit: statusQuoProfit, maxSeats: maxSeats,
+           bestSeats: bestSeats, fullPlane: fullPlane, fareText: fareText, plain: plain, inverseText: inverseText,
+           profitChartHtml: profitChartHtml, demandChartHtml: demandChartHtml, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
-           segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };
+           segmentation: segmentation, histogram: histogram, median: median, chart: chart };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;
-
-</script>
-<script>
-/* Pricing Laboratory: the lab-book sections, shared by the class page (pricing.js) and the instructor page
-   (pricing_instructor.js). Pins are filed under the question TITLE (psectionOf); answers under the id. */
-var PQUESTIONS = [
-  { id: "c1", tab: "challenge", title: "1. Your flights",
-    prompt: "After the reveal. Which of your fares earned the most, and how far was it from the best fare? What did your first test flight cost you, and what did it tell you about the demand? Looking at the profit curve, how much does it cost to be £50 off the best fare, and how much to fill the plane? What would you do with six more flights?" },
-  { id: "m1", tab: "mocha", title: "2. Price Mocha for your stream",
-    prompt: "The bids are the most each student in your stream said they would pay for Mocha in Session 1. With a cost of £15 per Mocha, find the price that earns the most and pin it. How many of your classmates buy at that price, and what share of the stream is that? Why is the best price not the price that sells the most, and not the median bid?" },
-  { id: "m2", tab: "mocha", title: "3. The straight line",
-    prompt: "Show the fitted line. It turns the bids into a demand line P = a − bQ, and MR = MC on that line gives a price. How far is that price from the best price on the raw bids, and how much profit does it give up? Pin it. What is it about your classmates' bids that the line does not see? When would you trust the line more than the raw bids?" },
-  { id: "m3", tab: "mocha", title: "4. Do you believe the bids at £50?",
-    prompt: "Bids were capped at £50, and several students bid exactly that. Ignore bids above £49 and price again; then put them back and ignore the £0 bids instead. Pin both. Which bids would you trust when setting a real price, and what price would you actually charge?" },
-  { id: "m4", tab: "mocha", title: "5. Three streams, three prices",
-    prompt: "Open Three streams. If you could charge each stream its own price, how much more would you earn than with one price for all, in pounds and in percent? Why is the gain the size it is? Add last year's bids as a fourth market and look again: what changes, and why?" },
-  { id: "own", title: "Your own experiments",
-    prompt: "Anything you tried beyond the questions above. Give each column a clear label when you pin it, and write here what you learned from it." }];
-function psectionOf(entry) { for (var i = 0; i < PQUESTIONS.length; i++) if (PQUESTIONS[i].title === entry.question) return PQUESTIONS[i].id; return "own"; }
-if (typeof module !== "undefined" && module.exports) module.exports = { PQUESTIONS: PQUESTIONS, psectionOf: psectionOf };
 
 </script>
 <script>
@@ -666,10 +624,10 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
 
 </script>
 <script>
-/* Pricing Laboratory instructor page: the challenge's controls and live leaderboard, and the groups' lab books, read
-   straight from the pricing script (backend/Pricing.gs). Sign in with the instructor password (or the admin token);
-   the credential goes to the script with every request and stays in this browser. Depends on PricingCore
-   (pricing_core.js), MLQR (qr.js) and the questions in pricing_questions.js. */
+/* Pricing Laboratory instructor page: the challenge's controls and live leaderboard, read straight from the pricing
+   script (backend/Pricing.gs), and the class's link and QR code. Sign in with the instructor password (or the admin
+   token); the credential goes to the script with every request and stays in this browser. Depends on PricingCore
+   (pricing_core.js) and MLQR (qr.js). There are no lab books here (removed 14 November 2026). */
 (function () {
   "use strict";
   var C = PricingCore, esc = C.esc, fmt = C.fmt, money = C.money;
@@ -678,15 +636,16 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   var APP_URL = (CONFIG.app_url || "").replace(/\/+$/, "") || location.href.replace(/[?#].*$/, "").replace(/\/[^\/]*$/, "");
   var CLASSES = (CONFIG.classes || []).map(function (c) { return String(c).trim().toUpperCase(); }).filter(Boolean);
   var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
-  var VIEWS = ["challenge", "overview", "question", "group", "setup"];
-  var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"]];
+  var VIEWS = ["challenge", "setup"];
+  var PHASES = [["setup", "Not open yet"], ["open", "Open"], ["closed", "Closed"], ["revealed", "Demand revealed"]];
   // The instructor's steps, in order; each puts the class in the phase named.
-  var STEPS = [["open", "1. Open round 1"], ["closed", "2. Close round 1"], ["revealed", "3. Reveal the demand"]];
+  var STEPS = [["open", "1. Open the challenge"], ["closed", "2. Close the challenge"], ["revealed", "3. Reveal the demand"]];
+  var NEEDS_VERSION = 5;      // the script version that takes seats; an older one would refuse the teams' flights
   // The routes and their hidden demands are not in this page (everyone can read its source): the script sends its
   // preset sets once the instructor has signed in. A class runs up to three routes at once; each group prices the
   // route its number gives it. This one route only stands in when the script sends no preset.
   var FALLBACK_ROUTE = { label: "London–Anchorage", mc: 80, seats: 500, a: 640, b: 0.5, p0: 480 };
-  var S = { cred: "", records: null, books: {}, cls: "", view: "challenge", q: PQUESTIONS[0].title, group: "", challenge: null, presets: [], groups: [], version: "", answered: false, readAt: null, busy: false, error: "", msg: "", form: null };
+  var S = { cred: "", classes: CLASSES.slice(), cls: "", view: "challenge", challenge: null, presets: [], groups: [], version: "", answered: false, openRoutes: {}, readAt: null, busy: false, error: "", msg: "", form: null };
 
   function $(id) { return document.getElementById(id); }
   function fmtTime(ts, withDate) {
@@ -706,8 +665,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   function classLink(cls) { return APP_URL + "/pricing.html?class=" + encodeURIComponent(cls); }
   function projectorLink(cls) { return classLink(cls) + "&projector=1"; }
   function selectOptions(values, current, labels) { return values.map(function (v, i) { return '<option value="' + esc(v) + '"' + (v === current ? " selected" : "") + '>' + esc(labels ? labels[i] : v) + '</option>'; }).join(""); }
-  function questionIndex(title) { for (var i = 0; i < PQUESTIONS.length; i++) if (PQUESTIONS[i].title === title) return i; return PQUESTIONS.length - 1; }
-  function ticks(n) { return n === 0 ? "" : (n <= 3 ? "✓".repeat(n) : "✓×" + n); }
 
   // ---- the class record ------------------------------------------------------------------------------------------
   function api(params) {
@@ -715,55 +672,23 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     return fetch(ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + qs).then(function (r) { return r.json(); });
   }
   function post(body) { return fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
-  function loadRecords(cb) {
-    S.busy = true; renderTop();
-    api({ token: S.cred }).then(function (j) {
-      S.busy = false;
-      if (!j || !j.ok) { cb(j && j.error ? j.error : "no answer from the class record"); return; }
-      S.records = j.records || []; S.readAt = Date.now() / 1000; rebuild(); cb(null);
-    }).catch(function (err) { S.busy = false; cb(String(err && err.message || err)); });
-  }
   // A script deployed before the routes sends one route's numbers beside `flights`: read that as one route.
   function withRoutes(ch) {
     if (ch && ch.settings && !ch.settings.routes) ch.settings = { flights: ch.settings.flights, routes: [ch.settings] };
     if (ch && !ch.flights) ch.flights = [];
     return ch;
   }
+  // Reads the class's challenge. It is also the sign-in check: the script answers "bad token" or "locked" to a wrong
+  // password, whatever the class (an empty class code is answered with no challenge).
   function loadChallenge(cb) {
-    if (!S.cls) { if (cb) cb(); return; }
     api({ token: S.cred, action: "challenge", "class": S.cls }).then(function (j) {
-      if (j && j.ok) { S.challenge = withRoutes(j.challenge); S.presets = j.presets || []; S.groups = j.groups || []; S.version = j.version || ""; S.answered = true; }
+      if (j && j.ok) { S.challenge = withRoutes(j.challenge); S.presets = j.presets || []; S.groups = j.groups || []; S.version = j.version || ""; S.answered = true; S.readAt = Date.now() / 1000; }
       if (cb) cb(j && j.ok ? null : ((j && j.error) || "no answer"));
     }).catch(function (err) { if (cb) cb(String(err && err.message || err)); });
   }
-  function booksFromRecords(records) {
-    var books = {};
-    records.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (f) {
-      var state = f.state || {}, lbk = state.labbook, cls = state["class"] || "", key = cls + "\u0000" + (f.group || "");
-      var g = books[key] || (books[key] = { "class": cls, group: f.group || "", names: "", entries: {}, order: [], notes: "", answers: {}, last: 0 });
-      g.last = Math.max(g.last, f.ts || 0);
-      if (state.names) g.names = state.names;
-      if (!lbk) return;
-      if (lbk.kind === "notes") { g.notes = f.finding || ""; return; }
-      if (lbk.kind === "answers") { Object.keys(state.answers || {}).forEach(function (k) { if (String(state.answers[k] || "").trim()) g.answers[k] = state.answers[k]; }); return; }
-      if (lbk.deleted) { delete g.entries[lbk.id]; return; }
-      var sw = {}; Object.keys(state).forEach(function (k) { if (k !== "labbook") sw[k] = state[k]; });
-      if (!g.entries[lbk.id]) g.order.push(lbk.id);
-      g.entries[lbk.id] = { id: lbk.id, ts: f.ts || 0, tab: lbk.tab || "", label: lbk.label || "", question: f.question || "", note: f.finding || "", measures: lbk.measures || {}, state: sw };
-    });
-    return books;
-  }
-  function entriesOf(bk) { return bk.order.filter(function (id) { return bk.entries[id]; }).map(function (id) { return bk.entries[id]; }); }
-  function rebuild() {
-    S.books = booksFromRecords(S.records);
-    var seen = {}; CLASSES.forEach(function (c) { seen[c] = true; });
-    Object.keys(S.books).forEach(function (k) { if (S.books[k]["class"]) seen[S.books[k]["class"]] = true; });
-    S.classes = Object.keys(seen);
+  function pickClass() {
+    try { var c = localStorage.getItem(CLASS_KEY); if (c != null && S.classes.indexOf(c) >= 0) S.cls = c; } catch (e) {}
     if (S.classes.indexOf(S.cls) < 0) S.cls = S.classes.length ? S.classes[0] : "";
-  }
-  function booksOf(cls) {
-    return Object.keys(S.books).map(function (k) { return S.books[k]; }).filter(function (bk) { return bk["class"] === cls; })
-                 .sort(function (a, b) { return a.group.localeCompare(b.group, undefined, { numeric: true }); });
   }
 
   // ---- sign-in and the top bar ---------------------------------------------------------------------------------
@@ -783,8 +708,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
       ev.preventDefault();
       var pw = $("pw").value, remember = $("remember").checked, btn = $("signin-btn"), errEl = $("signin-error");
       if (!pw) { errEl.textContent = "Please type the password."; errEl.hidden = false; return; }
-      btn.disabled = true; btn.textContent = "Checking…"; S.cred = pw;
-      loadRecords(function (err) {
+      btn.disabled = true; btn.textContent = "Checking…"; S.cred = pw; pickClass();
+      loadChallenge(function (err) {
         if (err) {
           S.cred = ""; btn.disabled = false; btn.textContent = "Sign in";
           errEl.textContent = /bad token|locked/.test(err) ? (/locked/.test(err) ? "Too many wrong passwords; the class record refuses sign-ins for a while." : "Wrong password.") : "Could not reach the class record (" + err + ").";
@@ -798,13 +723,12 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     if (!S.cred) return;
     $("topbar").innerHTML = '<span class="caption" id="top-status">' + (S.busy ? "Reading the class record…" : (S.readAt ? "Read at " + fmtTime(S.readAt, false) : "")) + '</span>' +
       '<button type="button" id="refresh"' + (S.busy ? " disabled" : "") + '>Refresh</button><button type="button" id="signout">Sign out</button>';
-    $("refresh").onclick = function () { loadRecords(function (err) { S.error = err || ""; loadChallenge(function () { render(); }); }); };
-    $("signout").onclick = function () { clearCred(); S.cred = ""; S.records = null; clearTimeout(pollTimer); renderSignin(); };
+    $("refresh").onclick = function () { S.busy = true; renderTop(); loadChallenge(function (err) { S.busy = false; S.error = err || ""; render(); }); };
+    $("signout").onclick = function () { clearCred(); S.cred = ""; S.challenge = null; S.answered = false; clearTimeout(pollTimer); renderSignin(); };
   }
   function start() {
     $("signin").innerHTML = ""; $("main").hidden = false;
-    try { var c = localStorage.getItem(CLASS_KEY); if (c != null && S.classes.indexOf(c) >= 0) S.cls = c; } catch (e) {}
-    loadChallenge(function () { render(); schedulePoll(); });
+    render(); schedulePoll();
   }
   var pollTimer = null;
   function schedulePoll() {
@@ -819,25 +743,21 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   // ---- the page -------------------------------------------------------------------------------------------------------
   function render() {
     renderTop();
-    $("footer-status").textContent = (S.records ? plural(S.records.length, "record") + " in the class record, read at " + fmtTime(S.readAt, false) + (S.error ? " · " + S.error : "") : "") +
+    $("footer-status").textContent = (S.readAt ? "Class record read at " + fmtTime(S.readAt, false) : "") + (S.error ? " · " + S.error : "") +
       (S.answered ? " · script version " + (S.version || "unknown (an old deployment)") : "");
     renderClassBar();
     VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== S.view; });
     Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-view") === S.view); });
     if (S.view === "challenge") renderChallenge();
-    else if (S.view === "overview") renderOverview(booksOf(S.cls));
-    else if (S.view === "question") renderByQuestion(booksOf(S.cls));
-    else if (S.view === "group") renderOneGroup(booksOf(S.cls));
     else renderSetup(S.cls);
   }
   function renderClassBar() {
-    var el = $("class-bar"), books = booksOf(S.cls), nPins = 0;
-    books.forEach(function (bk) { nPins += entriesOf(bk).length; });
+    var el = $("class-bar");
     if (!S.classes.length) { el.innerHTML = '<div class="info" style="margin:0">No classes: put this term\'s class codes under "classes" in config.json and rebuild.</div>'; return; }
     el.innerHTML = '<div class="class-bar"><div><label for="class-pick">Class</label><select id="class-pick">' + selectOptions(S.classes, S.cls) + '</select></div>' +
-      '<div class="summary">' + plural(books.length, "group") + " with lab books, " + plural(nPins, "pinned column") + (S.challenge ? "; challenge: " + esc(phaseLabel(S.challenge.phase)) + ", " + plural(S.challenge.flights.length, "flight") : "; no challenge set up") + '.</div>' +
-      '<div class="projector"><a class="button primary" id="projector-open" target="_blank" rel="noopener" href="' + esc(projectorLink(S.cls)) + '">Open the projector page</a><div class="caption">The leaderboard while round 1 runs, the reveal afterwards; no group, nothing sent</div></div></div>';
-    $("class-pick").onchange = function () { S.cls = this.value; S.group = ""; S.form = null; S.msg = ""; try { localStorage.setItem(CLASS_KEY, S.cls); } catch (e) {} loadChallenge(function () { render(); }); };
+      '<div class="summary">' + plural(S.groups.length, "registered group") + (S.challenge ? "; challenge: " + esc(phaseLabel(S.challenge.phase)) + ", " + plural(S.challenge.flights.length, "flight") : "; no challenge set up") + '.</div>' +
+      '<div class="projector"><a class="button primary" id="projector-open" target="_blank" rel="noopener" href="' + esc(projectorLink(S.cls)) + '">Open the projector page</a><div class="caption">The leaderboards during the challenge, the reveal afterwards</div></div></div>';
+    $("class-pick").onchange = function () { S.cls = this.value; S.form = null; S.msg = ""; try { localStorage.setItem(CLASS_KEY, S.cls); } catch (e) {} loadChallenge(function () { render(); }); };
   }
   function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p === "round2" ? "Demand revealed" : p; }   // "round2": a phase older pages could set
 
@@ -856,27 +776,20 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     return S.form;
   }
   function derived(s) {
-    var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats }, best = C.bestFare(d), sq = C.statusQuoProfit(s);
-    var fill = C.fillFare(d);
-    return { d: d, best: best, sq: sq, choke: C.chokePrice(d), fill: fill, fillProfit: C.profitAt(d, fill) };
+    var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats };
+    return { d: d, best: C.bestSeats(d), sq: C.statusQuoProfit(s), choke: C.chokePrice(d), full: C.fullPlane(d) };
   }
   // One route of the form, checked: {ok, s (what the script stores), error}.
   function routeCheck(f) {
     var q0 = +f.a - +f.b * +f.p0, s = { label: String(f.label || ""), mc: +f.mc, seats: +f.seats, p0: +f.p0, q0: Math.round(q0), b: +f.b };
     var whole = Math.abs(q0 - Math.round(q0)) < 1e-9, ok = s.b > 0 && s.seats > 0 && +f.a > 0 && s.p0 > s.mc && q0 > 0 && q0 <= s.seats && whole;
-    return { ok: ok, s: s, error: ok ? "" : (!whole ? 'The passengers at the trial fare, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
-                                           : q0 > s.seats ? 'At the trial fare the demand (' + fmt(q0) + ') exceeds the plane\'s capacity; raise the fare or the capacity.'
-                                           : 'The intercept, the slope and the capacity must be positive, the trial fare above the cost, and the demand at the trial fare positive.') };
+    return { ok: ok, s: s, error: ok ? "" : (!whole ? 'The seats sold on a trial flight, a − b × fare = ' + fmt(q0, 2) + ', must be a whole number: adjust the fare or the intercept.'
+                                           : q0 > s.seats ? 'At the trial flights\' fare the demand (' + fmt(q0) + ') exceeds the seats on the plane; raise the fare or the seats.'
+                                           : 'The intercept, the slope and the seats must be positive, the trial flights\' fare above the cost, and the demand at that fare positive.') };
   }
   // The demand line and the profit curve of a route: what the students see at the reveal.
   function settingsCharts(s, v) {
-    var d = v.d;
-    var demand = C.chart({ title: "The demand", h: 300, x: { max: Math.max(d.a, s.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: v.choke * 1.05, label: "Fare (£)" },
-                           lines: [{ pts: [[0, v.choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + s.b + " × fare" }],
-                           hlines: [{ y: s.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: s.seats, label: "capacity", color: C.COLORS.orange }],
-                           markers: [{ x: s.q0, y: s.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare", label: money(s.p0) + " / " + fmt(s.q0) },
-                                     { x: v.best.passengers, y: v.best.fare, color: C.COLORS.green, name: "Best fare", label: money(v.best.fare) + " / " + fmt(v.best.passengers) }] });
-    return demand + C.profitChartHtml(d, { fare: s.p0, profit: v.sq }, [], { h: 300 });
+    return C.demandChartHtml(s, v.d, 300) + C.profitChartHtml(v.d, { seats: s.q0, profit: v.sq }, [], { h: 300 });
   }
   function groupNumber(g) { var m = /(\d+)\s*$/.exec(String(g)); return m ? Number(m[1]) : 1; }
   function routeOf(group, n) { return ((groupNumber(group) - 1) % n + n) % n; }   // the script's rule (routeIndex)
@@ -884,25 +797,28 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   function teamsOf(i, n) {
     return S.groups.filter(function (g) { return routeOf(g, n) === i; }).sort(function (x, y) { return groupNumber(x) - groupNumber(y); });
   }
+  // A route of the settings: its teams and what follows from its numbers, always in view; the numbers themselves
+  // and the charts are folded away (open when the route has an error, or once the instructor has opened them).
   function routeCard(f, i, n, locked) {
     var chk = routeCheck(f), teams = teamsOf(i, n);
     var h = '<div class="route-card"><h3>' + (n > 1 ? 'Route ' + (i + 1) + ': ' : '') + esc(f.label || "(no name)") + '</h3>' +
       '<p class="caption" style="margin:0 0 4px">' + (n > 1 ? (teams.length ? plural(teams.length, "registered team") + ': ' + esc(teams.map(function (g) { return String(g).replace(/^Group\s*/, ""); }).join(", ")) + '.' : 'No registered group has a number for this route yet.')
-                                                         : 'Every group prices this route.') + '</p>';
-    h += ['label|Route (shown to students, as London–Place)|text', 'mc|Cost per passenger (£)|number', 'seats|Plane\'s capacity (seats)|number',
-          'a|Demand intercept a: passengers at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: passengers lost per £1 on the fare|number', 'p0|The trial fare (£), a point on that demand|number'].map(function (spec) {
+                                                         : 'Every group flies this route.') + '</p>';
+    var fields = ['label|Route (shown to students, as London–Place)|text', 'mc|Cost per passenger (£)|number', 'seats|Seats on the plane|number',
+          'a|Demand intercept a: seats sold at a fare of £0 (Q = a − b × fare)|number', 'b|Demand slope b: seats lost per £1 on the fare|number', 'p0|The fare on the trial flights (£), a point on that demand|number'].map(function (spec) {
       var parts = spec.split("|"), id = 'f-' + parts[0] + '-' + i;
       return '<label for="' + id + '">' + esc(parts[1]) + '</label><input type="' + parts[2] + '" id="' + id + '" data-f="' + parts[0] + '" data-r="' + i + '" value="' + esc(f[parts[0]]) + '"' + (parts[2] === "number" ? ' step="any"' : "") + (locked ? " disabled" : "") + '>';
     }).join("");
+    var charts = "";
     if (chk.ok) {
       var s = chk.s, v = derived(s), fl = +S.form.flights || 6;
-      h += '<div class="note">Told: ' + money(s.p0) + ' carried ' + fmt(s.q0) + ' on average; ' + fmt(s.seats - s.q0) + ' seats empty; ' + money(v.sq) + ' a flight. ' +
-           'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P; nobody flies above ' + money(v.choke) + '. ' +
-           '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' a flight over the trial fare (' + money((v.best.profit - v.sq) * fl) + ' over ' + fl + ' flights). ' +
-           'Filling the plane: ' + money(v.fill) + ', ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + ').</div>' +
-           settingsCharts(s, v);
+      h += '<div class="note"><b>Told:</b> ' + fmt(s.seats) + ' seats, ' + money(s.mc) + ' a passenger; trial flights ' + fmt(s.q0) + ' seats at ' + money(s.p0) + ' (' + fmt(s.seats - s.q0) + ' empty), ' + money(v.sq) + ' a flight.<br>' +
+           '<b>Hidden:</b> fare = ' + C.inverseText(v.d) + ' (Q = ' + fmt(v.d.a) + ' − ' + s.b + ' × fare).<br>' +
+           '<b>Best: ' + fmt(v.best.seats) + ' seats at ' + C.fareText(v.best.fare) + '</b>, ' + money(v.best.profit) + ' a flight, ' + money(v.best.profit - v.sq, 0, true) + ' on a trial flight (' + money((v.best.profit - v.sq) * fl, 0, true) + ' over ' + fl + ' flights).<br>' +
+           '<b>Full plane:</b> ' + C.fareText(v.full.fare) + ', ' + money(v.full.profit) + ' a flight (' + money(v.full.profit - v.sq, 0, true) + ').</div>';
+      charts = settingsCharts(s, v);
     } else h += '<div class="error">' + chk.error + '</div>';
-    return h + '</div>';
+    return h + '<details class="how" data-route="' + i + '"' + (!chk.ok || S.openRoutes[i] ? " open" : "") + '><summary>The numbers and the charts</summary>' + fields + charts + '</details></div>';
   }
   // Each group's flights summed, best first.
   function boardOf(flights) {
@@ -919,9 +835,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
       board.forEach(function (g) { all.push({ group: g.group, label: r.label, n: g.n, gain: g.gain, possible: possible, share: possible > 0 ? g.gain / possible : 0 }); });
       h += '<div class="route-card"><h3>' + esc(r.label) + ' <span class="badge">' + plural(board.length, "team") + ', ' + plural(mine.length, "flight") + '</span></h3>';
       if (!mine.length) { h += '<p class="caption">No flights on this route yet.</p></div>'; return; }
-      h += '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Fares</th><th class="num">Best flown</th></tr></thead><tbody>' +
-           board.map(function (g, k) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (k + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.fares.map(function (x) { return money(x); }).join(", ") + '</td><td class="num">' + money(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>' +
-           C.profitChartHtml(d.d, { fare: r.p0, profit: d.sq }, mine.map(function (fl) { return { fare: fl.fare, profit: fl.profit, name: "Flights", title: fl.group + " flight " + fl.n + ": " + money(fl.fare) }; }), { r: 4, h: 300 }) + '</div>';
+      h += '<div class="wide"><table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">Score</th><th>Seats sold, flight by flight</th><th class="num">Best flown</th></tr></thead><tbody>' +
+           board.map(function (g, k) { var bf = g.flights.reduce(function (m, x) { return !m || x.profit > m.profit ? x : m; }, null); return '<tr><td class="rank">' + (k + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + '</td><td class="num">' + money(g.gain, 0, true) + '</td><td class="num-note">' + g.flights.map(function (x) { return fmt(x.passengers); }).join(", ") + '</td><td class="num">' + fmt(bf.passengers) + ' at ' + C.fareText(bf.fare) + '</td></tr>'; }).join("") + '</tbody></table></div>' +
+           C.profitChartHtml(d.d, { seats: r.q0, profit: d.sq }, mine.map(function (fl) { return { seats: fl.passengers, profit: fl.profit, name: "Flights", title: fl.group + " flight " + fl.n + ": " + fmt(fl.passengers) + " seats at " + C.fareText(fl.fare) }; }), { r: 4, h: 300 }) + '</div>';
     });
     h += '</div>';
     if (n > 1 && all.length) {
@@ -934,35 +850,36 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
   function renderChallenge() {
     var el = $("view-challenge"), ch = S.challenge, f = formValues(), flights = ch ? ch.flights : [], locked = flights.length > 0;
     var n = Math.max(1, Math.min(f.routes.length, +f.n || 1)), used = f.routes.slice(0, n), checks = used.map(routeCheck), sug = suggestedPreset(S.cls);
-    var oldScript = S.answered && !S.version;
+    var oldScript = S.answered && !(parseInt(S.version, 10) >= NEEDS_VERSION);
     var flOk = +f.flights >= 1 && +f.flights <= 12, ok = flOk && !oldScript && checks.every(function (c) { return c.ok; });
-    var h = (oldScript ? '<div class="error" id="old-script"><b>The script that answered is an old deployment</b> (it sent no version number), so it knows nothing of the routes. In the Apps Script editor, check that the first line of the code says VERSION 4 or later, then Deploy → Manage deployments → the pencil → Version: New version → Deploy. ' +
-                         'If the version at the bottom of this page stays unknown after that, the deployment you updated is not the one this page uses: its address is <span class="linkbox" style="display:inline">' + esc(ENDPOINT) + '</span>. Settings cannot be saved until this is fixed.</div>' : '') +
+    var h = (oldScript ? '<div class="error" id="old-script"><b>The script that answered is an old deployment</b> (' + (S.version ? 'version ' + esc(S.version) : 'it sent no version number') + '): this page needs version ' + NEEDS_VERSION + ' or later, in which the teams choose the seats to sell. ' +
+                         'In the Apps Script editor, check that the first line of the code says VERSION ' + NEEDS_VERSION + ' or later, then Deploy → Manage deployments → the pencil → Version: New version → Deploy. ' +
+                         'If the version at the bottom of this page does not change after that, the deployment you updated is not the one this page uses: its address is <span class="linkbox" style="display:inline">' + esc(ENDPOINT) + '</span>. Settings cannot be saved until this is fixed.</div>' : '') +
             '<div class="qblock"><h3>Settings for class ' + esc(S.cls) + (ch ? ' <span class="phase ' + esc(ch.phase) + '">' + esc(phaseLabel(ch.phase)) + '</span>' : ' <span class="phase">not set up</span>') + '</h3>';
     h += '<div class="row" style="margin-bottom:6px;align-items:end">' +
          '<div><label for="preset">Preset</label><select id="preset"' + (locked || !S.presets.length ? " disabled" : "") + '><option value="">' + (S.presets.length ? "choose a set of routes…" : "the script sent no presets") + '</option>' +
          S.presets.map(function (p, i) { return '<option value="' + i + '"' + (f.preset === String(i) ? " selected" : "") + '>' + esc(p.name || ("Set " + (i + 1))) + ': ' + esc(p.routes.map(function (r) { return r.label; }).join(", ")) + (i === sug ? " (suggested for this class)" : "") + '</option>'; }).join("") + '</select></div>' +
          '<div><label for="f-n">Routes run at once</label><select id="f-n"' + (locked ? " disabled" : "") + '>' + f.routes.map(function (r, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === n ? " selected" : "") + '>' + (i + 1) + '</option>'; }).join("") + '</select></div>' +
-         '<div><label for="f-flights">Flights in round 1</label><input type="number" id="f-flights" min="1" max="12" step="1" style="width:110px" value="' + esc(f.flights) + '"' + (locked ? " disabled" : "") + '></div></div>';
-    h += '<p class="caption">' + (n > 1 ? 'The class runs ' + n + ' contests at once. A group prices the route its number gives it, in turn (Group 1 the first route, Group 2 the second, and so on), and competes only with the groups on that route. '
-                                        : 'One contest: every group prices the same route. ') +
-         'The demand is hidden from the students. They are told the cost, the plane\'s capacity, the trial fare and the passengers a trial flight carried on average, and how many seats flew empty: one point, so nothing about the slope. ' +
-         'Use a different set for each stream, so that a fare passed on from an earlier stream is wrong.</p>';
+         '<div><label for="f-flights">Flights per team</label><input type="number" id="f-flights" min="1" max="12" step="1" style="width:110px" value="' + esc(f.flights) + '"' + (locked ? " disabled" : "") + '></div></div>';
+    h += '<p class="caption">' + (n > 1 ? n + ' contests at once: a group\'s route follows its number (Group 1 the first route, Group 2 the second, and so on), and it competes only with the groups on that route. '
+                                        : 'One contest: every group flies the same route. ') +
+         'The students are told the plane\'s seats, the cost per passenger and the trial flights (seats sold and fare): one point on the demand, nothing about its slope. Use a different set for each stream.</p>';
     h += '<div class="routes-grid" id="settings">' + used.map(function (r, i) { return routeCard(r, i, n, locked); }).join("") + '</div>';
-    if (!flOk) h += '<div class="error">The flights in round 1 must be between 1 and 12.</div>';
+    if (!flOk) h += '<div class="error">The flights per team must be between 1 and 12.</div>';
     h += '<div class="row">' + (locked ? '<span class="caption">Settings are locked while flights exist; reset the flights to change them.</span>' : '<button type="button" class="primary" id="save-settings"' + (ok ? "" : " disabled") + '>Save settings</button>') + '</div></div>';
     var cur = ch ? ch.phase : "", order = PHASES.map(function (p) { return p[0]; }), next = order[order.indexOf(cur) + 1];
     h += '<div class="qblock"><h3>Run the challenge' + (ch ? ' <span class="phase ' + esc(ch.phase) + '">Now: ' + esc(phaseLabel(ch.phase)) + '</span>' : '') + '</h3><div class="row">' +
          STEPS.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && next === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
          '<span style="margin-left:auto" class="row"><button type="button" class="small" data-phase="setup"' + (!ch ? " disabled" : "") + '>Back to not open</button>' +
          '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + '>Delete the flights and start over</button></span></div>' +
-         '<p class="caption">' + (!ch ? 'Save the settings first. ' : '') + 'The steps in order: open round 1 when the groups have read the briefing (each group then flies its flights at its own pace); close it when time is up (flights not flown score nothing); reveal the demand, which sends it to every page and to the projector. That is the end of the challenge. The button for the next step is highlighted.</p>' +
+         '<p class="caption">' + (!ch ? 'Save the settings first. ' : '') + 'Open the challenge when the groups have read their brief (each group then flies at its own pace); close it when time is up (flights not flown score nothing); reveal the demand, which sends it to every page and to the projector. The button for the next step is highlighted.</p>' +
          (S.msg ? '<div class="' + (/Could not|refused|error/i.test(S.msg) ? "error" : "success") + '">' + esc(S.msg) + '</div>' : "") + '</div>';
     if (ch && flights.length) h += leaderboards(ch);
     el.innerHTML = h;
     $("preset").onchange = function () { if (this.value === "" || !S.presets[+this.value]) return; var keep = S.form.flights; S.form = formFromPreset(+this.value); S.form.flights = keep; renderChallenge(); };
     $("f-n").onchange = function () { S.form.n = +this.value; renderChallenge(); };
     $("f-flights").addEventListener("change", function () { S.form.flights = this.value; renderChallenge(); });
+    Array.prototype.forEach.call(el.querySelectorAll("details[data-route]"), function (dt) { dt.querySelector("summary").addEventListener("click", function () { S.openRoutes[dt.getAttribute("data-route")] = !dt.open; }); });
     Array.prototype.forEach.call(el.querySelectorAll("#settings input"), function (inp) { inp.addEventListener("change", function () { S.form.routes[+inp.getAttribute("data-r")][inp.getAttribute("data-f")] = inp.value; S.form.preset = ""; renderChallenge(); }); });
     if ($("save-settings")) $("save-settings").onclick = function () {
       post({ token: S.cred, action: "challenge_set", "class": S.cls, settings: { flights: +f.flights, routes: checks.map(function (c) { return c.s; }) } })
@@ -978,76 +895,18 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
       };
     });
     $("reset-flights").onclick = function () {
-      if (!window.confirm("Delete every flight flown in class " + S.cls + " and put the challenge back to 'not open yet'? The groups' lab books are kept.")) return;
+      if (!window.confirm("Delete every flight flown in class " + S.cls + " and put the challenge back to 'not open yet'?")) return;
       post({ token: S.cred, action: "challenge_reset", "class": S.cls })
         .then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || "no answer"); S.msg = plural(j.removed, "flight") + " deleted; the challenge is back to the start."; loadChallenge(function () { render(); }); })
         .catch(function (err) { S.msg = "Could not reset: " + String(err && err.message || err); renderChallenge(); });
     };
     if ($("csv-flights")) $("csv-flights").onclick = function () {
       var routes = ch.settings.routes;
-      download("flights_" + S.cls + ".csv", csv([["class", "time", "group", "route", "flight", "fare", "passengers", "profit", "gain"]].concat(ch.flights.map(function (fl) { var r = routes[fl.route != null ? fl.route : routeOf(fl.group, routes.length)]; return [S.cls, fmtTime(fl.ts), fl.group, r ? r.label : "", fl.n, fl.fare, fl.passengers, fl.profit, fl.gain]; }))));
+      download("flights_" + S.cls + ".csv", csv([["class", "time", "group", "route", "flight", "seats sold", "fare", "profit", "against a trial flight"]].concat(ch.flights.map(function (fl) { var r = routes[fl.route != null ? fl.route : routeOf(fl.group, routes.length)]; return [S.cls, fmtTime(fl.ts), fl.group, r ? r.label : "", fl.n, fl.passengers, fl.fare, fl.profit, fl.gain]; }))));
     };
   }
 
-  // ---- lab books ----------------------------------------------------------------------------------------------------
-  function renderOverview(books) {
-    var el = $("view-overview");
-    if (!books.length) { el.innerHTML = '<div class="info">No group has pinned or written anything in this class yet.</div>'; return; }
-    var graded = PQUESTIONS.filter(function (q) { return q.id !== "own"; });
-    var h = '<div class="wide"><table class="grid sticky"><thead><tr><th>Group</th><th>Members</th>' + PQUESTIONS.map(function (q, i) { return '<th class="tick">' + (q.id === "own" ? "Own" : (i + 1)) + '</th>'; }).join("") + '<th class="num">Pins</th><th>Answered</th><th>Last saved</th><th>Debrief notes</th></tr></thead><tbody>';
-    books.forEach(function (bk) {
-      var entries = entriesOf(bk), counts = PQUESTIONS.map(function () { return 0; });
-      entries.forEach(function (e) { counts[questionIndex(e.question)]++; });
-      var answered = graded.filter(function (q) { return (bk.answers[q.id] || "").trim(); }).length, note = (bk.notes || "").trim().split(/\r?\n/)[0] || "";
-      h += '<tr><td>' + esc(bk.group) + '</td><td>' + esc(bk.names) + '</td>' + counts.map(function (n) { return '<td class="tick">' + ticks(n) + '</td>'; }).join("") +
-           '<td class="num">' + entries.length + '</td><td>' + (answered ? answered + "/" + graded.length : "") + '</td><td>' + esc(fmtTime(bk.last)) + '</td><td>' + esc(note.length > 90 ? note.slice(0, 90) + "…" : note) + '</td></tr>';
-    });
-    h += '</tbody></table></div><div class="row"><button type="button" id="csv-books">Download the lab books as CSV (one row per pinned column)</button><button type="button" id="csv-answers">Download the answers as CSV (one row per group)</button></div>';
-    el.innerHTML = h;
-    $("csv-books").onclick = function () {
-      var keys = [], seen = {};
-      books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { Object.keys(e.measures).forEach(function (k) { if (!seen[k]) { seen[k] = true; keys.push(k); } }); }); });
-      var rows = [["class", "time", "group", "members", "tab", "label", "question", "note"].concat(keys).concat(["state"])];
-      books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { rows.push([bk["class"], fmtTime(e.ts), bk.group, bk.names, e.tab, e.label, e.question, e.note].concat(keys.map(function (k) { return e.measures[k] == null ? "" : e.measures[k]; })).concat([JSON.stringify(e.state)])); }); });
-      download("pricing_lab_books_" + S.cls + ".csv", csv(rows));
-    };
-    $("csv-answers").onclick = function () {
-      var rows = [["class", "group", "members", "pins", "last saved"].concat(PQUESTIONS.map(function (q) { return q.title; })).concat(["debrief notes"])];
-      books.forEach(function (bk) { rows.push([bk["class"], bk.group, bk.names, entriesOf(bk).length, fmtTime(bk.last)].concat(PQUESTIONS.map(function (q) { return bk.answers[q.id] || ""; })).concat([bk.notes || ""])); });
-      download("pricing_answers_" + S.cls + ".csv", csv(rows));
-    };
-  }
-  function renderByQuestion(books) {
-    var el = $("view-question"), titles = PQUESTIONS.map(function (q) { return q.title; });
-    if (titles.indexOf(S.q) < 0) S.q = titles[0];
-    var qid = PQUESTIONS[titles.indexOf(S.q)].id, h = '<label for="q-pick">Question</label><select id="q-pick">' + selectOptions(titles, S.q) + '</select>';
-    var pins = [];
-    books.forEach(function (bk) { entriesOf(bk).forEach(function (e) { if (e.question === S.q) pins.push({ bk: bk, e: e }); }); });
-    if (pins.length) h += C.bookTable(pins.map(function (p) { return { id: p.e.id, label: p.bk.group + ": " + p.e.label, measures: p.e.measures }; }), {}) + '<p class="caption">' + plural(pins.length, "pinned column") + '.</p>';
-    else h += '<div class="info">No group has pinned anything under this question yet.</div>';
-    var answered = books.filter(function (bk) { return (bk.answers[qid] || "").trim(); });
-    if (answered.length) { h += '<div class="section-title">Answers</div>'; answered.forEach(function (bk) { h += '<div class="answer"><div class="who">' + esc(bk.group) + (bk.names ? " · " + esc(bk.names) : "") + '</div>' + esc(bk.answers[qid]) + '</div>'; }); }
-    el.innerHTML = h;
-    $("q-pick").onchange = function () { S.q = this.value; renderByQuestion(books); };
-  }
-  function renderOneGroup(books) {
-    var el = $("view-group");
-    if (!books.length) { el.innerHTML = '<div class="info">No group has pinned or written anything in this class yet.</div>'; return; }
-    var names = books.map(function (bk) { return bk.group || "(no group number)"; });
-    if (!S.group || names.indexOf(S.group) < 0) S.group = names[0];
-    var bk = books[names.indexOf(S.group)], entries = entriesOf(bk);
-    var h = '<label for="g-pick">Group</label><select id="g-pick">' + selectOptions(names, S.group) + '</select><p class="caption">' + (bk.names ? esc(bk.names) + " · " : "") + "Last saved " + fmtTime(bk.last) + " · " + plural(entries.length, "pinned column") + '</p>';
-    var byQ = {}; entries.forEach(function (e) { var i = questionIndex(e.question); (byQ[i] = byQ[i] || []).push(e); });
-    PQUESTIONS.forEach(function (q, i) {
-      var mine = byQ[i] || [], answer = (bk.answers[q.id] || "").trim();
-      if (!mine.length && !answer) return;
-      h += '<div class="qblock"><h3>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned</span></h3>' + (mine.length ? C.bookTable(mine, {}) : '<p class="caption">Nothing pinned under this question.</p>') +
-           (answer ? '<div class="section-title">' + (q.id === "own" ? "What the group learned" : "Answer") + '</div><div class="answer">' + esc(answer) + '</div>' : '<p class="caption">No answer yet.</p>') + '</div>';
-    });
-    if (bk.notes) h += '<div class="section-title">Notes for the debrief</div><div class="answer">' + esc(bk.notes) + '</div>';
-    el.innerHTML = h;
-    $("g-pick").onchange = function () { S.group = this.value; renderOneGroup(books); };
-  }
+  // ---- links and QR ----------------------------------------------------------------------------------------------
   function renderSetup(cls) {
     var el = $("view-setup");
     if (!cls) { el.innerHTML = ""; return; }
@@ -1068,14 +927,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = MLQR;
     Array.prototype.forEach.call($("views").querySelectorAll("button"), function (b) { b.onclick = function () { S.view = b.getAttribute("data-view"); render(); }; });
     var cred = storedCred();
     if (!cred || !ENDPOINT) { renderSignin(); return; }
-    S.cred = cred; $("signin").innerHTML = '<p class="caption">Reading the class record…</p>';
-    loadRecords(function (err) {
+    S.cred = cred; pickClass(); $("signin").innerHTML = '<p class="caption">Reading the class record…</p>';
+    loadChallenge(function (err) {
       if (err) { S.cred = ""; if (/bad token|locked/.test(err)) clearCred(); renderSignin(/bad token/.test(err) ? "The saved password is no longer accepted; sign in again." : "Could not reach the class record (" + err + ")."); return; }
       start();
     });
   }
   document.addEventListener("DOMContentLoaded", init);
-  window.PricingLabInstructor = { state: S, booksFromRecords: booksFromRecords, render: function () { render(); } };
+  window.PricingLabInstructor = { state: S, render: function () { render(); } };
 })();
 
 </script>

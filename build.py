@@ -22,8 +22,8 @@ PAGES = {   # output name: (shell, extra style sheets, scripts in order, config 
     "instructor.html": ("instructor.html", ["instructor.css"], ("engine.js", "book.js", "questions.js", "qr.js", "instructor.js"), ("endpoint", "app_url"), "", "MARKETLAB_CONFIG"),
     # the exam calculator: the class page's code in calculator mode; no endpoint, no token, nothing stored
     "calculator.html": ("calculator.html", [], ("engine.js", "chart.js", "book.js", "questions.js", "app.js"), (), "", "MARKETLAB_CONFIG"),
-    "pricing.html": ("pricing.html", ["pricing.css"], ("pricing_core.js", "pricing_questions.js", "mocha_data.js", "pricing.js"), ("endpoint", "token", "classes"), "pricing", "PRICINGLAB_CONFIG"),
-    "pricing_instructor.html": ("pricing_instructor.html", ["instructor.css", "pricing.css"], ("pricing_core.js", "pricing_questions.js", "qr.js", "pricing_instructor.js"), ("endpoint", "app_url", "classes"), "pricing", "PRICINGLAB_CONFIG"),
+    "pricing.html": ("pricing.html", ["pricing.css"], ("pricing_core.js", "mocha_data.js", "pricing.js"), ("endpoint", "token", "classes"), "pricing", "PRICINGLAB_CONFIG"),
+    "pricing_instructor.html": ("pricing_instructor.html", ["instructor.css", "pricing.css"], ("pricing_core.js", "qr.js", "pricing_instructor.js"), ("endpoint", "app_url", "classes"), "pricing", "PRICINGLAB_CONFIG"),
 }
 FIXED = {"calculator.html": {"calculator": True}}
 SHARED = ("classes", "app_url")   # top-level keys that every section's pages may use

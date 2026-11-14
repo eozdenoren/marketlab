@@ -1,7 +1,8 @@
 /* Pricing Laboratory page: the group panel (the same sign-in as the Marketplace Laboratory, against the pricing
-   script), the Challenge, Mocha and Lab book tabs, local storage and the save queue. Depends on PricingCore
-   (pricing_core.js), the questions in pricing_questions.js and the bids in mocha_data.js.
-   ?projector=1 is projector mode: no group, the leaderboard and the reveal for every group, pins stay local. */
+   script) and the Challenge and Mocha tabs. Depends on PricingCore (pricing_core.js) and the bids in mocha_data.js.
+   ?projector=1 is projector mode: no group, the leaderboard and the reveal for every group.
+   There is no lab book here (removed 14 November 2026): the only things a group sends to the class record are its
+   registration and its flights. What a student tries on the Mocha tab stays in the browser. */
 (function () {
   "use strict";
   var C = PricingCore, esc = C.esc, fmt = C.fmt, money = C.money;
@@ -17,15 +18,11 @@
     return null;
   }
   function classLink(code) { return location.origin + location.pathname + "?class=" + encodeURIComponent(code); }
-  var PHASE_LABEL = { setup: "Not open yet", open: "Round 1 open", closed: "Round 1 closed", revealed: "Demand revealed", round2: "Demand revealed" };   // "round2" is a phase older pages could set: it now reads as revealed
+  var PHASE_LABEL = { setup: "Not open yet", open: "Open", closed: "Closed", revealed: "Demand revealed", round2: "Demand revealed" };   // "round2" is a phase older pages could set: it now reads as revealed
 
   // ---- utilities -----------------------------------------------------------------------------------------------
   function $(id) { return document.getElementById(id); }
-  function clone(x) { return JSON.parse(JSON.stringify(x)); }
   function num(v, d) { var x = parseFloat(v); return isNaN(x) ? d : x; }
-  function timeStr(ts) { return new Date(ts).toTimeString().slice(0, 8); }
-  function uid() { return Math.random().toString(16).slice(2, 10); }
-  function debounce(fn, ms) { var t; return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); }; }
   function pct(x) { return x == null || isNaN(x) ? "–" : (x >= 0 ? "+" : "-") + Math.round(1000 * Math.abs(x)) / 10 + "%"; }
   function metric(label, value, opts) {
     opts = opts || {};
@@ -34,62 +31,27 @@
   }
 
   // ---- state ----------------------------------------------------------------------------------------------------
-  var S = { classCode: "", rawClass: "", classInvalid: false, projector: false, group: null, editingGroup: false, book: [], notes: "", answers: {}, answersDirty: {},
-            tab: "challenge", challenge: null, challengeJson: "", flying: false, flyError: "", lastQ: {}, pinMsg: {}, lastSaved: null, lastError: "",
+  var S = { classCode: "", rawClass: "", classInvalid: false, projector: false, group: null, editingGroup: false,
+            tab: "challenge", challenge: null, challengeJson: "", flying: false, flyError: "", howOpen: null,
             mocha: { dataset: "", cost: DATA.cost || 15, price: "", dropZero: false, above: "", showLine: false, inner: "pricing", fourth: false } };
   function groupKey() { return S.group ? "Group " + S.group.number : (S.projector ? "Projector" : "_"); }
-  function canPin() { return !!(S.group || S.projector); }
   function groupPin() { return S.group && S.group.pin ? String(S.group.pin) : ""; }
   function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
   function storeKey() { return "pricinglab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
     try {
-      localStorage.setItem(storeKey(), JSON.stringify({ book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab, lastQ: S.lastQ, mocha: S.mocha }));
+      localStorage.setItem(storeKey(), JSON.stringify({ group: S.group, tab: S.tab, mocha: S.mocha }));
       if (!S.projector) localStorage.setItem("pricinglab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) {}
   }
   function loadStored(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function mergeStored(d) {
     if (!d) return;
-    var have = {}; S.book.forEach(function (e) { have[e.id] = true; });
-    (d.book || []).forEach(function (e) { if (!have[e.id]) S.book.push(e); });
-    if (!S.notes && d.notes) S.notes = d.notes;
-    Object.keys(d.answers || {}).forEach(function (k) { if (!S.answers[k]) S.answers[k] = d.answers[k]; });
     if (d.tab) S.tab = d.tab;
-    if (d.lastQ && typeof d.lastQ === "object") S.lastQ = d.lastQ;
     if (d.mocha && typeof d.mocha === "object") Object.keys(d.mocha).forEach(function (k) { S.mocha[k] = d.mocha[k]; });
   }
 
-  // ---- class record (save queue) ---------------------------------------------------------------------------
-  var queue = loadStored("pricinglab:queue") || [], flushing = false, retryTimer = null;
-  function persistQueue() { try { localStorage.setItem("pricinglab:queue", JSON.stringify(queue)); } catch (e) {} }
-  function record(question, finding, state) {
-    state = state || {};
-    state["class"] = S.classCode; state.names = groupNames();
-    return { ts: Date.now() / 1000, group: groupKey(), question: question, finding: finding || "", state: state, pin: groupPin() };
-  }
-  function enqueue(rec) { if (!S.group || S.projector) return; queue.push(rec); persistQueue(); S.pinRejected = false; flush(); renderStatus(); }
-  function flush() {
-    if (!ENDPOINT || flushing || !queue.length || S.pinRejected || S.classInvalid) return;
-    if (CLASSES.length && S.classCode) queue.forEach(function (r) {
-      var st = r.state || (r.state = {}), fixed = normalizeClass(st["class"]);
-      if (fixed !== st["class"]) st["class"] = fixed || S.classCode;
-    });
-    flushing = true;
-    var batch = queue.slice(0, 20).map(function (r) { r.pin = groupPin(); return r; });
-    fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: TOKEN, records: batch }) })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j || !j.ok) throw new Error((j && j.error) || "bad response");
-        queue.splice(0, batch.length); persistQueue(); S.lastSaved = Date.now(); S.lastError = ""; flushing = false; renderStatus();
-        if (queue.length) flush();
-      })
-      .catch(function (err) {
-        flushing = false; S.lastError = String(err && err.message || err); renderStatus();
-        if (/bad pin/.test(S.lastError)) { S.pinRejected = true; return; }
-        clearTimeout(retryTimer); retryTimer = setTimeout(flush, 20000);
-      });
-  }
+  // ---- class record: the sign-in ------------------------------------------------------------------------------
   function apiUrl(params) {
     var qs = Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
     return ENDPOINT + (ENDPOINT.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) + "&" + qs;
@@ -114,74 +76,20 @@
       .then(function (j) { cb(j && j.ok ? "registered" : (j && j.error === "taken" ? "taken" : "error")); })
       .catch(function () { cb("error"); });
   }
-  function restoreFromRecords(recs) {
-    if (!recs || !recs.length) return;
-    recs.sort(function (a, b) { return a.ts - b.ts; });
-    var entries = {}, order = [], notes = "", answers = {};
-    recs.forEach(function (f) {
-      var st = f.state || {}, lbk = st.labbook;
-      if (!lbk) return;
-      if (lbk.kind === "notes") { notes = f.finding || ""; return; }
-      if (lbk.kind === "answers") { mergeAnswers(answers, st.answers); return; }
-      if (lbk.deleted) { delete entries[lbk.id]; return; }
-      if (!entries[lbk.id]) order.push(lbk.id);
-      var sw = {}; Object.keys(st).forEach(function (k) { if (k !== "labbook") sw[k] = st[k]; });
-      entries[lbk.id] = { id: lbk.id, ts: f.ts, tab: lbk.tab || "challenge", label: lbk.label || "", question: f.question || "", note: f.finding || "", measures: lbk.measures || {}, state: sw };
-    });
-    var have = {}; S.book.forEach(function (e) { have[e.id] = true; });
-    order.forEach(function (id) { if (entries[id] && !have[id]) S.book.push(entries[id]); });
-    if (!S.notes && notes) S.notes = notes;
-    var pending = pendingAnswerKeys();
-    Object.keys(answers).forEach(function (k) { if (!pending[k]) S.answers[k] = answers[k]; });
-  }
-  function mergeAnswers(into, add) { Object.keys(add || {}).forEach(function (k) { if (String(add[k] || "").trim()) into[k] = add[k]; }); return into; }
-  function pendingAnswerKeys() {
-    var keys = {};
-    Object.keys(S.answersDirty).forEach(function (k) { keys[k] = true; });
-    queue.forEach(function (r) { if (((r.state || {}).labbook || {}).kind === "answers") Object.keys((r.state || {}).answers || {}).forEach(function (k) { keys[k] = true; }); });
-    return keys;
-  }
-  var lastSync = 0;
-  function syncFromRecord(force) {
-    if (!ENDPOINT || !S.group || S.projector) return;
-    if (!force && Date.now() - lastSync < 15000) return;
-    lastSync = Date.now();
-    checkPin(S.group, function (status, j) {
-      if (status !== "ok" || !j) return;
-      restoreFromRecords(j.records || []); if (j.challenge) setChallenge(j.challenge); saveLocal();
-      var focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("#tab-book");
-      if (!focused) renderBook();
-      else Array.prototype.forEach.call($("tab-book").querySelectorAll("textarea[data-q]"), function (ta) { if (ta !== document.activeElement) ta.value = S.answers[ta.getAttribute("data-q")] || ""; });
-    });
-  }
   function renderStatus() {
-    var el = $("footer-status"), parts = [];
+    var parts = [];
     if (S.classCode) parts.push("Class " + esc(S.classCode));
     if (S.group) parts.push(esc(groupKey()));
-    if (S.projector) parts.push("Projector: pins stay in this browser, nothing is sent to the class record");
-    else if (!ENDPOINT) parts.push("Offline copy: nothing is sent to the class record");
-    else if (S.pinRejected) parts.push('<span class="err">The class record refused the group number and PIN; press Change above and enter them again</span>');
-    else if (S.lastError && queue.length) parts.push('<span class="err">Could not reach the class record (' + esc(S.lastError) + '); ' + queue.length + ' saved on this device, retrying</span>');
-    else if (queue.length) parts.push("Saving…");
-    else if (S.lastSaved) parts.push("Saved to the class record at " + timeStr(S.lastSaved));
-    el.innerHTML = parts.join(" · ");
-    var s = $("book-status"); if (!s) return;
-    if (S.projector) s.textContent = "Projector: the pins stay in this browser; nothing is sent to the class record.";
-    else if (!ENDPOINT) s.textContent = "Offline copy: your work is kept on this device only.";
-    else if (S.pinRejected) { s.textContent = "The class record refused the group number and PIN; press Change at the top and enter them again."; s.className = "status err"; }
-    else if (S.lastError && queue.length) { s.textContent = "Could not reach the class record; your work is kept on this device and will be sent again."; s.className = "status err"; }
-    else if (queue.length) { s.textContent = "Saving…"; s.className = "status"; }
-    else if (S.lastSaved) { s.textContent = "Saved to the class record at " + timeStr(S.lastSaved) + "."; s.className = "status"; }
-    else s.textContent = "";
+    if (S.projector) parts.push("Projector");
+    else if (!ENDPOINT) parts.push("Offline copy: the challenge needs the class record");
+    $("footer-status").innerHTML = parts.join(" · ");
   }
 
   // ---- group panel ---------------------------------------------------------------------------------------------
   function renderGroup() {
     var el = $("group-panel");
     if (S.projector) {
-      el.innerHTML = '<div class="group-line"><div><b>Projector</b>' + (S.classCode ? " · Class " + esc(S.classCode) : "") + ' · the leaderboard and the reveal for every group; pins stay in this browser</div>' +
-                     '<button type="button" id="projector-clear">Clear the lab book</button></div>';
-      $("projector-clear").onclick = function () { S.book = []; S.lastQ = {}; saveLocal(); renderBook(); renderStatus(); };
+      el.innerHTML = '<div class="group-line"><div><b>Projector</b>' + (S.classCode ? " · Class " + esc(S.classCode) : "") + ' · the leaderboard and the reveal for every group</div></div>';
       return;
     }
     if (S.classInvalid) {
@@ -213,11 +121,11 @@
       var candidate = { number: n, names: names, pin: pin }, prev = S.group;
       var finish = function (j) {
         if (!candidate.names && j && j.names) candidate.names = j.names;
-        S.group = candidate; S.editingGroup = false; S.pinRejected = false;
+        S.group = candidate; S.editingGroup = false;
         if (!prev || prev.number !== n) mergeStored(loadStored(storeKey()));
-        if (j) { restoreFromRecords(j.records || []); if (j.challenge) setChallenge(j.challenge); }
-        saveLocal(); renderGroup(); renderChallenge(); renderMocha(); renderBook(); renderStatus(); flush();
-        if (!j) loadChallenge(true);
+        if (j && j.challenge) setChallenge(j.challenge);
+        saveLocal(); renderGroup(); renderChallenge(); renderMocha(); renderStatus();
+        loadChallenge(true);
       };
       if (!needPin) { finish(null); return; }
       $("group-save").disabled = true; $("group-save").textContent = "Checking…";
@@ -259,43 +167,14 @@
   }
 
   // ---- tabs ------------------------------------------------------------------------------------------------------
+  var TABS = ["challenge", "mocha"];
   function showTab(name) {
+    if (TABS.indexOf(name) < 0) name = "challenge";      // an address or a browser that remembers the old Lab book tab
     S.tab = name;
-    ["challenge", "mocha", "book"].forEach(function (t) { $("tab-" + t).hidden = t !== name; });
+    TABS.forEach(function (t) { $("tab-" + t).hidden = t !== name; });
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.classList.toggle("active", b.getAttribute("data-tab") === name); });
-    if (name === "book") { renderBook(); syncFromRecord(false); }
     if (name === "challenge") loadChallenge(false);
     saveLocal(); schedulePoll();
-  }
-
-  // ---- pinning -----------------------------------------------------------------------------------------------------
-  function pinPanel(which, suggestion, qid) {
-    var wrap = $(which + "-pin-wrap"); if (!wrap) return;
-    if (!$(which + "-pin")) {
-      wrap.innerHTML = '<div class="panel"><div class="pin"><div><label for="' + which + '-pin-label">Label for the lab book</label><input type="text" id="' + which + '-pin-label" title="Leave blank to use the suggested label."></div>' +
-        '<div><label for="' + which + '-pin-q">Lab book section</label><select id="' + which + '-pin-q">' + PQUESTIONS.map(function (q) { return '<option value="' + q.id + '">' + esc(q.title) + '</option>'; }).join("") + '</select></div>' +
-        '<div><button type="button" class="primary" id="' + which + '-pin" style="width:100%">Pin to lab book</button></div></div><div id="' + which + '-pin-info"></div></div>';
-    }
-    $(which + "-pin-label").placeholder = suggestion;
-    $(which + "-pin").disabled = !canPin();
-    // the section follows the context (the round, the scenario) when that changes; otherwise the student's own choice stays
-    var sel = $(which + "-pin-q");
-    if (sel.getAttribute("data-last") !== qid) { sel.setAttribute("data-last", qid); sel.value = qid; }
-    $(which + "-pin-info").innerHTML = (canPin() ? "" : '<p class="caption">Enter your group number at the top of the page to pin.</p>') + (S.pinMsg[which] ? '<div class="success">' + esc(S.pinMsg[which]) + '</div>' : "");
-  }
-  function doPin(which, suggestion, measures, state) {
-    var labelEl = $(which + "-pin-label"), label = (labelEl.value || "").trim() || suggestion;
-    var qid = $(which + "-pin-q").value, q = PQUESTIONS.filter(function (x) { return x.id === qid; })[0] || PQUESTIONS[PQUESTIONS.length - 1];
-    var entry = { id: uid(), ts: Date.now() / 1000, tab: which, label: label, question: q.title, note: "", measures: measures, state: state };
-    S.book.push(entry); labelEl.value = ""; S.lastQ[which] = q.id;
-    S.pinMsg[which] = "Pinned as '" + label + "' under '" + q.title + "'. Open the Lab book tab to see it.";
-    saveLocal(); enqueue(entryRecord(entry, false));
-    return entry;
-  }
-  function entryRecord(e, deleted) {
-    var st = clone(e.state || {});
-    st.labbook = { id: e.id, label: e.label, tab: e.tab, measures: e.measures, deleted: !!deleted };
-    return record(e.question, e.note, st);
   }
 
   // ---- the challenge --------------------------------------------------------------------------------------------
@@ -321,164 +200,177 @@
       .then(function (j) { loading = false; if (j && j.ok && j.challenge && (setChallenge(j.challenge) || force)) renderChallenge(); if (cb) cb(); })
       .catch(function () { loading = false; if (cb) cb(); });
   }
-  function fly(fare) {
+  function fly(seats) {
     if (!ENDPOINT || !S.group || S.flying) return;
     S.flying = true; S.flyError = ""; renderChallenge();
     fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-                      body: JSON.stringify({ token: TOKEN, action: "fly", "class": S.classCode, group: "Group " + S.group.number, pin: S.group.pin || "", fare: fare }) })
+                      body: JSON.stringify({ token: TOKEN, action: "fly", "class": S.classCode, group: "Group " + S.group.number, pin: S.group.pin || "", seats: seats }) })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         S.flying = false;
         if (j && j.challenge) setChallenge(j.challenge);
-        if (!j || !j.ok) S.flyError = (j && j.error) || "no answer from the class record";
+        if (!j || !j.ok) S.flyError = flyErrorText(j && j.error);
         renderChallenge();
       })
       .catch(function (err) { S.flying = false; S.flyError = "Could not reach the class record (" + String(err && err.message || err) + "). Check the wifi and try again."; renderChallenge(); });
   }
+  // The script's reasons for refusing a flight, as sentences. A script from before version 5 expects a fare.
+  function flyErrorText(e) {
+    e = String(e || "no answer from the class record");
+    if (/fare must be/.test(e)) return "The class's script is an older version that cannot take seats. Please tell the instructor.";
+    if (/bad pin/.test(e)) return "The class record refused the group number and PIN; press Change at the top and enter them again.";
+    return e.charAt(0).toUpperCase() + e.slice(1) + ".";
+  }
   function demandOf(ch) { return ch && ch.demand && ch.told ? { a: ch.demand.a, b: ch.demand.b, mc: ch.told.mc, seats: ch.told.seats } : null; }
-  // The briefing. The route is new, so the airline knows only the trial flights' average: one point, nothing about
-  // the slope (older scripts also sent a fare range as t.history; it is ignored). The empty seats tempt a fare cut.
+
+  // ---- what a team is told. The route is new, so the airline knows only its trial flights: one point on the
+  // demand, nothing about the slope. A short story, four numbers, and the rules as a list that folds away once the
+  // team has flown (S.howOpen remembers a team that opens or closes it itself).
   var AIRLINE = "WeezyJet";
   function numWord(n) { return ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"][n] || fmt(n); }
+  function nFlights(n) { return numWord(n) + (n === 1 ? " flight" : " flights"); }
   // "London–Anchorage" -> "between London and Anchorage"; any other label -> "on the ... route".
   function routePhrase(label) {
     label = String(label || "London–Anchorage");
     var parts = label.split(/\s*[–—-]\s*/);
     return parts.length === 2 && parts[0] && parts[1] ? 'between <b>' + esc(parts[0]) + ' and ' + esc(parts[1]) + '</b>' : 'on the <b>' + esc(label) + '</b> route';
   }
-  function para(lead, body) { return '<p style="margin:0 0 8px"><b>' + lead + '</b> ' + body + '</p>'; }
-  // nroutes: how many routes the class runs; with more than one, the group competes on its own route only.
-  function briefing(t, nroutes) {
-    var sq = (t.p0 - t.mc) * t.q0, empty = t.seats - t.q0, pct = Math.round(100 * empty / t.seats);
-    var nf = numWord(t.flights) + (t.flights === 1 ? " flight" : " flights");
-    return '<div class="briefing">' +
-      para("The contest.", AIRLINE + ' has just opened the only direct flight ' + routePhrase(t.label) + '. The route is new and the airline isn\'t sure its fare is right, so it has invited consulting teams to compete for the pricing contract. ' +
-           'Each team prices ' + nf + ', and the team whose fares make the most money wins.' +
-           (nroutes > 1 ? ' Your class is split across ' + numWord(nroutes) + ' routes: you compete only with the teams pricing <b>' + esc(t.label) + '</b>, and the other routes have different numbers.' : '')) +
-      para("What the airline knows.", 'Very little, because the route is new. So far it has run a few trial flights. A flight carried on average <b>' + fmt(t.q0) + ' passengers at ' + money(t.p0) + '</b>, ' +
-           'so about <b>' + fmt(empty) + ' of the ' + fmt(t.seats) + ' seats flew empty</b> on every flight. Each passenger costs the airline <b>' + money(t.mc) + '</b> (fuel, catering, airport fees). ' +
-           'The aircraft and the crew cost the same however many fly. At ' + money(t.p0) + ' a flight made ' + money(sq) + ' after passenger costs.') +
-      para("Your brief.", 'You set the fare for each of the next <b>' + nf + '</b>, one at a time. After each flight you see how many passengers flew and what the flight made. ' +
-           'Demand is steady: how many people want to fly depends only on the fare, the same way on every flight. Every flight counts. ' +
-           'Your score is what your ' + nf + ' make minus what the trial fare of ' + money(t.p0) + ' would have made (' + money(sq) + ' a flight). ' +
-           'The trial flights are all the airline can tell you. Anything more you learn about demand, you learn from your own flights.') +
-      '<div class="metrics">' + metric("Cost per passenger", t.mc, { money: true }) + metric("Plane's capacity", t.seats, { sub: "seats; about " + fmt(empty) + " flew empty (" + pct + "%)" }) +
-      metric("Trial fare", t.p0, { money: true, sub: "what the trial flights charged" }) +
-      metric("Passengers per trial flight", t.q0, { sub: "on average; " + money(sq) + " a flight after passenger costs" }) + '</div></div>';
+  function factTiles(t) {
+    return '<div class="metrics">' + metric("Seats on the plane", t.seats) + metric("Cost per passenger", t.mc, { money: true }) +
+      metric("Seats sold on a trial flight", t.q0, { sub: fmt(t.seats - t.q0) + " flew empty" }) +
+      metric("Fare on the trial flights", t.p0, { money: true, sub: money(C.statusQuoProfit(t)) + " profit a flight" }) + '</div>';
   }
+  // t: the team's route, or null for the class as a whole (the numbers are then in the table of routes).
+  function rules(flights, t, open) {
+    var nf = nFlights(flights), items = [
+      'Before each flight, choose <b>how many seats to sell</b>' + (t ? ' (1 to ' + fmt(t.seats) + ')' : ', up to the plane\'s seats') + '.',
+      'Everyone on a flight pays the same fare: the highest at which that many people will buy. You see it after the flight.',
+      'Each passenger costs ' + (t ? money(t.mc) : 'the amount shown') + ' (fuel, catering, airport fees). The plane and the crew cost the same however many fly.',
+      'Demand is the same on every flight. The airline knows only its trial flights; the rest you learn from your own.',
+      '<b>Score:</b> the profit of your ' + nf + ' minus the profit of ' + nf + ' like the trial flights' + (t ? ' (' + money(C.statusQuoProfit(t)) + ' each)' : '') + '. Every flight counts.'];
+    return '<details class="how" id="how"' + (open ? " open" : "") + '><summary>How it works</summary><ul>' + items.map(function (x) { return '<li>' + x + '</li>'; }).join("") + '</ul></details>';
+  }
+  function howOpen(byDefault) { return S.howOpen == null ? byDefault : S.howOpen; }
+  // nroutes: how many routes the class runs; with more than one, the team competes on its own route only.
+  function briefing(t, nroutes, flown) {
+    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened the only direct flight ' + routePhrase(t.label) + ' and isn\'t sure its fare is right, so it has asked consulting teams to run its next flights. ' +
+      'Your team runs <b>' + nFlights(t.flights) + '</b>. ' + (nroutes > 1 ? 'Your class is split across ' + numWord(nroutes) + ' routes with different numbers; on yours, the team that makes the most money wins.' : 'The team that makes the most money wins.') + '</p>' +
+      factTiles(t) + rules(t.flights, t, howOpen(!flown)) + '</div>';
+  }
+  // d (the demand) is given once it is revealed: the team's most profitable flight is then marked and each flight
+  // is set against the best number of seats. During the challenge nothing may tell a team it has found the best.
   function flightsTable(flights, t, d) {
     if (!flights || !flights.length) return '<p class="caption">No flights yet.</p>';
-    // The group's most profitable flight is marked only once the demand is revealed (d given): during the round a
-    // green fare reads as "this is the best fare", which the group must not be told.
-    var bestF = null; if (d) flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
-    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Fare</th><th class="num">Passengers</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against the trial fare</th>' + (d ? '<th class="num">Off the best fare</th>' : "") + '</tr></thead><tbody>';
+    var best = d ? C.bestSeats(d) : null, bestF = null;
+    if (d) flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
+    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Seats sold</th><th class="num">Fare</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against a trial flight</th>' + (d ? '<th class="num">Seats off the best</th>' : "") + '</tr></thead><tbody>';
     var total = 0;
     flights.forEach(function (f) {
       total += f.gain;
-      h += '<tr><td>' + f.n + '</td><td class="num' + (f === bestF && flights.length > 1 ? " best" : "") + '">' + money(f.fare) + '</td><td class="num">' + fmt(f.passengers) + (f.passengers >= t.seats ? ' <span class="caption">(full)</span>' : "") + '</td>' +
-           '<td class="num opt">' + money(f.fare * f.passengers) + '</td><td class="num opt">' + money(t.mc * f.passengers) + '</td><td class="num">' + money(f.profit) + '</td><td class="num">' + money(f.gain, 0, true) + '</td>' +
-           (d ? '<td class="num">' + money(f.fare - C.bestFare(d).fare, 0, true) + '</td>' : "") + '</tr>';
+      var cost = t.mc * f.passengers;
+      h += '<tr><td>' + f.n + '</td><td class="num' + (f === bestF && flights.length > 1 ? " best" : "") + '">' + fmt(f.passengers) + (f.passengers >= t.seats ? ' <span class="caption">(full)</span>' : "") + '</td><td class="num">' + C.fareText(f.fare) + '</td>' +
+           '<td class="num opt">' + money(f.profit + cost) + '</td><td class="num opt">' + money(cost) + '</td><td class="num">' + money(f.profit) + '</td><td class="num">' + money(f.gain, 0, true) + '</td>' +
+           (d ? '<td class="num">' + fmt(f.passengers - best.seats, 0, true) + '</td>' : "") + '</tr>';
     });
     h += '<tr><td><b>Total</b></td><td></td><td></td><td class="opt"></td><td class="opt"></td><td></td><td class="num"><b>' + money(total, 0, true) + '</b></td>' + (d ? "<td></td>" : "") + '</tr></tbody></table></div>';
     return h;
   }
   // v: {board, told} (the challenge itself, or one route of the class view); compact: short headings, for the
-  // boards side by side. The board never lists the fares a group flew, not even after the reveal: the flights are
-  // the dots on the profit chart, and the fare by fare record is on the instructor's page.
+  // boards side by side. The board never lists what a team flew, not even after the reveal: the flights are the
+  // dots on the profit chart, and the flight by flight record is on the instructor's page.
   function boardTable(v, phase, compact) {
     var b = v.board || [];
-    if (!b.length) return '<p class="caption">No flights flown yet ' + (compact ? 'on this route.' : 'in class ' + esc(S.classCode) + '.') + '</p>';
+    if (!b.length) return '<p class="caption">No flights flown yet on this route.</p>';
     var me = groupKey();
-    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial fare') + '</th></tr></thead><tbody>';
+    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial flights') + '</th></tr></thead><tbody>';
     b.forEach(function (g, i) {
       h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (v.told ? " / " + v.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td></tr>';
     });
     return h + '</tbody></table>';
   }
   function boardTitle(ch) { return "Leaderboard" + (ch.nroutes > 1 && ch.told ? ": " + esc(ch.told.label) : ""); }
-  function demandChartHtml(t, d, best, h) {
-    var choke = C.chokePrice(d);
-    return C.chart({ title: "The demand", h: h, x: { max: Math.max(d.a, t.seats) * 1.05, label: "Passengers who want to fly" }, y: { max: choke * 1.05, label: "Fare (£)" },
-                     lines: [{ pts: [[0, choke], [d.a, 0]], color: C.COLORS.red, width: 2.5, name: "Demand: Q = " + fmt(d.a) + " − " + d.b + " × fare" }],
-                     hlines: [{ y: t.mc, label: "cost per passenger", color: C.COLORS.grey }], vlines: [{ x: t.seats, label: "capacity", color: C.COLORS.orange }],
-                     markers: [{ x: t.q0, y: t.p0, color: C.COLORS.grey, hollow: true, name: "The trial fare" }, { x: best.passengers, y: best.fare, color: C.COLORS.green, name: "Best fare", label: money(best.fare) + " / " + fmt(best.passengers) }] });
+  // Every flight on a board as a dot for the profit chart (a script from before version 5 lists fares only).
+  function teamDots(board, d) {
+    var dots = [];
+    (board || []).forEach(function (g) {
+      var sold = g.sold || (g.fares || []).map(function (f) { return Math.round(d.a - d.b * f); });
+      sold.forEach(function (q) { if (q >= 1) dots.push({ seats: q, profit: C.profitSelling(d, q), name: "Flights flown", title: g.group + ": " + fmt(q) + " seats" }); });
+    });
+    return dots;
+  }
+  // The two sentences every reveal starts with (the slides' picture of a route's card shows them).
+  // short: for a route's card on the projector, where three cards stand side by side.
+  function demandLine(d, short) {
+    return '<p class="reveal-line">To sell Q seats, the fare is <b>' + C.inverseText(d) + '</b>: nobody flies above <b>' + money(C.chokePrice(d)) + '</b>' +
+      (short ? '.' : ', and each extra seat lowers the fare by ' + C.fareText(1 / d.b) + ' for everyone.') + '</p>';
+  }
+  function fullPlaneText(t, d, best, sq, short) {
+    var full = C.fullPlane(d);
+    if (best.seats >= full.seats) return 'The best is a full plane.';
+    if (short) return 'A full plane (' + fmt(full.seats) + ' seats at ' + C.fareText(full.fare) + ') makes ' + money(full.profit) + '.';
+    return 'A full plane (' + fmt(full.seats) + ' seats) needs a fare of ' + C.fareText(full.fare) + ' and makes ' + money(full.profit) + ', ' + money(Math.abs(sq - full.profit)) + (full.profit < sq ? ' less' : ' more') + ' than a trial flight.';
   }
   function revealSection(ch) {
-    var t = ch.told, d = demandOf(ch), best = C.bestFare(d), sq = C.statusQuoProfit(t), choke = C.chokePrice(d);
-    var fillFare = C.fillFare(d), fillProfit = C.profitAt(d, fillFare);
-    var mine = S.projector ? null : (ch.mine || []), all = [];
-    (ch.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { all.push({ group: g.group, fare: f }); }); });
-    var flightDots = mine ? mine.map(function (f) { return { fare: f.fare, profit: f.profit, name: "Your flights", title: "Flight " + f.n + ": " + money(f.fare) + ", " + fmt(f.passengers) + " passengers" }; })
-                          : all.map(function (f) { return { fare: f.fare, profit: C.profitAt(d, f.fare), name: "Flights flown", title: f.group + ": " + money(f.fare) }; });
-    var profitChart = C.profitChartHtml(d, { fare: t.p0, profit: sq }, flightDots, { r: mine ? undefined : 4 });
-    var demandChart = demandChartHtml(t, d, best, 360);
-    var step = [50, 40, 20, 10].filter(function (x) { return Math.abs(d.b * x - Math.round(d.b * x)) < 1e-9; })[0] || 50;   // whole passengers lost
-    var h = '<h2>The demand you were facing</h2>' +
-      '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly: nobody above <b>' + money(choke) + '</b>, and every £1 on the fare loses <b>' + d.b + '</b> passengers (£10 loses ' + fmt(10 * d.b, Math.abs(10 * d.b - Math.round(10 * d.b)) < 1e-9 ? 0 : 1) + '). ' +
-      'The trial fare of ' + money(t.p0) + ' with its ' + fmt(t.q0) + ' passengers is on that line.</p>' +
-      '<p class="reveal-line">The best fare is <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and a profit of <b>' + money(best.profit) + '</b> per flight, ' + money(best.profit - sq) + ' more than the trial fare earned, ' +
-      money((best.profit - sq) * t.flights) + ' over ' + t.flights + ' flights. Filling the plane takes a fare of ' + money(fillFare) + ' and earns ' + money(fillProfit) + ', ' + money(sq - fillProfit) + ' less than the trial fare. ' +
-      'A fare ' + money(step) + ' either side of the best costs ' + money(best.profit - C.profitAt(d, best.fare + step)) + ' a flight.</p>';
+    var t = ch.told, d = demandOf(ch), best = C.bestSeats(d), sq = C.statusQuoProfit(t);
+    var mine = S.projector ? null : (ch.mine || []), bestF = null;
+    (mine || []).forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
+    var dots = mine ? mine.map(function (f) { return { seats: f.passengers, profit: f.profit, name: "Your flights", title: "Flight " + f.n + ": " + fmt(f.passengers) + " seats at " + C.fareText(f.fare) }; }) : teamDots(ch.board, d);
+    var step = best.seats > 25 ? 25 : 1;
+    var h = '<h2>The demand on your route</h2>' + demandLine(d) +
+      '<div class="metrics">' + metric("Best: seats to sell", best.seats, { sub: best.seats >= t.seats ? "a full plane" : fmt(t.seats - best.seats) + " seats left empty" }) +
+      metric("at a fare of", C.fareText(best.fare)) + metric("Profit a flight", best.profit, { money: true, sub: money(best.profit - sq) + " more than a trial flight" }) +
+      (bestF ? metric("Your best flight", fmt(bestF.passengers) + " seats", { sub: money(bestF.profit) + (bestF.profit < best.profit ? ", " + money(best.profit - bestF.profit) + " short of the best" : ", the best there is") }) : "") + '</div>' +
+      '<p class="reveal-line">' + fullPlaneText(t, d, best, sq) + ' ' + step + ' seat' + (step > 1 ? 's' : '') + ' too many or too few costs ' + money(best.profit - C.profitSelling(d, best.seats - step)) + ' a flight.</p>';
     if (mine && mine.length) {
       var first = mine[0], ln = C.lineThrough(t.p0, t.q0, first.fare, first.passengers);
-      var dec = function (x, d) { return Number(x.toFixed(d)).toLocaleString("en-GB", { maximumFractionDigits: d }); };
-      if (ln) h += '<p class="reveal-line">Your first flight, ' + money(first.fare) + ' with ' + fmt(first.passengers) + ' passengers, together with the trial flights\' average (' + money(t.p0) + ', ' + fmt(t.q0) + ') gives the line Q = ' + dec(ln.a, 1) + ' − ' + dec(ln.b, 3) + ' × P' +
-                   (Math.abs(ln.a - d.a) < 1 && Math.abs(ln.b - d.b) < 0.01 ? ': the demand itself. Two points were enough.' : '.') + '</p>';
+      if (ln) h += '<p class="reveal-line">Two points give a line. The trial flights (' + fmt(t.q0) + ' seats at ' + C.fareText(t.p0) + ') and your first flight (' + fmt(first.passengers) + ' seats at ' + C.fareText(first.fare) + ') give fare = ' + C.inverseText(ln) +
+                   (Math.abs(ln.a - d.a) < 1 && Math.abs(ln.b - d.b) < 0.01 ? ': the demand itself.' : '.') + '</p>';
     }
-    h += '<div class="cols"><div>' + profitChart + '</div><div>' + demandChart + '</div></div>';
+    h += '<div class="cols"><div>' + C.profitChartHtml(d, { seats: t.q0, profit: sq }, dots, { r: mine ? undefined : 4 }) + '</div><div>' + C.demandChartHtml(t, d, 360) + '</div></div>';
     if (mine) h += '<h2>Your flights</h2>' + flightsTable(mine, t, d);
     h += '<h2>' + boardTitle(ch) + '</h2>' + boardTable(ch, ch.phase);
-    if (!S.projector) h += '<div id="challenge-pin-wrap"></div>';
     return h;
   }
   // ---- the class as a whole, when it runs several routes: for the projector and for a page with no group yet.
-  // The contest, a table of the routes and a board per route; at the reveal each route's demand, best fare and
+  // The story, a table of the routes and a board per route; at the reveal each route's demand, best seats and
   // profit curve with its flights, then every team by its share of the gain its route allowed.
   function routesTable(R) {
-    return '<div class="wide"><table class="grid routes"><thead><tr><th>Route</th><th class="num">Cost per passenger</th><th class="num">Plane\'s capacity</th><th class="num">Trial fare</th><th class="num">Passengers per trial flight</th><th class="num">Seats empty</th><th class="num">A trial flight made</th></tr></thead><tbody>' +
-      R.map(function (v) { var t = v.told; return '<tr><td>' + esc(t.label) + '</td><td class="num">' + money(t.mc) + '</td><td class="num">' + fmt(t.seats) + '</td><td class="num">' + money(t.p0) + '</td><td class="num">' + fmt(t.q0) + '</td><td class="num">' + fmt(t.seats - t.q0) + '</td><td class="num">' + money((t.p0 - t.mc) * t.q0) + '</td></tr>'; }).join("") +
+    return '<div class="wide"><table class="grid routes"><thead><tr><th>Route</th><th class="num">Seats on the plane</th><th class="num">Cost per passenger</th><th class="num">Seats sold on a trial flight</th><th class="num">Fare on the trial flights</th><th class="num">Profit a flight</th></tr></thead><tbody>' +
+      R.map(function (v) { var t = v.told; return '<tr><td>' + esc(t.label) + '</td><td class="num">' + fmt(t.seats) + '</td><td class="num">' + money(t.mc) + '</td><td class="num">' + fmt(t.q0) + '</td><td class="num">' + money(t.p0) + '</td><td class="num">' + money(C.statusQuoProfit(t)) + '</td></tr>'; }).join("") +
       '</tbody></table></div>';
   }
   function classBriefing(ch) {
-    var R = ch.routes, fl = R[0].told.flights, nf = numWord(fl) + (fl === 1 ? " flight" : " flights");
-    return '<div class="briefing">' +
-      para("The contest.", AIRLINE + ' has just opened ' + numWord(R.length) + ' new routes, each the only direct flight between its two cities. The routes are new and the airline isn\'t sure its fares are right, so it has invited consulting teams to compete for the pricing contracts. ' +
-           'Each team is given one route and prices ' + nf + ' on it. On each route, the team whose fares make the most money wins.') +
-      para("What the airline knows.", 'Very little, because the routes are new. So far it has run a few trial flights on each route. The table shows what a trial flight carried on average, how many seats flew empty and what the flight made after passenger costs. ' +
-           'Each passenger costs the airline the amount shown (fuel, catering, airport fees). The aircraft and the crew cost the same however many fly.') +
-      routesTable(R) +
-      '<p style="margin:10px 0 0"><b>Your brief.</b> You set the fare for each of your ' + nf + ', one at a time. After each flight you see how many passengers flew and what the flight made. ' +
-      'Demand is steady: on each route, how many people want to fly depends only on the fare, the same way on every flight. Every flight counts. ' +
-      'Your score is what your ' + nf + ' make minus what the trial fare would have made. The trial flights are all the airline can tell you. Anything more you learn about demand, you learn from your own flights.</p></div>';
+    var R = ch.routes, fl = R[0].told.flights;
+    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened ' + numWord(R.length) + ' new routes, each the only direct flight between its two cities, and isn\'t sure its fares are right, so it has asked consulting teams to run its next flights. ' +
+      'Each team runs <b>' + nFlights(fl) + '</b> on one route. On each route, the team that makes the most money wins.</p>' +
+      routesTable(R) + rules(fl, null, howOpen(ch.phase === "setup")) + '</div>';
   }
   function routeReveal(v) {
-    var t = v.told, d = demandOf(v), best = C.bestFare(d), sq = C.statusQuoProfit(t), fill = C.fillFare(d), dots = [];
-    (v.board || []).forEach(function (g) { (g.fares || []).forEach(function (f) { dots.push({ fare: f, profit: C.profitAt(d, f), name: "Flights flown", title: g.group + ": " + money(f) }); }); });
-    return '<p class="reveal-line">At a fare of £P, <b>' + fmt(d.a) + ' − ' + d.b + ' × P</b> people want to fly; nobody above ' + money(C.chokePrice(d)) + '.</p>' +
-      '<p class="reveal-line">Best fare <b>' + money(best.fare) + '</b>: ' + fmt(best.passengers) + ' passengers' + (best.capped ? " (every seat)" : "") + ' and <b>' + money(best.profit) + '</b> a flight, ' + money(best.profit - sq) + ' more than the trial fare of ' + money(t.p0) + '. ' +
-      'Filling the plane takes ' + money(fill) + ' and makes ' + money(C.profitAt(d, fill)) + '.</p>' +
-      C.profitChartHtml(d, { fare: t.p0, profit: sq }, dots, { r: 4, h: 300 }) + demandChartHtml(t, d, best, 280);
+    var t = v.told, d = demandOf(v), best = C.bestSeats(d), sq = C.statusQuoProfit(t);
+    return demandLine(d, true) +
+      '<p class="reveal-line">Best: <b>' + fmt(best.seats) + ' seats at ' + C.fareText(best.fare) + '</b>, <b>' + money(best.profit) + '</b> a flight, ' + money(best.profit - sq) + ' more than a trial flight. ' + fullPlaneText(t, d, best, sq, true) + '</p>' +
+      C.profitChartHtml(d, { seats: t.q0, profit: sq }, teamDots(v.board, d), { r: 4, h: 300 }) + C.demandChartHtml(t, d, 280);
   }
   function overallTable(ch) {
     var rows = [], fl = ch.routes[0].told.flights;
     ch.routes.forEach(function (v) {
       var d = demandOf(v); if (!d) return;
-      var possible = (C.bestFare(d).profit - C.statusQuoProfit(v.told)) * v.told.flights;
-      (v.board || []).forEach(function (g) { rows.push({ group: g.group, label: v.told.label, gain: g.gain, possible: possible, share: possible > 0 ? g.gain / possible : 0 }); });
+      var possible = (C.bestSeats(d).profit - C.statusQuoProfit(v.told)) * v.told.flights;
+      (v.board || []).forEach(function (g) { rows.push({ group: g.group, label: v.told.label, n: g.n, gain: g.gain, possible: possible, share: possible > 0 ? g.gain / possible : 0 }); });
     });
     if (!rows.length) return "";
     rows.sort(function (x, y) { return y.share - x.share || x.group.localeCompare(y.group, undefined, { numeric: true }); });
-    return '<h2>Every team: share of the gain its route allowed</h2><p class="caption">A team\'s score as a share of what the best fare on all ' + numWord(fl) + ' flights would have scored on its route.</p>' +
-      '<div class="wide"><table class="grid board overall"><thead><tr><th class="rank">#</th><th>Group</th><th>Route</th><th class="num">Score</th><th class="num">Best possible</th><th class="num">Share</th></tr></thead><tbody>' +
-      rows.map(function (r, i) { return '<tr><td class="rank">' + (i + 1) + '</td><td>' + esc(r.group) + '</td><td>' + esc(r.label) + '</td><td class="num">' + money(r.gain, 0, true) + '</td><td class="num">' + money(r.possible) + '</td><td class="num">' + fmt(100 * r.share) + '%</td></tr>'; }).join("") +
+    return '<h2>Every team: share of the gain its route allowed</h2><p class="caption">The routes differ, so the scores are set against what the best number of seats would have earned over ' + fl + ' flights on each route.</p>' +
+      '<div class="wide"><table class="grid board overall"><thead><tr><th class="rank">#</th><th>Group</th><th>Route</th><th class="num">Flights</th><th class="num">Score</th><th class="num">Best possible</th><th class="num">Share</th></tr></thead><tbody>' +
+      rows.map(function (r, i) { return '<tr' + (r.group === groupKey() ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(r.group) + '</td><td>' + esc(r.label) + '</td><td class="num">' + r.n + ' / ' + fl + '</td><td class="num">' + money(r.gain, 0, true) + '</td><td class="num">' + money(r.possible) + '</td><td class="num">' + fmt(100 * r.share) + '%</td></tr>'; }).join("") +
       '</tbody></table></div>';
   }
   function classSection(ch) {
     var R = ch.routes, revealed = ch.phase === "revealed" || ch.phase === "round2", h = classBriefing(ch);
-    if (!S.projector) h += '<div class="info">' + (S.group ? 'The page could not confirm your group\'s PIN, so it cannot show your route. Use Change at the top of the page to enter it again.'
-                                                           : 'Enter your group number at the top of the page to see your route and its briefing.') + '</div>';
-    if (ch.phase === "setup") h += '<div class="info">Round 1 has not opened yet. Read the briefing and agree how you will choose your fares.</div>';
-    if (ch.phase === "closed") h += '<div class="info">Round 1 is closed. The demand is revealed next.</div>';
+    if (!S.projector && !S.group) h += '<div class="info">Enter your group number at the top of the page to see your own route and fly.</div>';
+    else if (!S.projector) h += '<div class="info">Reading your group\'s route…</div>';
+    if (ch.phase === "setup") h += '<div class="info">The challenge has not opened yet. Read the brief and agree how you will choose your seats.</div>';
+    if (ch.phase === "closed") h += '<div class="info">The challenge is closed. The demand is revealed next.</div>';
     if (ch.phase === "open" || ch.phase === "closed")
       h += '<h2>Leaderboards</h2><div class="routes-grid">' + R.map(function (v) { return '<div class="route-card"><h3>' + esc(v.told.label) + '</h3>' + boardTable(v, ch.phase, true) + '</div>'; }).join("") + '</div>';
     if (revealed)
@@ -487,62 +379,51 @@
     return h;
   }
   function renderChallenge() {
-    var el = $("tab-challenge"), ch = S.challenge, fareEl = $("fare"), typed = fareEl ? { v: fareEl.value, f: document.activeElement === fareEl } : null;
+    var el = $("tab-challenge"), ch = S.challenge, box = $("seats"), typed = box ? { v: box.value, f: document.activeElement === box } : null;
     var h = "";
     if (!S.classCode || S.classInvalid) h = '<div class="info">The challenge runs in class, under your class\'s link.</div>';
     else if (!ENDPOINT) h = '<div class="info">Offline copy: the challenge needs the class record.</div>';
     else if (!ch) h = '<p class="caption">Reading the challenge…</p>';
     else if (!ch.told && !(ch.routes && ch.routes.length)) h = '<div class="info">The challenge is not set up for class ' + esc(S.classCode) + ' yet. The instructor opens it in class.</div>';
-    else if (!ch.told) h += '<h2 style="margin-top:4px">The pricing challenge <span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span></h2>' + classSection(ch);
+    else if (!ch.told) h += '<h2 style="margin-top:4px">The WeezyJet challenge <span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span></h2>' + classSection(ch);
     else {
-      var t = ch.told, badge = '<span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span>';
-      h += '<h2 style="margin-top:4px">The pricing challenge ' + badge + '</h2>' + briefing(t, ch.nroutes || 1);
-      if (ch.phase === "setup") h += '<div class="info">Round 1 has not opened yet. Read the briefing and agree how you will choose your fares.</div>';
+      var t = ch.told, mine = ch.mine || [], badge = '<span class="phase ' + esc(ch.phase) + '">' + esc(PHASE_LABEL[ch.phase] || ch.phase) + '</span>';
+      h += '<h2 style="margin-top:4px">' + (ch.nroutes > 1 || S.group ? 'Your route: ' + esc(t.label) : 'The WeezyJet challenge') + ' ' + badge + '</h2>' + briefing(t, ch.nroutes || 1, mine.length > 0 || ch.phase !== "setup" && S.projector);
+      if (ch.phase === "setup") h += '<div class="info">The challenge has not opened yet. Read the brief and agree how you will choose your seats.</div>';
       if (ch.phase === "open" && !S.projector) {
         if (!S.group) h += '<div class="info">Enter your group number at the top of the page to fly.</div>';
         else {
-          var mine = ch.mine || [], left = t.flights - mine.length;
+          var left = t.flights - mine.length, last = mine[mine.length - 1];
           if (left > 0) {
-            h += '<div class="panel"><form id="fare-form" class="fare-form"><div><label for="fare">Fare for flight ' + (mine.length + 1) + ' of ' + t.flights + ' (£, whole pounds)</label><input type="number" id="fare" min="0" step="1" inputmode="numeric" placeholder="' + t.p0 + '"' + (S.flying ? " disabled" : "") + '></div>' +
+            h += '<div class="panel"><form id="fly-form" class="fare-form" novalidate><div><label for="seats">Seats to sell on flight ' + (mine.length + 1) + ' of ' + t.flights + '</label><input type="number" id="seats" min="1" max="' + t.seats + '" step="1" inputmode="numeric" placeholder="1 to ' + fmt(t.seats) + '"' + (S.flying ? " disabled" : "") + '></div>' +
                  '<div><button type="submit" class="primary" id="fly" style="width:100%"' + (S.flying ? " disabled" : "") + '>' + (S.flying ? "Flying…" : "Fly") + '</button></div></form>' +
-                 (S.flyError ? '<div class="error">' + esc(S.flyError) + '</div>' : "") + '</div>';
-          } else h += '<div class="success">All ' + t.flights + ' flights flown. Wait for the instructor to close the round and reveal the demand.</div>';
-          h += '<h2>Your flights</h2>' + flightsTable(mine, t, null);
+                 (S.flyError ? '<div class="error">' + esc(S.flyError) + '</div>' : (last ? '<p class="caption" id="last-flight" style="margin:8px 0 0">Flight ' + last.n + ': to sell ' + fmt(last.passengers) + ' seats the fare was ' + C.fareText(last.fare) + '.</p>' : "")) + '</div>';
+          } else h += '<div class="success">All ' + t.flights + ' flights flown. Wait for the instructor to reveal the demand.</div>';
+          if (mine.length) h += '<h2>Your flights</h2>' + flightsTable(mine, t, null);
         }
         h += '<details class="panel" open><summary>' + boardTitle(ch) + '</summary>' + boardTable(ch, ch.phase) + '</details>';
       }
       if (ch.phase === "open" && S.projector) h += '<h2>Leaderboard</h2>' + boardTable(ch, ch.phase);
       if (ch.phase === "closed") {
-        h += '<div class="info">Round 1 is closed. The demand is revealed next.</div>';
-        if (!S.projector && S.group) h += '<h2>Your flights</h2>' + flightsTable(ch.mine || [], t, null);
+        h += '<div class="info">The challenge is closed. The demand is revealed next.</div>';
+        if (!S.projector && S.group) h += '<h2>Your flights</h2>' + flightsTable(mine, t, null);
         h += '<h2>' + boardTitle(ch) + '</h2>' + boardTable(ch, ch.phase);
       }
       if (ch.phase === "revealed" || ch.phase === "round2") h += revealSection(ch);
     }
     el.innerHTML = h;
-    if (ch && ch.told && !S.projector) bindChallenge(ch);
-    if ($("fare") && typed) { $("fare").value = typed.v; if (typed.f) $("fare").focus(); }
+    bindChallenge(ch);
+    if ($("seats") && typed) { $("seats").value = typed.v; if (typed.f) $("seats").focus(); }
   }
   function bindChallenge(ch) {
-    var t = ch.told, d = demandOf(ch);
-    if ($("fare-form")) $("fare-form").onsubmit = function (ev) {
+    var how = $("how");
+    if (how) how.querySelector("summary").addEventListener("click", function () { S.howOpen = !how.open; });   // the click comes before the fold
+    if ($("fly-form")) $("fly-form").onsubmit = function (ev) {
       ev.preventDefault();
-      var v = parseFloat($("fare").value);
-      if (isNaN(v) || v < 0) { S.flyError = "Type the fare in pounds."; renderChallenge(); return; }
-      fly(Math.round(v));
+      var v = Number($("seats").value), top = ch.told.seats;
+      if ($("seats").value === "" || isNaN(v) || v !== Math.round(v) || v < 1 || v > top) { S.flyError = "Type the seats to sell: a whole number from 1 to " + fmt(top) + "."; renderChallenge(); return; }
+      fly(v);
     };
-    if ($("challenge-pin-wrap")) {
-      var suggestion = "Round 1: my flights", qid = "c1";
-      pinPanel("challenge", suggestion, qid);
-      $("challenge-pin").onclick = function () {
-        var mine = ch.mine || [], bestF = null, total = 0; mine.forEach(function (f) { total += f.gain; if (!bestF || f.profit > bestF.profit) bestF = f; });
-        var best = C.bestFare(d), sq = C.statusQuoProfit(t);
-        var measures = { "Route": t.label, "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
-                         "Score: profit over the trial fare": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
-        var state = { page: "challenge", round: 1, flights: mine, told: t, demand: ch.demand };
-        doPin("challenge", suggestion, measures, state); pinPanel("challenge", suggestion, qid);
-      };
-    }
   }
 
   // ---- Mocha --------------------------------------------------------------------------------------------------------
@@ -570,16 +451,17 @@
   function buildMocha() {
     var el = $("tab-mocha");
     if (!datasets().length) { el.innerHTML = '<div class="info">No bids are built into this copy of the page.</div>'; return; }
-    el.innerHTML = '<p class="caption" style="margin:0 0 6px">Price ' + esc(DATA.item || "Mocha") + ' on real data: each bid is the most one student said they would pay in Session 1. At a price, everyone whose bid is at least the price buys.</p>' +
-      '<div class="cols-5-7"><div>' +
-      '<details class="panel" open><summary>Data and cost</summary>' +
+    // One panel: the price first, then the data it is tried on; the bids to ignore are folded away until used.
+    el.innerHTML = '<p class="caption" style="margin:0 0 6px">Each bid is the most one student said they would pay for ' + esc(DATA.item || "Mocha") + ' in Session 1. At a price, everyone whose bid is at least the price buys.</p>' +
+      '<div class="cols-5-7"><div><div class="panel">' +
+      '<label for="mo-price" style="margin-top:0">Your price (£)</label><input type="number" id="mo-price" step="1" min="0" style="font-size:1.3rem">' +
       '<label for="mo-data">Bids</label><select id="mo-data"></select>' +
       '<label for="mo-cost">Cost per ' + esc(DATA.item || "Mocha") + ' (£)</label><input type="number" id="mo-cost" step="1" min="0">' +
-      '<label style="margin-top:10px">Bids to ignore</label><div class="radio"><label><input type="checkbox" id="mo-zero"> Bids of £0</label></div>' +
+      '<div class="radio" style="margin-top:10px"><label><input type="checkbox" id="mo-line"> Show the straight line fitted to the bids, and the price MR = MC gives on it</label></div>' +
+      '<details class="how" id="mo-ignore"' + (S.mocha.dropZero || S.mocha.above !== "" ? " open" : "") + '><summary>Ignore some bids</summary>' +
+      '<div class="radio"><label><input type="checkbox" id="mo-zero"> Bids of £0</label></div>' +
       '<div class="row"><label for="mo-above" style="margin:0">Bids above £</label><input type="number" id="mo-above" step="1" min="0" placeholder="none" style="width:110px"></div></details>' +
-      '<details class="panel" open><summary>Your price</summary><label for="mo-price">Price (£)</label><input type="number" id="mo-price" step="1" min="0" style="font-size:1.3rem">' +
-      '<div class="radio" style="margin-top:8px"><label><input type="checkbox" id="mo-line"> Show the straight line fitted to the bids (and the price MR = MC gives on it)</label></div></details>' +
-      '</div><div id="mo-results"></div></div><div id="mocha-pin-wrap"></div>';
+      '</div></div><div id="mo-results"></div></div>';
     $("mo-data").onchange = function () { S.mocha.dataset = this.value; S.mocha.price = ""; renderMocha(); };
     ["mo-cost", "mo-above", "mo-price"].forEach(function (id) { $(id).addEventListener("change", readMocha); });
     $("mo-zero").addEventListener("change", readMocha); $("mo-line").addEventListener("change", readMocha);
@@ -587,7 +469,6 @@
       var t = ev.target;
       if (t.getAttribute && t.getAttribute("data-inner")) { S.mocha.inner = t.getAttribute("data-inner"); renderMocha(); }
       else if (t.id === "mo-fourth") { S.mocha.fourth = t.checked; renderMocha(); }
-      else if (t.id === "mocha-pin") pinMocha();
     });
   }
   function readMocha() {
@@ -649,7 +530,6 @@
             metric("Cost", r.mc * r.buyers, { money: true }) + metric("Profit", r.profit, { money: true, sub: r.best.profit > 0 ? Math.round(100 * r.profit / r.best.profit) + "% of the best" : "" }) + '</div>';
     h += '<div class="tabs inner"><button type="button" data-inner="pricing" class="' + (m.inner === "pricing" ? "active" : "") + '">Pricing</button><button type="button" data-inner="bids" class="' + (m.inner === "bids" ? "active" : "") + '">The bids</button>' +
          (DATA.streams.length > 1 ? '<button type="button" data-inner="segments" class="' + (m.inner === "segments" ? "active" : "") + '">Three streams</button>' : "") + '</div>';
-    var segInfo = null;
     if (m.inner === "pricing") {
       h += demandChart(r) + '<p class="reveal-line">Best price on these bids: <b>' + money(r.best.price) + '</b>, ' + r.best.buyers + ' buyers, profit <b>' + money(r.best.profit) + '</b>. With every bid known there is nothing to estimate: try every price and keep the best.</p>';
       if (m.showLine) {
@@ -664,63 +544,10 @@
       h += histChart(r) + '<p class="caption">' + n + ' bids counted (' + esc(cleaningText(m)) + '); median ' + money(C.median(r.bids)) + ', highest ' + money(sorted[0]) + ', ' + sorted.filter(function (v) { return v === sorted[0]; }).length + ' at the highest.</p>' +
            '<details class="panel"><summary>The demand schedule</summary><div class="labbook-wrap"><table class="grid"><thead><tr><th class="num">Price</th><th class="num">Buyers</th><th class="num">Revenue</th><th class="num">Profit at cost ' + money(r.mc) + '</th></tr></thead><tbody>' +
            C.schedule(r.bids).slice().reverse().map(function (pq) { return '<tr><td class="num">' + money(pq[0]) + '</td><td class="num">' + pq[1] + '</td><td class="num">' + money(pq[0] * pq[1]) + '</td><td class="num">' + money((pq[0] - r.mc) * pq[1]) + '</td></tr>'; }).join("") + '</tbody></table></div></details>';
-    } else { segInfo = segmentsPanel(r); h += segInfo.html; }
+    } else h += segmentsPanel(r).html;
     el.innerHTML = h;
-    S.mochaLast = { r: r, seg: segInfo };
-    pinPanel("mocha", r.ds.label.replace(/ \(.*$/, "") + ": price " + money(r.price), "m1");
     saveLocal();
   }
-  function pinMocha() {
-    var L = S.mochaLast; if (!L) return;
-    var r = L.r, m = S.mocha, suggestion = $("mocha-pin-label").placeholder;
-    var measures = { "Bids": r.ds.label, "Cost per unit": r.mc, "Bids ignored": cleaningText(m), "Bids counted": r.bids.length, "Price": r.price, "Buyers": r.buyers, "Revenue": r.price * r.buyers, "Profit": r.profit,
-                     "Best price on these bids": r.best.price, "Buyers at the best price": r.best.buyers, "Profit at the best price": r.best.profit };
-    if (m.showLine && r.line && r.lp) { measures["Fitted line"] = "P = " + fmt(r.line.a, 2) + " − " + fmt(r.line.b, 3) + " Q"; measures["The line's price"] = C.round(r.lp.price, 2); measures["Buyers at the line's price"] = r.lp.buyers; measures["Profit at the line's price"] = C.round(r.lp.profit, 2); }
-    if (L.seg) { measures["Markets"] = L.seg.names.join("; "); measures["One price for all"] = L.seg.seg.uniform.price; measures["Profit at one price"] = L.seg.seg.uniform.profit; measures["Profit with a price per market"] = L.seg.seg.total; measures["Gain from separate prices"] = L.seg.seg.gain; }
-    doPin("mocha", suggestion, measures, { page: "mocha", dataset: r.ds.key, cost: r.mc, dropZero: !!m.dropZero, above: m.above, price: r.price, showLine: !!m.showLine, inner: m.inner, fourth: !!m.fourth });
-    pinPanel("mocha", suggestion, "m1");
-  }
-
-  // ---- Lab book --------------------------------------------------------------------------------------------------
-  var saveAnswers = debounce(function () {
-    var changed = {};
-    Object.keys(S.answersDirty).forEach(function (k) { changed[k] = S.answers[k] || ""; });
-    S.answersDirty = {};
-    if (Object.keys(changed).length) enqueue(record("Assignment answers", "", { answers: changed, labbook: { id: "answers", kind: "answers" } }));
-  }, 1200);
-  function renderBook() {
-    var el = $("tab-book"); if (!el) return;
-    var who = S.group ? groupKey() + (groupNames() ? " · " + groupNames() : "") : (S.projector ? "the projector" : "");
-    var h = '<p><b>Lab book' + (who ? " of " + esc(who) : "") + '</b></p>' +
-            '<p class="caption">One section per question: what you pinned for it and your answer. Pin from the Challenge or Mocha tab, choosing the section as you pin; the ✕ on a column removes it. Everything is saved as you go.</p>';
-    if (!canPin()) h += '<div class="info">Enter your group number at the top of the page to pin and write answers.</div>';
-    PQUESTIONS.forEach(function (q) {
-      var mine = S.book.filter(function (e) { return psectionOf(e) === q.id; }), answered = (S.answers[q.id] || "").trim().length > 0;
-      h += '<section class="qsection" data-q="' + q.id + '"><h2>' + esc(q.title) + ' <span class="badge">' + mine.length + ' pinned' + (answered ? " · answered" : "") + '</span></h2>' +
-           '<details class="prompt"' + (mine.length || answered ? "" : " open") + '><summary>' + (q.id === "own" ? "About this section" : "The question") + '</summary><p>' + esc(q.prompt) + '</p></details>';
-      h += mine.length ? C.bookTable(mine, { removable: true }) : '<p class="caption">Nothing pinned here yet.</p>';
-      if (!S.projector) h += '<label for="ans-' + q.id + '">' + (q.id === "own" ? "What you learned from your own experiments" : "Your answer") + '</label>' +
-           '<textarea id="ans-' + q.id + '" data-q="' + q.id + '" style="min-height:120px" placeholder="What you see in the table above, then the reasoning."' + (S.group ? "" : " disabled") + '>' + esc(S.answers[q.id] || "") + '</textarea>';
-      h += '</section>';
-    });
-    if (!S.projector) h += '<label for="book-notes">Notes for the debrief</label><textarea id="book-notes" placeholder="What surprised you? What would you ask the class? (Click outside the box to save.)"' + (S.group ? "" : " disabled") + '>' + esc(S.notes) + '</textarea>';
-    h += '<div id="book-status" class="status"></div>';
-    el.innerHTML = h;
-    el.querySelectorAll(".remove-entry").forEach(function (btn) {
-      var id = btn.getAttribute("data-id"), e = S.book.filter(function (x) { return x.id === id; })[0];
-      btn.onclick = function () {
-        if (!e || !window.confirm("Remove '" + e.label + "' from your lab book?")) return;
-        S.book = S.book.filter(function (x) { return x.id !== id; }); saveLocal(); enqueue(entryRecord(e, true)); renderBook();
-      };
-    });
-    el.querySelectorAll("textarea[data-q]").forEach(function (ta) {
-      var upd = function () { var k = ta.getAttribute("data-q"); if (S.answers[k] === ta.value) return; S.answers[k] = ta.value; S.answersDirty[k] = true; saveLocal(); saveAnswers(); };
-      ta.addEventListener("input", upd); ta.addEventListener("change", upd);
-    });
-    if ($("book-notes")) $("book-notes").addEventListener("change", function () { S.notes = $("book-notes").value; saveLocal(); enqueue(record("Notes for the debrief", S.notes, { labbook: { id: "notes", kind: "notes" } })); renderStatus(); });
-    renderStatus();
-  }
-
   // ---- init -----------------------------------------------------------------------------------------------------
   function init() {
     var qs = new URLSearchParams(location.search);
@@ -735,12 +562,12 @@
     if (last && last.number) S.group = last;
     mergeStored(loadStored(storeKey()));
     buildMocha();
-    renderGroup(); renderChallenge(); renderMocha(); renderBook();
+    try { localStorage.removeItem("pricinglab:queue"); } catch (e) {}      // what an older page still had to send to the lab book
+    renderGroup(); renderChallenge(); renderMocha();
     Array.prototype.forEach.call($("main-tabs").querySelectorAll("button"), function (b) { b.onclick = function () { showTab(b.getAttribute("data-tab")); }; });
     showTab(qs.get("tab") || S.tab || "challenge");
-    renderStatus(); flush();
-    if (S.group && !S.projector) syncFromRecord(true); else loadChallenge(true);
-    setInterval(flush, 30000);
+    renderStatus();
+    loadChallenge(true);
   }
   document.addEventListener("DOMContentLoaded", init);
   window.PricingLabApp = { state: S, render: renderChallenge };

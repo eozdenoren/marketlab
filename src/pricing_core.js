@@ -1,9 +1,10 @@
-/* Pricing Laboratory: the arithmetic, the SVG chart and the lab-book table, shared by the class page
-   (pricing.js) and the instructor page (pricing_instructor.js). Plain script, no dependencies.
+/* Pricing Laboratory: the arithmetic and the SVG chart, shared by the class page (pricing.js) and the instructor
+   page (pricing_instructor.js). Plain script, no dependencies.
 
-   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights' fare p0 carrying q0 passengers on average,
-   and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). The same arithmetic as the
-   script's (backend/Pricing.gs): passengers are rounded to the whole and capped by the seats.
+   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights (q0 seats sold at a fare of
+   p0) and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). A team chooses how many seats to
+   sell; the fare is then the highest at which that many people buy, (a - seats) / b. The same arithmetic as the
+   script's (backend/Pricing.gs): the fare to the penny, the profit to the pound.
    Mocha: a list of bids (each the most one student would pay); at price p the buyers are the bids >= p. */
 var PricingCore = (function () {
   "use strict";
@@ -19,65 +20,63 @@ var PricingCore = (function () {
   function round(x, d) { var m = Math.pow(10, d || 0); return Math.round(x * m) / m; }
 
   // ---- the challenge ---------------------------------------------------------------------------------------
+  // demand d = {a, b, mc, seats}: Q = a - b P, so q seats sell at the fare (a - q) / b
   function intercept(s) { return s.q0 + s.b * s.p0; }
-  // demand d = {a, b, mc, seats, scale}: Q = scale (a - b P), capped by the seats
-  function passengersAt(d, fare) { return Math.max(0, Math.min(d.seats, Math.round((d.scale || 1) * (d.a - d.b * fare)))); }
-  function profitAt(d, fare) { return (fare - d.mc) * passengersAt(d, fare); }
   function chokePrice(d) { return d.a / d.b; }
-  // The best fare: MR = MC gives Q = scale (a - b mc) / 2; if that exceeds the seats, sell every seat at the fare
-  // that fills the plane. Fares in whole pounds, so the exact optimum is checked against its neighbours.
-  function bestFare(d) {
-    var scale = d.scale || 1, qStar = scale * (d.a - d.b * d.mc) / 2, capped = qStar > d.seats;
-    var q = capped ? d.seats : qStar, fare = (d.a - q / scale) / d.b, best = null;
-    [Math.floor(fare), Math.ceil(fare)].forEach(function (f) {
-      var pr = profitAt(d, f);
-      if (!best || pr > best.profit + 1e-9) best = { fare: f, passengers: passengersAt(d, f), profit: pr };
-    });
-    best.capped = capped; best.exactFare = fare; best.exactQ = q;
+  function fareFor(d, q) { return (d.a - q) / d.b; }
+  function profitSelling(d, q) { return Math.round((fareFor(d, q) - d.mc) * q); }
+  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }                      // what a trial flight made
+  // The most seats that can be sold: the plane's, or everyone who would fly for nothing.
+  function maxSeats(d) { return Math.max(1, Math.min(d.seats, Math.floor(d.a))); }
+  // The best number of seats: MR = MC gives (a - b mc) / 2; with fewer seats than that, a full plane. Whole seats,
+  // so every count is tried.
+  function bestSeats(d) {
+    var top = maxSeats(d), best = null;
+    for (var q = 1; q <= top; q++) { var pr = profitSelling(d, q); if (!best || pr > best.profit) best = { seats: q, profit: pr }; }
+    best.fare = fareFor(d, best.seats); best.capped = (d.a - d.b * d.mc) / 2 > d.seats;
     return best;
   }
-  function profitCurve(d, step, from) {
-    var top = Math.ceil(chokePrice(d)), pts = [], start = Math.max(0, Math.floor(from || 0));
-    step = step || Math.max(1, Math.ceil((top - start) / 1500));   // whole pounds up to a span of 1,500
-    for (var f = start; f <= top; f += step) pts.push([f, profitAt(d, f)]);
-    if (pts[pts.length - 1][0] !== top) pts.push([top, profitAt(d, top)]);
-    return pts;
-  }
-  // The fare below which the plane is full (demand at or above the capacity).
-  function fillFare(d) { var scale = d.scale || 1; return Math.ceil((scale * d.a - d.seats) / (scale * d.b)); }
-  // The window of fares worth looking at: from a little below the fare that fills the plane (below it every seat is
-  // sold and profit is a straight line) to the same distance beyond the best fare, where profit is back at the
-  // fill-the-plane level; profits from that level up, not from zero, so the hump fills the chart.
-  function focusWindow(d) {
-    var best = bestFare(d), fill = fillFare(d), choke = chokePrice(d), left = fill > 0 ? fill : d.mc;
-    var span = best.fare - left; if (span < 20) span = Math.max(20, 0.3 * best.fare);
-    var x0 = Math.max(0, Math.floor(left - 0.05 * span)), x1 = Math.min(Math.ceil(choke), Math.ceil(best.fare + 1.05 * span));
-    var curve = profitCurve(d, 1, x0).filter(function (p) { return p[0] <= x1; });
-    var ys = curve.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys), r = Math.max(1, hi - lo);
-    return { x0: x0, x1: x1, y0: lo - 0.08 * r, y1: hi + 0.06 * r, fill: fill, curve: curve, best: best };
-  }
-  // The profit chart in that window: the curve, the trial fare's profit as a dashed line and a hollow dot, the best fare,
-  // the fill-the-plane line, and the flights given as dots ({fare, profit, title, name}); flights outside the window
-  // are listed under the chart instead of stretching it.
+  function fullPlane(d) { var q = maxSeats(d); return { seats: q, fare: fareFor(d, q), profit: profitSelling(d, q) }; }
+  // A fare as text: whole pounds, or to the penny when it is not whole.
+  function fareText(x) { return money(x, Math.abs(x - Math.round(x)) < 0.005 ? 0 : 2); }
+  // A number with up to two decimals and no trailing zeros (the slope of the inverse demand: 2, 2.5, 3.33).
+  function plain(x) { return Math.abs(x - Math.round(x)) < 0.005 ? fmt(x) : (Math.abs(x * 10 - Math.round(x * 10)) < 0.05 ? fmt(x, 1) : fmt(x, 2)); }
+  // The demand as the slides write it: fare = choke - slope x Q.
+  function inverseText(d) { return fmt(Math.round(chokePrice(d))) + " − " + plain(1 / d.b) + " × Q"; }
+  // The profit chart: profit per flight against the seats sold, in a window centred on the best number of seats and
+  // ending at the full plane (when the best is a full plane, the last 60% of the seats). The trial flights are a
+  // hollow dot and a dashed line, the best a green dot, and the flights given are dots ({seats, profit, title,
+  // name}); flights left of the window are listed under the chart instead of stretching it.
   function profitChartHtml(d, old, flights, opts) {
     opts = opts || {};
-    var w = focusWindow(d), markers = [];
-    if (old) markers.push({ x: old.fare, y: old.profit, color: COLORS.grey, hollow: true, name: opts.oldName || "The trial fare", title: (opts.oldName || "The trial fare") + ": " + money(old.fare) + ", profit " + money(old.profit) });
-    markers.push({ x: w.best.fare, y: w.best.profit, color: COLORS.green, name: "Best fare " + money(w.best.fare), label: money(w.best.fare), title: "Best fare " + money(w.best.fare) + ": " + fmt(w.best.passengers) + " passengers, profit " + money(w.best.profit) });
-    var off = [];
+    var best = bestSeats(d), top = maxSeats(d), x0 = Math.max(0, best.seats < top ? 2 * best.seats - top : Math.round(0.4 * top));
+    if (old && old.seats < x0) x0 = Math.max(0, old.seats - 10);
+    var pts = [], lo = Infinity, hi = -Infinity;
+    for (var q = Math.max(1, x0); q <= top; q++) { var pr = profitSelling(d, q); pts.push([q, pr]); lo = Math.min(lo, pr); hi = Math.max(hi, pr); }
+    var r = Math.max(1, hi - lo), pad = Math.max(1, Math.round(0.03 * (top - x0))), markers = [], off = [];
+    if (old) markers.push({ x: old.seats, y: old.profit, color: COLORS.grey, hollow: true, name: "The trial flights", title: "The trial flights: " + fmt(old.seats) + " seats, profit " + money(old.profit) });
+    markers.push({ x: best.seats, y: best.profit, color: COLORS.green, r: 8, name: "Best: " + fmt(best.seats) + " seats", label: fmt(best.seats) + " seats", title: "Best: " + fmt(best.seats) + " seats at " + fareText(best.fare) + ", profit " + money(best.profit) });
     (flights || []).forEach(function (f) {
-      if (f.fare < w.x0 || f.fare > w.x1) { off.push(f); return; }
-      markers.push({ x: f.fare, y: f.profit, color: COLORS.red, r: opts.r, name: f.name || opts.flightName || "Flights", title: f.title || "" });
+      if (f.seats < x0) { off.push(f); return; }
+      markers.push({ x: f.seats, y: f.profit, color: COLORS.red, r: opts.r, name: f.name || "Flights", title: f.title || "" });
     });
-    var html = chart({ title: "Profit against the fare", h: opts.h, x: { min: w.x0, max: w.x1, label: "Fare (£)" }, y: { min: w.y0, max: w.y1, label: "Profit per flight (£)" },
-                       lines: [{ pts: w.curve, color: COLORS.blue, width: 2.5, name: "Profit at each fare" }],
-                       hlines: old ? [{ y: old.profit, label: (opts.oldName || "the trial fare") + "'s profit", color: COLORS.grey }] : [],
-                       vlines: w.fill > w.x0 ? [{ x: w.fill, label: "plane full below " + money(w.fill), color: COLORS.orange }] : [], markers: markers });
-    if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || money(f.fare)) + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
+    var html = chart({ title: "Profit against the seats sold", h: opts.h, x: { min: x0, max: top + pad, label: "Seats sold" }, y: { min: lo - 0.08 * r, max: hi + 0.08 * r, label: "Profit per flight (£)" },
+                       lines: [{ pts: pts, color: COLORS.blue, width: 2.5, name: "Profit at each number of seats" }],
+                       hlines: old ? [{ y: old.profit, label: "a trial flight's profit", color: COLORS.grey }] : [],
+                       vlines: top >= d.seats ? [{ x: top, label: "plane full", color: COLORS.orange, left: true }] : [], markers: markers });
+    if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || fmt(f.seats) + " seats") + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
     return html;
   }
-  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }
-  // The line through the trial flights' average and one test flight: the group's own estimate of the demand.
+  // The demand line with the trial flights and the best point on it.
+  function demandChartHtml(t, d, h) {
+    var choke = chokePrice(d), best = bestSeats(d);
+    return chart({ title: "The demand", h: h, x: { max: Math.max(d.a, t.seats) * 1.05, label: "Seats sold" }, y: { max: choke * 1.05, label: "Fare (£)" },
+                   lines: [{ pts: [[0, choke], [d.a, 0]], color: COLORS.red, width: 2.5, name: "Demand: fare = " + inverseText(d) }],
+                   hlines: [{ y: t.mc, label: "cost per passenger", color: COLORS.grey }], vlines: [{ x: t.seats, label: "plane full", color: COLORS.orange }],
+                   markers: [{ x: t.q0, y: t.p0, color: COLORS.grey, hollow: true, name: "The trial flights", label: fmt(t.q0) + " at " + fareText(t.p0) },
+                             { x: best.seats, y: best.fare, color: COLORS.green, name: "Best", label: fmt(best.seats) + " at " + fareText(best.fare) }] });
+  }
+  // The line through the trial flights and one test flight: the group's own estimate of the demand.
   function lineThrough(p1, q1, p2, q2) {
     if (Math.abs(p2 - p1) < 1e-9) return null;
     var b = (q1 - q2) / (p2 - p1);
@@ -202,7 +201,7 @@ var PricingCore = (function () {
     (spec.vlines || []).forEach(function (l) {
       if (l.x < xmin || l.x > xmax) return;
       body.push('<line x1="' + X(l.x) + '" x2="' + X(l.x) + '" y1="' + mt + '" y2="' + (H - mb) + '" stroke="' + (l.color || COLORS.text) + '" stroke-width="1.3"' + dashAttr("dashdot") + '/>');
-      if (l.label) body.push('<text x="' + (X(l.x) + 4) + '" y="' + (mt + 12) + '" class="tick">' + esc(l.label) + '</text>');
+      if (l.label) body.push('<text x="' + (X(l.x) + (l.left ? -4 : 4)) + '" y="' + (mt + 12) + '"' + (l.left ? ' text-anchor="end"' : "") + ' class="tick">' + esc(l.label) + '</text>');
     });
     (spec.markers || []).forEach(function (m) {
       if (m.x < xmin || m.x > xmax || m.y < ymin || m.y > ymax) return;
@@ -221,30 +220,11 @@ var PricingCore = (function () {
     return svg + lg;
   }
 
-  // ---- the lab-book table: rows are the measures in order of first appearance, columns the pinned entries -----
-  function bookTable(entries, opts) {
-    opts = opts || {};
-    var rows = [], seen = {};
-    entries.forEach(function (e) { Object.keys(e.measures || {}).forEach(function (k) { if (!seen[k]) { seen[k] = true; rows.push(k); } }); });
-    var labels = {}, h = '<div class="labbook-wrap"><table class="grid labbook"><thead><tr><th></th>' + entries.map(function (e) {
-      var label = (e.label || "Experiment").trim(), n = (labels[label] || 0) + 1; labels[label] = n; if (n > 1) label += " (" + n + ")";
-      var mark = opts.mark && opts.mark[e.id] ? opts.mark[e.id] + " " : "";
-      var btn = opts.removable ? '<button type="button" class="small remove-entry" data-id="' + esc(e.id) + '" title="Remove this column from the lab book" aria-label="Remove ' + esc(label) + '">✕</button>' : "";
-      return '<th>' + btn + mark + esc(label) + '</th>';
-    }).join("") + '</tr></thead><tbody>';
-    rows.forEach(function (m) {
-      h += '<tr><td>' + esc(m) + '</td>' + entries.map(function (e) {
-        var v = (e.measures || {})[m];
-        return '<td class="num">' + (v == null ? "–" : (typeof v === "number" ? fmt(v, Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 2) : esc(v))) + '</td>';
-      }).join("") + '</tr>';
-    });
-    return h + '</tbody></table></div>';
-  }
-
   return { esc: esc, fmt: fmt, money: money, round: round, COLORS: COLORS,
-           intercept: intercept, passengersAt: passengersAt, profitAt: profitAt, chokePrice: chokePrice, bestFare: bestFare, profitCurve: profitCurve, fillFare: fillFare, focusWindow: focusWindow, profitChartHtml: profitChartHtml,
-           statusQuoProfit: statusQuoProfit, lineThrough: lineThrough,
+           intercept: intercept, chokePrice: chokePrice, fareFor: fareFor, profitSelling: profitSelling, statusQuoProfit: statusQuoProfit, maxSeats: maxSeats,
+           bestSeats: bestSeats, fullPlane: fullPlane, fareText: fareText, plain: plain, inverseText: inverseText,
+           profitChartHtml: profitChartHtml, demandChartHtml: demandChartHtml, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
-           segmentation: segmentation, histogram: histogram, median: median, chart: chart, bookTable: bookTable };
+           segmentation: segmentation, histogram: histogram, median: median, chart: chart };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;
