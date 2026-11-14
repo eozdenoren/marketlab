@@ -17,8 +17,7 @@
     return null;
   }
   function classLink(code) { return location.origin + location.pathname + "?class=" + encodeURIComponent(code); }
-  var PHASE_LABEL = { setup: "Not open yet", open: "Round 1 open", closed: "Round 1 closed", revealed: "Demand revealed", round2: "Round 2 open" };
-  var SCENARIOS = [["up", "Demand rises 40%", 1.4], ["double", "Demand doubles", 2]];
+  var PHASE_LABEL = { setup: "Not open yet", open: "Round 1 open", closed: "Round 1 closed", revealed: "Demand revealed", round2: "Demand revealed" };   // "round2" is a phase older pages could set: it now reads as revealed
 
   // ---- utilities -----------------------------------------------------------------------------------------------
   function $(id) { return document.getElementById(id); }
@@ -37,7 +36,6 @@
   // ---- state ----------------------------------------------------------------------------------------------------
   var S = { classCode: "", rawClass: "", classInvalid: false, projector: false, group: null, editingGroup: false, book: [], notes: "", answers: {}, answersDirty: {},
             tab: "challenge", challenge: null, challengeJson: "", flying: false, flyError: "", lastQ: {}, pinMsg: {}, lastSaved: null, lastError: "",
-            round2: { scenario: "up", trials: { up: [], "double": [] }, fare: { up: "", "double": "" } },
             mocha: { dataset: "", cost: DATA.cost || 15, price: "", dropZero: false, above: "", showLine: false, inner: "pricing", fourth: false } };
   function groupKey() { return S.group ? "Group " + S.group.number : (S.projector ? "Projector" : "_"); }
   function canPin() { return !!(S.group || S.projector); }
@@ -46,7 +44,7 @@
   function storeKey() { return "pricinglab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
     try {
-      localStorage.setItem(storeKey(), JSON.stringify({ book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab, lastQ: S.lastQ, round2: S.round2, mocha: S.mocha }));
+      localStorage.setItem(storeKey(), JSON.stringify({ book: S.book, notes: S.notes, answers: S.answers, group: S.group, tab: S.tab, lastQ: S.lastQ, mocha: S.mocha }));
       if (!S.projector) localStorage.setItem("pricinglab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) {}
   }
@@ -59,7 +57,6 @@
     Object.keys(d.answers || {}).forEach(function (k) { if (!S.answers[k]) S.answers[k] = d.answers[k]; });
     if (d.tab) S.tab = d.tab;
     if (d.lastQ && typeof d.lastQ === "object") S.lastQ = d.lastQ;
-    if (d.round2 && d.round2.trials) S.round2 = d.round2;
     if (d.mocha && typeof d.mocha === "object") Object.keys(d.mocha).forEach(function (k) { S.mocha[k] = d.mocha[k]; });
   }
 
@@ -489,23 +486,6 @@
            R.map(function (v) { return '<div class="route-card"><h3>' + esc(v.told.label) + '</h3>' + routeReveal(v) + '<h4>Leaderboard</h4>' + boardTable(v, ch.phase, true) + '</div>'; }).join("") + '</div>' + overallTable(ch);
     return h;
   }
-  function round2Section(ch) {
-    var t = ch.told, d = demandOf(ch), sc = SCENARIOS.filter(function (s) { return s[0] === S.round2.scenario; })[0] || SCENARIOS[0];
-    var dd = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: sc[2] }, trials = S.round2.trials[sc[0]] || [];
-    var h = '<h2>Round 2: the market changes</h2><p class="caption">Two scenarios on the demand you now know, with the same ' + fmt(t.seats) + ' seats and ' + money(t.mc) + ' per passenger. Test any fares you like (nothing is scored), then pin the fare you recommend and say why in the lab book.</p>' +
-      '<div class="scenarios">' + SCENARIOS.map(function (s) { return '<button type="button" data-scenario="' + s[0] + '" class="' + (s[0] === sc[0] ? "active" : "") + '">' + esc(s[1]) + '</button>'; }).join("") + '</div>' +
-      '<p>' + (sc[0] === "up" ? 'At every fare, <b>40% more</b> people want to fly than in round 1.' : 'At every fare, <b>twice as many</b> people want to fly as in round 1.') +
-      ' The plane still has ' + fmt(t.seats) + ' seats: nobody beyond that can be carried.</p>' +
-      '<form id="r2-form" class="fare-form"><div><label for="r2-fare">Fare to test (£)</label><input type="number" id="r2-fare" min="0" step="1" inputmode="numeric" value="' + esc(S.round2.fare[sc[0]] || "") + '"></div><div><button type="submit" class="primary" style="width:100%">Test this fare</button></div></form>';
-    if (trials.length) {
-      h += '<table class="grid flights" style="margin-top:10px"><thead><tr><th class="num">Fare</th><th class="num">Want to fly</th><th class="num">Carried</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>' +
-        trials.map(function (r) { return '<tr><td class="num">' + money(r.fare) + '</td><td class="num">' + fmt(r.want) + '</td><td class="num">' + fmt(r.carried) + (r.carried >= t.seats ? ' <span class="caption">(full)</span>' : "") + '</td><td class="num">' + money(r.fare * r.carried) + '</td><td class="num">' + money(t.mc * r.carried) + '</td><td class="num">' + money(r.profit) + '</td></tr>'; }).join("") +
-        '</tbody></table><div class="row" style="margin-top:6px"><button type="button" class="small" id="r2-clear">Clear these tests</button></div>';
-    }
-    h += '<div id="challenge-pin-wrap"></div>';
-    void dd;
-    return h;
-  }
   function renderChallenge() {
     var el = $("tab-challenge"), ch = S.challenge, fareEl = $("fare"), typed = fareEl ? { v: fareEl.value, f: document.activeElement === fareEl } : null;
     var h = "";
@@ -537,10 +517,7 @@
         if (!S.projector && S.group) h += '<h2>Your flights</h2>' + flightsTable(ch.mine || [], t, null);
         h += '<h2>' + boardTitle(ch) + '</h2>' + boardTable(ch, ch.phase);
       }
-      if (ch.phase === "revealed" || ch.phase === "round2") {
-        if (ch.phase === "round2" && !S.projector) h += round2Section(ch) + '<details class="panel"><summary>Round 1: the reveal and the leaderboard</summary>' + revealSection(ch).replace('<div id="challenge-pin-wrap"></div>', "") + '</details>';
-        else h += revealSection(ch);
-      }
+      if (ch.phase === "revealed" || ch.phase === "round2") h += revealSection(ch);
     }
     el.innerHTML = h;
     if (ch && ch.told && !S.projector) bindChallenge(ch);
@@ -554,34 +531,15 @@
       if (isNaN(v) || v < 0) { S.flyError = "Type the fare in pounds."; renderChallenge(); return; }
       fly(Math.round(v));
     };
-    Array.prototype.forEach.call(document.querySelectorAll("#tab-challenge .scenarios button"), function (b) { b.onclick = function () { S.round2.scenario = b.getAttribute("data-scenario"); saveLocal(); renderChallenge(); }; });
-    if ($("r2-form")) $("r2-form").onsubmit = function (ev) {
-      ev.preventDefault();
-      var sc = SCENARIOS.filter(function (s) { return s[0] === S.round2.scenario; })[0], v = Math.round(parseFloat($("r2-fare").value));
-      if (isNaN(v) || v < 0) return;
-      var dd = { a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: sc[2] }, want = Math.max(0, Math.round(sc[2] * (d.a - d.b * v))), carried = C.passengersAt(dd, v);
-      S.round2.trials[sc[0]].push({ fare: v, want: want, carried: carried, profit: (v - d.mc) * carried }); S.round2.fare[sc[0]] = String(v);
-      saveLocal(); renderChallenge();
-    };
-    if ($("r2-clear")) $("r2-clear").onclick = function () { S.round2.trials[S.round2.scenario] = []; saveLocal(); renderChallenge(); };
     if ($("challenge-pin-wrap")) {
-      var sc2 = SCENARIOS.filter(function (s) { return s[0] === S.round2.scenario; })[0], isR2 = ch.phase === "round2", qid = isR2 ? (sc2[0] === "up" ? "c2" : "c3") : "c1";
-      var trials = S.round2.trials[sc2[0]] || [], last = trials[trials.length - 1];
-      var suggestion = isR2 ? (last ? sc2[1] + ": fare " + money(last.fare) : sc2[1]) : "Round 1: my flights";
+      var suggestion = "Round 1: my flights", qid = "c1";
       pinPanel("challenge", suggestion, qid);
       $("challenge-pin").onclick = function () {
-        var measures, state;
-        if (isR2) {
-          if (!last) { S.pinMsg.challenge = "Test a fare first; the pin records the last fare you tested."; pinPanel("challenge", suggestion, qid); return; }
-          measures = { "Route": t.label, "Scenario": sc2[1], "Fare": last.fare, "Want to fly": last.want, "Carried": last.carried, "Plane full": last.carried >= t.seats ? "yes" : "no", "Revenue": last.fare * last.carried, "Cost": t.mc * last.carried, "Profit": last.profit };
-          state = { page: "challenge", round: 2, scenario: sc2[0], fare: last.fare, told: t, demand: ch.demand };
-        } else {
-          var mine = ch.mine || [], bestF = null, total = 0; mine.forEach(function (f) { total += f.gain; if (!bestF || f.profit > bestF.profit) bestF = f; });
-          var best = C.bestFare(d), sq = C.statusQuoProfit(t);
-          measures = { "Route": t.label, "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
-                       "Score: profit over the trial fare": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
-          state = { page: "challenge", round: 1, flights: mine, told: t, demand: ch.demand };
-        }
+        var mine = ch.mine || [], bestF = null, total = 0; mine.forEach(function (f) { total += f.gain; if (!bestF || f.profit > bestF.profit) bestF = f; });
+        var best = C.bestFare(d), sq = C.statusQuoProfit(t);
+        var measures = { "Route": t.label, "Scenario": "Round 1", "Flights flown": mine.length, "Best fare flown": bestF ? bestF.fare : null, "Passengers at it": bestF ? bestF.passengers : null, "Profit at it": bestF ? bestF.profit : null,
+                         "Score: profit over the trial fare": total, "Best possible fare": best.fare, "Profit at the best fare": best.profit, "Possible score": (best.profit - sq) * t.flights };
+        var state = { page: "challenge", round: 1, flights: mine, told: t, demand: ch.demand };
         doPin("challenge", suggestion, measures, state); pinPanel("challenge", suggestion, qid);
       };
     }

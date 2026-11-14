@@ -55,9 +55,9 @@ record is never touched while an assignment runs on it.
   for six flights against a demand it cannot see (linear, hidden in the
   script, different per class); every flight counts, scored against keeping
   last month's fare; live leaderboard on the projector. The instructor opens
-  round 1, closes it, reveals the demand (the true profit curve with every
-  fare flown on it) and opens round 2: demand up 40%, then demand doubled
-  against the seats, tested on the revealed demand and pinned.
+  round 1, closes it and reveals the demand (the true profit curve with every
+  fare flown on it). That is the end of the challenge: there is no round 2
+  (demand up 40% and demand doubled are a class question on the slides).
 * **Mocha.** Pricing on the class's own Session 1 bids (`src/mocha_data.js`,
   written by `tools/mocha_data.py` from the auction sheet, amounts only):
   demand from the bids, the best price by trying every price, the straight

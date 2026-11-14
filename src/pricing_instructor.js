@@ -11,9 +11,9 @@
   var CLASSES = (CONFIG.classes || []).map(function (c) { return String(c).trim().toUpperCase(); }).filter(Boolean);
   var CRED_KEY = "pricinglab:instructor:cred", CLASS_KEY = "pricinglab:instructor:class";
   var VIEWS = ["challenge", "overview", "question", "group", "setup"];
-  var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"], ["round2", "Round 2 open"]];
+  var PHASES = [["setup", "Not open yet"], ["open", "Round 1 open"], ["closed", "Round 1 closed"], ["revealed", "Demand revealed"]];
   // The instructor's steps, in order; each puts the class in the phase named.
-  var STEPS = [["open", "1. Open round 1"], ["closed", "2. Close round 1"], ["revealed", "3. Reveal the demand"], ["round2", "4. Open round 2"]];
+  var STEPS = [["open", "1. Open round 1"], ["closed", "2. Close round 1"], ["revealed", "3. Reveal the demand"]];
   // The routes and their hidden demands are not in this page (everyone can read its source): the script sends its
   // preset sets once the instructor has signed in. A class runs up to three routes at once; each group prices the
   // route its number gives it. This one route only stands in when the script sends no preset.
@@ -171,7 +171,7 @@
       '<div class="projector"><a class="button primary" id="projector-open" target="_blank" rel="noopener" href="' + esc(projectorLink(S.cls)) + '">Open the projector page</a><div class="caption">The leaderboard while round 1 runs, the reveal afterwards; no group, nothing sent</div></div></div>';
     $("class-pick").onchange = function () { S.cls = this.value; S.group = ""; S.form = null; S.msg = ""; try { localStorage.setItem(CLASS_KEY, S.cls); } catch (e) {} loadChallenge(function () { render(); }); };
   }
-  function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p; }
+  function phaseLabel(p) { for (var i = 0; i < PHASES.length; i++) if (PHASES[i][0] === p) return PHASES[i][1]; return p === "round2" ? "Demand revealed" : p; }   // "round2": a phase older pages could set
 
   // ---- the challenge ------------------------------------------------------------------------------------------------
   // The form holds, per route, the demand (a, b) and the trial fare; the script stores the trial fare's passengers
@@ -190,7 +190,7 @@
   function derived(s) {
     var d = { a: C.intercept(s), b: s.b, mc: s.mc, seats: s.seats }, best = C.bestFare(d), sq = C.statusQuoProfit(s);
     var fill = C.fillFare(d);
-    return { d: d, best: best, sq: sq, choke: C.chokePrice(d), fill: fill, fillProfit: C.profitAt(d, fill), up: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 1.4 }), dbl: C.bestFare({ a: d.a, b: d.b, mc: d.mc, seats: d.seats, scale: 2 }) };
+    return { d: d, best: best, sq: sq, choke: C.chokePrice(d), fill: fill, fillProfit: C.profitAt(d, fill) };
   }
   // One route of the form, checked: {ok, s (what the script stores), error}.
   function routeCheck(f) {
@@ -231,8 +231,7 @@
       h += '<div class="note">Told: ' + money(s.p0) + ' carried ' + fmt(s.q0) + ' on average; ' + fmt(s.seats - s.q0) + ' seats empty; ' + money(v.sq) + ' a flight. ' +
            'Hidden demand Q = ' + fmt(v.d.a) + ' − ' + s.b + ' P; nobody flies above ' + money(v.choke) + '. ' +
            '<b>Best fare ' + money(v.best.fare) + '</b>: ' + fmt(v.best.passengers) + ' passengers, ' + money(v.best.profit) + ', ' + money(v.best.profit - v.sq) + ' a flight over the trial fare (' + money((v.best.profit - v.sq) * fl) + ' over ' + fl + ' flights). ' +
-           'Filling the plane: ' + money(v.fill) + ', ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + '). ' +
-           'Round 2: +40% → ' + money(v.up.fare) + ' with ' + fmt(v.up.passengers) + (v.up.capped ? " (full)" : "") + '; doubled → ' + money(v.dbl.fare) + ' with ' + fmt(v.dbl.passengers) + (v.dbl.capped ? " (full)" : "") + '.</div>' +
+           'Filling the plane: ' + money(v.fill) + ', ' + money(v.fillProfit) + ' (' + money(v.fillProfit - v.sq) + ').</div>' +
            settingsCharts(s, v);
     } else h += '<div class="error">' + chk.error + '</div>';
     return h + '</div>';
@@ -289,7 +288,7 @@
          STEPS.map(function (p) { return '<button type="button" data-phase="' + p[0] + '"' + (ch && next === p[0] ? ' class="primary"' : "") + (!ch ? " disabled" : "") + '>' + esc(p[1]) + '</button>'; }).join("") +
          '<span style="margin-left:auto" class="row"><button type="button" class="small" data-phase="setup"' + (!ch ? " disabled" : "") + '>Back to not open</button>' +
          '<button type="button" id="reset-flights"' + (!ch ? " disabled" : "") + '>Delete the flights and start over</button></span></div>' +
-         '<p class="caption">' + (!ch ? 'Save the settings first. ' : '') + 'The steps in order: open round 1 when the groups have read the briefing (each group then flies its flights at its own pace); close it when time is up (flights not flown score nothing); reveal the demand, which sends it to every page and to the projector; open round 2 after the theory, for the two scenarios on the revealed demand. The button for the next step is highlighted.</p>' +
+         '<p class="caption">' + (!ch ? 'Save the settings first. ' : '') + 'The steps in order: open round 1 when the groups have read the briefing (each group then flies its flights at its own pace); close it when time is up (flights not flown score nothing); reveal the demand, which sends it to every page and to the projector. That is the end of the challenge. The button for the next step is highlighted.</p>' +
          (S.msg ? '<div class="' + (/Could not|refused|error/i.test(S.msg) ? "error" : "success") + '">' + esc(S.msg) + '</div>' : "") + '</div>';
     if (ch && flights.length) h += leaderboards(ch);
     el.innerHTML = h;

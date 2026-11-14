@@ -1,7 +1,7 @@
 """Real-browser check of the Pricing Laboratory: docs/pricing.html, its projector mode and docs/pricing_instructor.html,
 against the real backend/Pricing.gs served by tests/pricing_server.js (node vm, fake sheets). Three groups sign in with
 their Marketplace Laboratory registrations: Groups 13 and 7 price the first route of the example set, Group 8 the
-second. The instructor sets up and runs the challenge, the groups fly, the demand is revealed, round 2 opens, Mocha is
+second. The instructor sets up and runs the challenge, the groups fly, the demand is revealed (the end of the challenge: there is no round 2), Mocha is
 priced, pins and answers reach the record, the projector shows a board per route.
     python3 tests/browser_pricing.py [shots_dir]"""
 import http.server
@@ -102,7 +102,7 @@ def main():
             st = ins.locator("#view-challenge").inner_text()
             check(ins.locator("#settings .route-card").count() == 3 and "Best fare £800" in st and "Best fare £1,000" in st, "three routes, each with its best fare")
             check("2 registered teams: 7, 13" in st and "1 registered team: 8" in st, "the routes list their teams by group number: %r" % st[:600])
-            check("1. Open round 1" in st and "4. Open round 2" in st, "the steps are numbered")
+            check("1. Open round 1" in st and "3. Reveal the demand" in st and "round 2" not in st.lower(), "the steps are numbered, and the reveal is the last")
             check("script version 4 (" in ins.locator("#footer-status").inner_text() and ins.locator("#old-script").count() == 0, "the footer shows the script's version: %r" % ins.locator("#footer-status").inner_text())
             ins.evaluate("() => { var P = window.PricingLabInstructor; P.state.version = ''; P.render(); }")   # as if an old deployment had answered
             check(ins.locator("#old-script").count() == 1 and ins.locator("#save-settings").is_disabled() and "unknown (an old deployment)" in ins.locator("#footer-status").inner_text(), "an old deployment is called out and settings cannot be saved through it")
@@ -217,26 +217,16 @@ def main():
             s1.click("#challenge-pin")
             s1.get_by_text("Pinned as 'Round 1: my flights'", exact=False).wait_for()
 
-            # ---- round 2
-            ins.click("button[data-phase=round2]"); ins.get_by_text("Round 2 open.", exact=False).wait_for()
-            s1.get_by_text("Round 2: the market changes", exact=False).wait_for(timeout=15000)
-            s1.fill("#r2-fare", "680"); s1.click("#r2-form button")
-            s1.wait_for_selector("table.flights")
-            r2 = s1.locator("table.flights tbody tr").first.inner_text()
-            check("420" in r2 and "£252,000" in r2, "demand +40%% at 680: 420 carried, profit 252,000: %r" % r2)
-            s1.click("#challenge-pin")
-            s1.get_by_text("Pinned as 'Demand rises 40%: fare £680' under '2. Demand rises 40%'", exact=False).wait_for()
-            s1.click("button[data-scenario=double]")
-            s1.fill("#r2-fare", "700"); s1.click("#r2-form button")
-            s1.wait_for_selector("table.flights")
-            r2b = s1.locator("table.flights tbody tr").first.inner_text()
-            check("580" in r2b and "(full)" in r2b and "£310,000" in r2b, "demand doubled at 700: 580 want to fly, 500 carried, 310,000: %r" % r2b)
-            s1.fill("#r2-fare", "780"); s1.click("#r2-form button")
-            s1.locator("table.flights tbody tr").nth(1).wait_for()
-            r2c = s1.locator("table.flights tbody tr").nth(1).inner_text()
-            check(r2c.count("500") == 2 and "(full)" in r2c and "£350,000" in r2c, "demand doubled at 780: exactly 500 want to fly, 350,000: %r" % r2c)
-            check(s1.locator("#challenge-pin-q").input_value() == "c3", "the pin section follows the scenario")
-            s1.screenshot(path=os.path.join(OUT, "10_student_round2.png"), full_page=True)
+            # ---- no round 2. A class left in that phase by an older page (the script still accepts it) reads as revealed
+            req = urllib.request.Request(endpoint, data=json.dumps({"token": info["admin_token"], "action": "challenge_phase", "class": CLS, "phase": "round2"}).encode(), headers={"Content-Type": "text/plain"})
+            check(json.load(urllib.request.urlopen(req))["ok"], "the script still accepts the old phase")
+            s1.reload()
+            s1.get_by_text("The demand you were facing", exact=False).wait_for(timeout=15000)
+            t2 = s1.locator("#tab-challenge").inner_text()
+            check("Round 2" not in t2 and "Demand revealed" in t2 and s1.locator("#challenge-pin").count() == 1 and s1.locator("#r2-form").count() == 0, "the old phase shows the reveal and the round 1 pin, nothing else: %r" % t2[:200])
+            ins.click("#refresh"); ins.wait_for_timeout(1500)
+            check("Now: Demand revealed" in ins.locator("#view-challenge").inner_text() and ins.locator("button[data-phase=round2]").count() == 0, "the instructor page has no round 2 step and calls the old phase revealed")
+            s1.screenshot(path=os.path.join(OUT, "10_student_old_round2_phase.png"), full_page=True)
 
             # ---- Mocha
             s1.click("#main-tabs button[data-tab=mocha]")
@@ -268,7 +258,7 @@ def main():
             s1.wait_for_selector("#tab-book table.labbook")
             sec = s1.locator("section[data-q=c1]")
             check("Round 1: my flights" in sec.inner_text() and "180,000" in sec.inner_text() and "London–Anchorage" in sec.inner_text(), "the round 1 pin sits under question 1 with the route and the best profit")
-            check("Demand rises 40%: fare £680" in s1.locator("section[data-q=c2]").inner_text(), "the round 2 pin sits under question 2")
+            check(s1.locator("section[data-q=c2]").count() == 0 and s1.locator("section[data-q=c3]").count() == 0 and "2. Price Mocha for your stream" in s1.locator("#tab-book").inner_text(), "the lab book has no round 2 questions; Mocha starts at question 2")
             check("Your stream: price £35" in s1.locator("section[data-q=m1]").inner_text() and "Gain from separate prices" in s1.locator("section[data-q=m1]").inner_text(), "the Mocha pin with the segmentation numbers")
             s1.fill("#ans-c1", "Our first test at £280 cost us £60,000.")
             s1.locator("#ans-c1").dispatch_event("change")
@@ -278,7 +268,7 @@ def main():
             answers = [r for r in recs if r["state"].get("labbook", {}).get("kind") == "answers"]
             check(any(r["state"]["answers"].get("c1", "").startswith("Our first test") for r in answers), "the answer is in the record")
             pins = [r for r in recs if r["state"].get("labbook", {}).get("measures")]
-            check(len(pins) == 3 and all(r["group"] == "Group 13" for r in pins), "three pins in the record: %d" % len(pins))
+            check(len(pins) == 2 and all(r["group"] == "Group 13" for r in pins), "two pins in the record: %d" % len(pins))
             s1.screenshot(path=os.path.join(OUT, "13_student_book.png"), full_page=True)
             # a second device of Group 13 sees the pins
             ctx5, s3 = fresh()
@@ -296,7 +286,7 @@ def main():
             ins.click("#views button[data-view=overview]")
             ins.wait_for_selector("#view-overview table")
             ov = ins.locator("#view-overview").inner_text()
-            check("Group 13" in ov and "Ana, Bo" in ov and "1/7" in ov, "overview: Group 13 with one answer: %r" % ov[:300])
+            check("Group 13" in ov and "Ana, Bo" in ov and "1/5" in ov, "overview: Group 13 with one answer: %r" % ov[:300])
             ins.click("#views button[data-view=question]")
             ins.wait_for_selector("#q-pick")
             check("Our first test" in ins.locator("#view-question").inner_text() and "Group 13: Round 1: my flights" in ins.locator("#view-question").inner_text(), "by question: the pin and the answer")
