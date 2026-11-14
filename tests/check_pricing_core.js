@@ -1,5 +1,5 @@
 /* Checks src/pricing_core.js: the challenge arithmetic (seats in, fare out) against the numbers worked by hand, and the Mocha pricing
-   against the figures computed independently in Python (numpy) on the same bids.
+   against the figures computed independently in Python on the same bids (one line, two lines) and by hand.
        node tests/check_pricing_core.js */
 "use strict";
 var path = require("path");
@@ -40,23 +40,69 @@ var lt = C.lineThrough(800, 300, 946.67, 256);
 check(lt && Math.abs(lt.a - 540) < 0.5 && Math.abs(lt.b - 0.3) < 0.001 && C.inverseText(lt) === "1,800 − 3.33 × Q", "a fare to the penny still gives the line: " + JSON.stringify(lt));
 check(C.bestFare === undefined && C.passengersAt === undefined, "the fare-first arithmetic is gone from the pages (the script keeps it for older pages)");
 
-// ---- Mocha: the figures numpy gave on the same bids (scratch analysis, 2026-11-10)
+// ---- Mocha: the figures Python gave on the same bids (scratch analyses, 2026-11-10 and 2026-11-14). This year's
+// three streams only: last year's bids, collected another way, were taken out on 14 November 2026.
 function stream(code) { return D.streams.filter(function (x) { return x.code === code; })[0].bids; }
-var A = stream("CM03AUT26A"), B = stream("CM03AUT26B"), Cc = stream("CM03AUT26C"), L = D.last.bids;
-check(A.length === 69 && B.length === 75 && Cc.length === 41 && L.length === 167, "bid counts 69 / 75 / 41 / 167");
-var bA5 = C.bestPrice(A, 5), bA15 = C.bestPrice(A, 15), bC15 = C.bestPrice(Cc, 15), bL15 = C.bestPrice(L, 15);
+var A = stream("CM03AUT26A"), B = stream("CM03AUT26B"), Cc = stream("CM03AUT26C"), ALL = A.concat(B, Cc);
+check(A.length === 69 && B.length === 75 && Cc.length === 41 && D.last === undefined && D.streams.length === 3, "bid counts 69 / 75 / 41, and no bids from last year");
+var bA5 = C.bestPrice(A, 5), bA15 = C.bestPrice(A, 15), bC15 = C.bestPrice(Cc, 15), bAll = C.bestPrice(ALL, 15);
 check(bA5.price === 25 && bA5.buyers === 27 && bA5.profit === 540, "A at cost 5: 25, 27 buyers, 540: " + JSON.stringify(bA5));
 check(bA15.price === 35 && bA15.buyers === 14 && bA15.profit === 280, "A at cost 15: 35 / 14 / 280");
 check(bC15.price === 49 && bC15.buyers === 8 && bC15.profit === 272, "C at cost 15: 49 / 8 / 272");
-check(bL15.price === 77 && bL15.buyers === 14 && bL15.profit === 868, "last year at cost 15: 77 / 14 / 868");
-var fA = C.fitLine(A), fL = C.fitLine(L);
+check(bAll.price === 35 && bAll.buyers === 35 && bAll.profit === 700, "all three at cost 15: 35 / 35 / 700");
+// one line: MR = MC on it is the midpoint of its choke price and the cost
+var fA = C.fitLine(A), fAll = C.fitLine(ALL);
 check(fA && near(fA.a, 45.5705, 0.001) && near(fA.b, 0.71807, 0.0001), "A's line P = 45.57 - 0.718 Q: " + JSON.stringify(fA));
-check(fL && near(fL.a, 69.478, 0.001) && near(fL.b, 0.61151, 0.0001), "last year's line P = 69.48 - 0.612 Q");
-var lA15 = C.linePricing(fA, A, 15), lL15 = C.linePricing(fL, L, 15);
-check(near(lA15.price, 30.285, 0.001) && lA15.buyers === 14 && near(lA15.profit, 213.99, 0.01), "A's line price at cost 15: 30.29, 14 buyers, 214");
-check(near(lL15.price, 42.239, 0.001) && lL15.buyers === 19 && near(lL15.profit, 517.54, 0.01), "last year's line price 42.24, 19 buyers, 518 (60% of the best)");
+check(fAll && near(fAll.a, 45.4201, 0.001) && near(fAll.b, 0.2645, 0.0001) && near(fAll.sse, 680.18, 0.01) && fAll.n === 51, "all three's line P = 45.42 - 0.264 Q, squared error 680: " + JSON.stringify(fAll));
+var lA15 = C.linePricing(fA, A, 15), lAll = C.linePricing(fAll, ALL, 15);
+check(near(lA15.price, 30.285, 0.001) && lA15.rounded === 30 && lA15.buyers === 17 && lA15.profit === 255, "A's line price at cost 15: 30.29, charged as 30 (the bids are whole pounds): 17 buyers, 255 (91% of the best)");
+check(C.buyersAt(A, lA15.price) === 14 && near(C.profitAtPrice(A, lA15.price, 15), 213.99, 0.01), "to the penny the same price would lose the three who bid 30: 14 buyers, 214");
+check(near(lA15.price, (fA.a + 15) / 2) && near(fA.a - 2 * fA.b * lA15.lineQ, 15) && near(lA15.expected, 325.37, 0.01), "the midpoint rule and MR = MC give the same price; the line expects 325");
+check(near(lAll.price, 30.21, 0.001) && lAll.rounded === 30 && lAll.buyers === 46 && lAll.profit === 690 && near(lAll.lineQ, 57.51, 0.01), "all three's line price 30.21, charged as 30: 46 buyers, 690 (99% of the best)");
+check(C.fitLine([7, 7, 7]) === null || C.fitLine([7, 7, 7]).b > 0, "a line is only ever a falling one");
+// two lines: the split that fits best, each line's midpoint, and the one the lines expect more from
+var tA = C.twoLines(A, 15, null), tB = C.twoLines(B, 15, null), tC = C.twoLines(Cc, 15, null), tAll = C.twoLines(ALL, 15, null);
+check(C.bestSplit(A) === 32 && C.bestSplit(B) === 33 && C.bestSplit(Cc) === 40 && C.bestSplit(ALL) === 31, "best-fitting splits 32 / 33 / 40 / 31");
+check(tA.split === 32 && tA.auto === 32 && near(tA.high.a, 55.479, 0.001) && near(tA.high.b, 1.5994, 0.0001) && near(tA.low.a, 38.196, 0.001) && near(tA.low.b, 0.5634, 0.0001), "A split at 32: P = 55.48 - 1.599 Q above, P = 38.20 - 0.563 Q below: " + JSON.stringify(tA));
+check(tA.pick === "high" && near(tA.price, 35.239, 0.001) && tA.rounded === 35 && tA.buyers === 14 && tA.profit === 280 && tA.high.where === "inside" && tA.low.where === "inside", "A's two lines say 35.24, charged as 35: 14 buyers, 280 (the best)");
+check(tB.pick === "low" && near(tB.price, 25.891, 0.001) && tB.rounded === 26 && tB.buyers === 22 && tB.profit === 242, "B's two lines say the low segment's 25.89, charged as 26: 22 buyers, 242 (89%)");
+check(tC.high.where === "above" && near(tC.high.mid, 51.75, 0.001) && tC.price === 50 && tC.rounded === 50 && tC.buyers === 7 && tC.profit === 245 && tC.top === 50, "C's high line would price above the highest bid, so it stops there: 50, 7 buyers, 245 (90%)");
+check(tAll.pick === "high" && near(tAll.price, 37.034, 0.001) && tAll.rounded === 37 && tAll.buyers === 29 && tAll.profit === 638 && near(tAll.sse, 116.05, 0.01) && tAll.sse < fAll.sse, "all three's two lines say 37.03, charged as 37: 29 buyers, 638 (91%), with a sixth of one line's squared error");
+var tB35 = C.twoLines(B, 15, 35), tA15 = C.twoLines(A, 15, 15);
+check(tB35.split === 35 && tB35.auto === 33 && tB35.high.where === "below" && tB35.high.price === 35 && near(tB35.high.expected, 209.14, 0.01) && tB35.pick === "low" && near(tB35.price, 26.154, 0.001) && tB35.rounded === 26 && tB35.buyers === 22 && tB35.profit === 242, "a split typed in: B at 35, the high line's midpoint falls below the split, so its best is the split");
+check(tA15.low.where === "above" && tA15.low.price === 15 && tA15.low.expected === 0 && tA15.pick === "high" && near(tA15.price, 32.05, 0.001) && tA15.rounded === 32 && tA15.buyers === 14 && tA15.profit === 238, "A at 15: the low line's midpoint is not below the split");
+check(C.twoLines(A, 15, 47) === null && C.twoLines(A, 15, 2) === null && C.twoLines([], 15, null) === null && C.twoLines([5, 5, 5], 15, null) === null, "a split that leaves a segment without a falling line gives nothing");
+check(JSON.stringify([C.splitRange(A), C.splitRange(B), C.splitRange(Cc), C.splitRange(ALL)]) === "[[3,46],[3,40],[7,48],[3,48]]" && C.splitRange([5, 5]) === null, "the splits that can be fitted");
+// a demand that is two lines exactly, worked by hand: one bid at each of 21..30, three at each of 0..20, so
+// Q = 31 - P at 21 and above and Q = 73 - 3P below
+var syn = [];
+for (var sp = 21; sp <= 30; sp++) syn.push(sp);
+for (sp = 0; sp <= 20; sp++) { syn.push(sp); syn.push(sp); syn.push(sp); }
+var y5 = C.twoLines(syn, 5, null), y19 = C.twoLines(syn, 19, null);
+check(C.bestSplit(syn) === 21 && near(y5.sse, 0, 1e-6) && near(y5.high.a, 31) && near(y5.high.b, 1) && near(y5.low.a, 73 / 3) && near(y5.low.b, 1 / 3), "an exact kink is found: split 21, P = 31 - Q and P = 24.33 - Q/3");
+check(y5.high.where === "below" && y5.high.price === 21 && near(y5.high.expected, 160) && y5.pick === "low" && near(y5.price, 44 / 3) && near(y5.expected, 29 * 29 / 3) && y5.rounded === 15 && y5.buyers === 28 && y5.profit === 280, "cost 5: the low line's 14.67 (expected 280.33) beats the split's 160; charged as 15, 28 buy, 280");
+check(y19.low.where === "above" && y19.low.price === 21 && near(y19.low.expected, 20) && y19.pick === "high" && near(y19.price, 25) && y19.rounded === 25 && y19.buyers === 6 && near(y19.profit, 36), "cost 19: the high line's 25, 6 buyers, 36");
+// the profit curve, exactly: straight up to each bid value, a drop just above it
+check(JSON.stringify(C.profitCurve([0, 5, 5, 10], 2)) === "[[0,-8],[0,-6],[5,9],[5,3],[10,8],[10,0]]" && JSON.stringify(C.profitCurve([5, 10], 2)) === "[[0,-4],[5,6],[5,3],[10,8],[10,0]]", "the profit curve of four bids, by hand");
+var pc = C.profitCurve(ALL, 15);
+check(Math.max.apply(null, pc.map(function (xy) { return xy[1]; })) === 700 && pc[pc.length - 1][0] === 50 && pc[pc.length - 1][1] === 0 && pc.every(function (xy, i) { return i === 0 || xy[0] >= pc[i - 1][0]; }), "the curve's highest point is the best price's profit, and it ends at nothing above the highest bid");
+check(pc.filter(function (xy) { return xy[0] === 35; }).some(function (xy) { return xy[1] === 700; }) && pc.filter(function (xy) { return xy[0] === 35; }).some(function (xy) { return xy[1] === (35 - 15) * C.buyersAt(ALL, 36); }), "at 35 the curve holds 700 and, just above, what is left once the 35 bidders are lost");
 check(C.buyersAt(A, 0) === 69 && C.buyersAt(A, 50) === 6 && C.buyersAt(A, 51) === 0, "buyers at 0, at the cap, above it");
 check(C.clean(A, { dropZero: true }).length === 68 && C.clean(A, { above: 49 }).length === 63, "cleaning: one zero, six at the cap");
+// ---- without the bids at the most the auction accepted (50), which is how the page starts: a bid of the maximum
+// says "at any price", not what the student would pay. The same figures from Python, 2026-11-14.
+function uncapped(b) { return C.clean(b, { cap: 50 }); }
+var A0 = uncapped(A), B0 = uncapped(B), C0 = uncapped(Cc), ALL0 = uncapped(ALL);
+check(A0.length === 63 && B0.length === 70 && C0.length === 34 && ALL0.length === 167 && C.clean(A, { cap: null }).length === 69 && C.clean(A, {}).length === 69 && Math.max.apply(null, A0) === 46, "6 + 5 + 7 = 18 bids at the cap are left out, and only on request");
+function triple(b) { var x = C.bestPrice(b, 15); return [x.price, x.buyers, x.profit].join("/"); }
+check(triple(A0) === "25/21/210" && triple(B0) === "28/16/208" && triple(C0) === "25/9/90" && triple(ALL0) === "25/49/490", "best prices without the cap bids: 25, 28, 25 and, for all three, 25 with 49 buyers and 490");
+function lineOf(b) { var x = C.linePricing(C.fitLine(b), b, 15); return [x.price.toFixed(2), x.rounded, x.buyers, x.profit].join("/"); }
+check(lineOf(A0) === "27.34/27/15/180" && lineOf(B0) === "25.83/26/17/187" && lineOf(C0) === "27.18/27/6/72" && lineOf(ALL0) === "27.62/28/35/455", "one line without the cap bids: 27 (86%), 26 (90%), 27 (80%), 28 (93%): " + [lineOf(A0), lineOf(B0), lineOf(C0), lineOf(ALL0)].join(" "));
+function twoOf(b, split) { var x = C.twoLines(b, 15, split == null ? null : split); return x ? [x.split, x.pick, x.price.toFixed(2), x.rounded, x.buyers, x.profit].join("/") : "none"; }
+check(twoOf(A0) === "33/low/25.01/25/21/210" && twoOf(B0) === "23/high/27.55/28/16/208" && twoOf(C0) === "29/low/23.26/23/10/80" && twoOf(ALL0) === "31/low/24.41/24/49/441", "two lines without the cap bids: 25 (the best), 28 (the best), 23 (89%), 24 (90%): " + [twoOf(A0), twoOf(B0), twoOf(C0), twoOf(ALL0)].join(" "));
+check(twoOf(A0, 40) === "40/low/26.14/26/16/176" && twoOf(A0, 25) === "25/high/28.96/29/11/154" && twoOf(A0, 44) === "none" && JSON.stringify(C.splitRange(A0)) === "[3,40]", "moving A's split: 40 gives 26, 25 gives 29, 44 cannot be fitted");
+var seg0 = C.segmentation([{ name: "A", bids: A0 }, { name: "B", bids: B0 }, { name: "C", bids: C0 }], 15);
+check(seg0.uniform.price === 25 && seg0.uniform.profit === 490 && seg0.total === 508 && seg0.gain === 18, "without the cap bids one price for all three is 25 (490), three prices give 508: a gain of 18");
 check(C.schedule(A).length === 51 && C.schedule(A)[25][1] === 27, "the schedule runs 0..50 and has 27 buyers at 25");
 var seg = C.segmentation([{ name: "A", bids: A }, { name: "B", bids: B }, { name: "C", bids: Cc }], 15);
 check(seg.uniform.price === 35 && seg.uniform.profit === 700, "one price for all three streams at cost 15: 35, 700");

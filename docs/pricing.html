@@ -113,6 +113,7 @@ details.prompt > p { margin: 6px 0 10px; color: var(--muted); font-size: 0.95rem
 .phase.open { background: #e5f4e4; color: #1f6b2a; } .phase.closed { background: #fbebeb; color: #9b1c1c; } .phase.revealed, .phase.round2 { background: #e7f1fb; color: #1f5fae; }
 table.grid.board td.rank { width: 40px; text-align: center; color: var(--muted); }
 table.grid.board tr.me td { background: #e7f1fb; font-weight: 600; }
+table.grid.methods tr.me td { background: #e7f1fb; font-weight: 600; }
 body.projector .wrap { max-width: 1400px; }
 body.projector table.grid.board { font-size: 1.35rem; } body.projector table.grid.board th { font-size: 1rem; }
 body.projector h1 { font-size: 2rem; }
@@ -257,9 +258,11 @@ var PricingCore = (function () {
   // ---- Mocha -----------------------------------------------------------------------------------------------
   function buyersAt(bids, p) { var n = 0; for (var i = 0; i < bids.length; i++) if (bids[i] >= p - 1e-9) n++; return n; }
   function profitAtPrice(bids, p, mc) { return (p - mc) * buyersAt(bids, p); }
+  // The bids that count: opts.dropZero leaves out bids of nothing, opts.above bids over an amount, and opts.cap the
+  // bids at the most the auction accepted (a bid of the maximum says "at any price", not what the student would pay).
   function clean(bids, opts) {
     opts = opts || {};
-    return bids.filter(function (v) { return !(opts.dropZero && v <= 0) && !(opts.above != null && !isNaN(opts.above) && v > opts.above); });
+    return bids.filter(function (v) { return !(opts.dropZero && v <= 0) && !(opts.above != null && !isNaN(opts.above) && v > opts.above) && !(opts.cap != null && !isNaN(opts.cap) && v >= opts.cap - 1e-9); });
   }
   // The demand schedule: at each whole price from 0 to the highest bid, how many would buy.
   function schedule(bids) {
@@ -277,24 +280,88 @@ var PricingCore = (function () {
     });
     return best || { price: null, buyers: 0, profit: 0 };
   }
-  // The straight line fitted to the schedule, price on quantity (as the spreadsheet does with SLOPE and
-  // INTERCEPT over the Price and Demand columns): P = a - b Q.
-  function fitLine(bids) {
-    var pts = schedule(bids), n = pts.length;
+  // The straight line fitted to points [[price, buyers], ...] of a schedule, price on quantity (as the spreadsheet
+  // does with SLOPE and INTERCEPT over the Price and Demand columns): P = a - b Q, with the squared error it leaves
+  // (in pounds squared). null when the points do not give a falling line.
+  function fitPoints(pts) {
+    var n = pts.length;
     if (n < 2) return null;
     var sx = 0, sy = 0, sxx = 0, sxy = 0;
     pts.forEach(function (qp) { sx += qp[1]; sy += qp[0]; sxx += qp[1] * qp[1]; sxy += qp[1] * qp[0]; });
     var den = n * sxx - sx * sx;
-    if (Math.abs(den) < 1e-12) return null;
-    var slope = (n * sxy - sx * sy) / den, inter = (sy - slope * sx) / n;
+    if (Math.abs(den) < 1e-9) return null;
+    var slope = (n * sxy - sx * sy) / den, inter = (sy - slope * sx) / n, sse = 0;
     if (!(slope < 0)) return null;
-    return { a: inter, b: -slope };
+    pts.forEach(function (qp) { var e = qp[0] - (inter + slope * qp[1]); sse += e * e; });
+    return { a: inter, b: -slope, sse: sse, n: n };
   }
-  // MR = MC on the fitted line: Q = (a - mc) / (2b), P = (a + mc) / 2; the profit it earns on the actual bids.
+  function fitLine(bids) { return fitPoints(schedule(bids)); }
+  // MR = MC on the fitted line: Q = (a - mc) / (2b), P = (a + mc) / 2, the midpoint of the line's choke price and
+  // the cost, and what the line expects to earn there. The bids are in whole pounds, so the price charged is that
+  // price to the nearest pound (`rounded`): to the penny, a price of 30.21 would lose everyone who bid 30. `buyers`
+  // and `profit` are what the rounded price earns on the actual bids.
   function linePricing(line, bids, mc) {
     if (!line) return null;
-    var p = (line.a + mc) / 2, q = (line.a - mc) / (2 * line.b);
-    return { price: p, lineQ: q, buyers: buyersAt(bids, p), profit: profitAtPrice(bids, p, mc) };
+    var p = (line.a + mc) / 2, q = (line.a - mc) / (2 * line.b), r = Math.round(p);
+    return { price: p, rounded: r, lineQ: q, expected: (p - mc) * q, buyers: buyersAt(bids, r), profit: profitAtPrice(bids, r, mc) };
+  }
+  // Two lines: the schedule split at a price. The high segment is the prices of `split` and above, the low segment
+  // the prices below it; each gets its own line. A segment needs three prices and a falling line.
+  var SEGMENT_MIN = 3;
+  function splitFit(pts, split) {
+    var hi = pts.filter(function (qp) { return qp[0] >= split - 1e-9; }), lo = pts.filter(function (qp) { return qp[0] < split - 1e-9; });
+    if (hi.length < SEGMENT_MIN || lo.length < SEGMENT_MIN) return null;
+    var fh = fitPoints(hi), fl = fitPoints(lo);
+    return fh && fl ? { split: split, high: fh, low: fl, sse: fh.sse + fl.sse } : null;
+  }
+  // The split (a whole price) whose two lines leave the smallest squared error; null when no split can be fitted.
+  function bestSplit(bids) {
+    var pts = schedule(bids), best = null;
+    for (var t = 1; t < pts.length; t++) { var f = splitFit(pts, t); if (f && (!best || f.sse < best.sse - 1e-9)) best = f; }
+    return best ? best.split : null;
+  }
+  // Pricing on the two lines. On each line MR = MC gives the midpoint of its choke price and the cost. That price
+  // counts only if it lies among the prices the line was fitted to (the split to the highest bid for the high
+  // line, below the split for the low line); otherwise the segment's best price is the nearest end of that range.
+  // Of the two prices, the lines choose the one they expect to earn more. `split` null: the best-fitting split.
+  // Returns the two segments ({a, b, mid, where: "inside" | "below" | "above", price, q, expected}), the price
+  // chosen, that price to the nearest pound (`rounded`, the price charged: see linePricing) and what the rounded
+  // price earns on the actual bids; null when the split cannot be fitted.
+  function twoLines(bids, mc, split) {
+    var auto = bestSplit(bids), pts = schedule(bids), top = pts.length ? pts[pts.length - 1][0] : 0;
+    if (split == null || isNaN(split)) split = auto;
+    if (split == null) return null;
+    var f = splitFit(pts, split);
+    if (!f) return null;
+    function seg(line, isHigh) {
+      var mid = (line.a + mc) / 2, where = mid < split - 1e-9 ? (isHigh ? "below" : "inside") : (isHigh ? (mid > top + 1e-9 ? "above" : "inside") : "above");
+      var price = where === "inside" ? mid : (isHigh && where === "above" ? top : split), q = Math.max(0, (line.a - price) / line.b);
+      return { a: line.a, b: line.b, mid: mid, where: where, price: price, q: q, expected: (price - mc) * q };
+    }
+    var high = seg(f.high, true), low = seg(f.low, false), pick = low.expected > high.expected + 1e-9 ? "low" : "high", chosen = pick === "high" ? high : low;
+    var rounded = Math.round(chosen.price);
+    return { split: split, auto: auto, top: top, sse: f.sse, high: high, low: low, pick: pick, price: chosen.price, rounded: rounded, lineQ: chosen.q, expected: chosen.expected,
+             buyers: buyersAt(bids, rounded), profit: profitAtPrice(bids, rounded, mc) };
+  }
+  // The splits that can be fitted, as [lowest, highest] whole prices, or null.
+  function splitRange(bids) {
+    var pts = schedule(bids), lo = null, hi = null;
+    for (var t = 1; t < pts.length; t++) if (splitFit(pts, t)) { if (lo == null) lo = t; hi = t; }
+    return lo == null ? null : [lo, hi];
+  }
+  // Profit against the price, exactly, as points [[price, profit], ...]. Between two neighbouring bid values the
+  // buyers do not change, so the profit rises in a straight line up to each bid value and drops just above it,
+  // where the students who bid that value are lost. Above the highest bid nobody buys.
+  function profitCurve(bids, mc) {
+    var vals = bids.slice().sort(function (x, y) { return x - y; }).filter(function (v, i, arr) { return i === 0 || v !== arr[i - 1]; }), pts = [], prev = 0;
+    vals.forEach(function (v) {
+      var nb = buyersAt(bids, v);
+      if (v > prev || !pts.length) pts.push([prev, (prev - mc) * nb]);
+      if (v > prev) pts.push([v, (v - mc) * nb]);
+      prev = v;
+    });
+    pts.push([prev, 0]);
+    return pts;
   }
   // One price for every set against a price per set.
   function segmentation(sets, mc) {
@@ -395,15 +462,17 @@ var PricingCore = (function () {
            intercept: intercept, chokePrice: chokePrice, fareFor: fareFor, profitSelling: profitSelling, statusQuoProfit: statusQuoProfit, maxSeats: maxSeats,
            bestSeats: bestSeats, fullPlane: fullPlane, fareText: fareText, plain: plain, inverseText: inverseText,
            profitChartHtml: profitChartHtml, demandChartHtml: demandChartHtml, lineThrough: lineThrough,
-           buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
+           buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitPoints: fitPoints, fitLine: fitLine, linePricing: linePricing,
+           bestSplit: bestSplit, twoLines: twoLines, splitRange: splitRange, profitCurve: profitCurve,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;
 
 </script>
 <script>
-/* The Mocha bids the Pricing Laboratory prices on: amounts only, written by tools/mocha_data.py on 2026-11-10. */
-var MOCHA_DATA = {"year":"Autumn 2026","item":"Mocha","streams":[{"code":"CM03AUT26A","label":"Stream A","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[0.0,1.0,2.0,3.0,3.0,3.0,3.0,4.0,4.0,5.0,5.0,5.0,5.0,5.0,6.0,7.0,8.0,8.0,8.0,8.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,13.0,15.0,15.0,15.0,15.0,16.0,16.0,17.0,17.0,17.0,20.0,20.0,22.0,22.0,23.0,25.0,25.0,25.0,25.0,25.0,26.0,27.0,28.0,28.0,28.0,30.0,30.0,30.0,35.0,36.0,37.0,37.0,37.0,38.0,40.0,46.0,50.0,50.0,50.0,50.0,50.0,50.0]},{"code":"CM03AUT26B","label":"Stream B","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[0.0,0.0,0.0,1.0,1.0,1.0,2.0,2.0,2.0,3.0,4.0,5.0,5.0,5.0,5.0,5.0,7.0,7.0,8.0,8.0,8.0,8.0,10.0,10.0,10.0,11.0,11.0,12.0,12.0,13.0,13.0,13.0,13.0,15.0,15.0,16.0,17.0,17.0,17.0,17.0,17.0,17.0,17.0,18.0,20.0,20.0,20.0,20.0,20.0,20.0,23.0,25.0,25.0,26.0,28.0,28.0,29.0,29.0,30.0,30.0,30.0,32.0,32.0,32.0,35.0,36.0,38.0,39.0,39.0,40.0,50.0,50.0,50.0,50.0,50.0]},{"code":"CM03AUT26C","label":"Stream C","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[5.0,5.0,5.0,5.0,6.0,7.0,10.0,10.0,12.0,12.0,12.0,13.0,15.0,15.0,15.0,15.0,16.0,16.0,17.0,18.0,19.0,20.0,20.0,21.0,23.0,25.0,25.0,26.0,27.0,31.0,32.0,35.0,35.0,49.0,50.0,50.0,50.0,50.0,50.0,50.0,50.0]}],"last":{"label":"Autumn 2025","bids":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.5,0.5,0.5,0.5,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.5,1.5,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.5,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.5,4.0,4.5,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,7.0,7.5,8.0,8.0,9.0,9.5,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,10.0,12.0,12.0,12.0,12.0,12.0,12.5,12.5,12.5,14.0,14.0,14.0,15.0,15.0,15.0,15.0,15.0,15.0,15.0,15.0,15.0,15.0,15.0,15.5,17.0,17.0,18.0,19.0,20.0,20.0,20.0,20.0,20.0,20.0,20.0,20.0,20.0,20.5,21.0,21.0,22.0,23.0,24.0,24.0,25.0,25.0,25.5,27.0,28.0,30.0,30.0,32.5,35.0,35.0,40.0,50.0,50.0,50.0,55.0,70.0,77.0,77.0,80.0,88.0,99.0,99.0,99.0,99.0,99.0,99.0,99.0,99.0,99.0,99.0],"max":99.0},"cost":15.0,"written":"2026-11-10"};
+/* The Mocha bids the Pricing Laboratory prices on: amounts only, written by tools/mocha_data.py on 2026-11-10.
+   This year's three streams, all collected by the auction app; last year's bids were taken out on 2026-11-14. */
+var MOCHA_DATA = {"year":"Autumn 2026","item":"Mocha","streams":[{"code":"CM03AUT26A","label":"Stream A","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[0.0,1.0,2.0,3.0,3.0,3.0,3.0,4.0,4.0,5.0,5.0,5.0,5.0,5.0,6.0,7.0,8.0,8.0,8.0,8.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,13.0,15.0,15.0,15.0,15.0,16.0,16.0,17.0,17.0,17.0,20.0,20.0,22.0,22.0,23.0,25.0,25.0,25.0,25.0,25.0,26.0,27.0,28.0,28.0,28.0,30.0,30.0,30.0,35.0,36.0,37.0,37.0,37.0,38.0,40.0,46.0,50.0,50.0,50.0,50.0,50.0,50.0]},{"code":"CM03AUT26B","label":"Stream B","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[0.0,0.0,0.0,1.0,1.0,1.0,2.0,2.0,2.0,3.0,4.0,5.0,5.0,5.0,5.0,5.0,7.0,7.0,8.0,8.0,8.0,8.0,10.0,10.0,10.0,11.0,11.0,12.0,12.0,13.0,13.0,13.0,13.0,15.0,15.0,16.0,17.0,17.0,17.0,17.0,17.0,17.0,17.0,18.0,20.0,20.0,20.0,20.0,20.0,20.0,23.0,25.0,25.0,26.0,28.0,28.0,29.0,29.0,30.0,30.0,30.0,32.0,32.0,32.0,35.0,36.0,38.0,39.0,39.0,40.0,50.0,50.0,50.0,50.0,50.0]},{"code":"CM03AUT26C","label":"Stream C","item":"Mocha","min":0.0,"max":50.0,"step":1.0,"bids":[5.0,5.0,5.0,5.0,6.0,7.0,10.0,10.0,12.0,12.0,12.0,13.0,15.0,15.0,15.0,15.0,16.0,16.0,17.0,18.0,19.0,20.0,20.0,21.0,23.0,25.0,25.0,26.0,27.0,31.0,32.0,35.0,35.0,49.0,50.0,50.0,50.0,50.0,50.0,50.0,50.0]}],"cost":15.0,"written":"2026-11-10"};
 if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA;
 
 </script>
@@ -418,7 +487,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
   var C = PricingCore, esc = C.esc, fmt = C.fmt, money = C.money;
   var CONFIG = window.PRICINGLAB_CONFIG || {};
   var ENDPOINT = (CONFIG.endpoint || "").trim(), TOKEN = CONFIG.token || "";
-  var DATA = window.MOCHA_DATA || { streams: [], last: { label: "", bids: [] }, cost: 15, year: "" };
+  var DATA = window.MOCHA_DATA || { streams: [], cost: 15, year: "" };
   var CLASSES = (CONFIG.classes || []).map(function (c) { return String(c).trim().toUpperCase(); }).filter(Boolean);
   function normalizeClass(raw) {
     var s = String(raw == null ? "" : raw).trim();
@@ -443,7 +512,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
   // ---- state ----------------------------------------------------------------------------------------------------
   var S = { classCode: "", rawClass: "", classInvalid: false, projector: false, group: null, editingGroup: false,
             tab: "challenge", challenge: null, challengeJson: "", flying: false, flyError: "", howOpen: null,
-            mocha: { dataset: "", cost: DATA.cost || 15, price: "", dropZero: false, above: "", showLine: false, inner: "pricing", fourth: false } };
+            mocha: { dataset: "", cost: DATA.cost || 15, price: "", dropCap: true, dropZero: false, above: "", inner: "direct", split: "" } };   // split "": the best-fitting one
   function groupKey() { return S.group ? "Group " + S.group.number : (S.projector ? "Projector" : "_"); }
   function groupPin() { return S.group && S.group.pin ? String(S.group.pin) : ""; }
   function groupNames() { return S.group && S.group.names ? S.group.names : ""; }
@@ -841,77 +910,186 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
   }
 
   // ---- Mocha --------------------------------------------------------------------------------------------------------
+  // Three ways to choose the price on the class's own bids: try every price, fit one line to the demand, fit two
+  // lines (a high and a low segment). The bids are this year's streams, all collected the same way; last year's,
+  // collected another way, were taken out on 14 November 2026. The bids at the most the auction accepted are left
+  // out unless the box is unticked: a pile sits at the maximum whatever the maximum is (at 99 last year, at 50
+  // this year), so those bids say "at any price", not what the student would pay. The lines' prices are charged to
+  // the nearest pound, the bids being in whole pounds.
+  var METHODS = [["direct", "1. Every price"], ["line", "2. One line"], ["two", "3. Two lines"]];
+  var INNER = ["direct", "line", "two", "bids", "segments"];
   function datasets() {
     var out = [], mine = DATA.streams.filter(function (s) { return s.code === S.classCode; })[0];
-    if (mine) out.push({ key: "mine", label: "Your stream (" + mine.label + ", " + mine.bids.length + " bids)", bids: mine.bids, year: DATA.year });
-    DATA.streams.forEach(function (s) { if (!mine || s.code !== mine.code) out.push({ key: s.code, label: s.label + ", " + DATA.year + " (" + s.bids.length + " bids)", bids: s.bids, year: DATA.year }); });
-    if (DATA.streams.length > 1) out.push({ key: "all", label: "All " + DATA.streams.length + " streams, " + DATA.year + " (" + DATA.streams.reduce(function (n, s) { return n + s.bids.length; }, 0) + " bids)", bids: [].concat.apply([], DATA.streams.map(function (s) { return s.bids; })), year: DATA.year });
-    if (DATA.last && DATA.last.bids.length) out.push({ key: "last", label: "Last year (" + DATA.last.label + ", " + DATA.last.bids.length + " bids)", bids: DATA.last.bids, year: DATA.last.label });
+    if (mine) out.push({ key: "mine", label: "Your stream (" + mine.label + ", " + mine.bids.length + " bids)", parts: [mine] });
+    DATA.streams.forEach(function (s) { if (!mine || s.code !== mine.code) out.push({ key: s.code, label: s.label + ", " + DATA.year + " (" + s.bids.length + " bids)", parts: [s] }); });
+    if (DATA.streams.length > 1) out.push({ key: "all", label: "All " + DATA.streams.length + " streams, " + DATA.year + " (" + DATA.streams.reduce(function (n, s) { return n + s.bids.length; }, 0) + " bids)", parts: DATA.streams });
     return out;
   }
-  function cleaningText(m) {
-    var parts = []; if (m.dropZero) parts.push("£0 bids ignored"); if (m.above !== "" && !isNaN(parseFloat(m.above))) parts.push("bids above £" + fmt(parseFloat(m.above)) + " ignored");
-    return parts.length ? parts.join(", ") : "none";
+  // The bids at the most the auction accepted, over some streams: how many, and that maximum when the streams share it.
+  function capInfo(streams) {
+    var n = 0, caps = [];
+    streams.forEach(function (s) { if (s.max != null) { var k = s.bids.filter(function (v) { return v >= s.max; }).length; n += k; if (k && caps.indexOf(s.max) < 0) caps.push(s.max); } });
+    return { n: n, value: caps.length === 1 ? caps[0] : null };
+  }
+  function capWords(cap) { return (cap.n === 1 ? "bid" : cap.n + " bids") + " at " + (cap.value != null ? money(cap.value) + ", " : "") + "the most the auction accepted"; }
+  // The bids of some streams that count, as the boxes on the left are set.
+  function countedBids(streams) {
+    var m = S.mocha, above = m.above === "" ? null : parseFloat(m.above);
+    return [].concat.apply([], streams.map(function (s) { return C.clean(s.bids, { dropZero: !!m.dropZero, above: above, cap: m.dropCap ? s.max : null }); }));
+  }
+  function cleaningText(m, cap) {
+    var parts = [];
+    if (m.dropCap && cap && cap.n) parts.push("the " + (cap.n === 1 ? "bid" : cap.n + " bids") + " at " + (cap.value != null ? money(cap.value) : "the most allowed") + " left out");
+    if (m.dropZero) parts.push("£0 bids ignored"); if (m.above !== "" && !isNaN(parseFloat(m.above))) parts.push("bids above £" + fmt(parseFloat(m.above)) + " ignored");
+    return parts.length ? parts.join(", ") : "none left out";
   }
   function computeMocha() {
     var sets = datasets(); if (!sets.length) return null;
     var ds = sets.filter(function (s) { return s.key === S.mocha.dataset; })[0] || sets[0];
-    var m = S.mocha, mc = num(m.cost, 15), opts = { dropZero: !!m.dropZero, above: m.above === "" ? null : parseFloat(m.above) };
-    var bids = C.clean(ds.bids, opts), price = m.price === "" ? null : num(m.price, null);
+    var m = S.mocha, mc = num(m.cost, 15);
+    var bids = countedBids(ds.parts), price = m.price === "" ? null : num(m.price, null);
     if (price == null) { price = Math.round(C.median(bids) || 0); m.price = String(price); }
-    var best = C.bestPrice(bids, mc), line = C.fitLine(bids), lp = C.linePricing(line, bids, mc);
-    return { sets: sets, ds: ds, mc: mc, opts: opts, bids: bids, price: price, buyers: C.buyersAt(bids, price), profit: C.profitAtPrice(bids, price, mc), best: best, line: line, lp: lp };
+    var typed = m.split === "" || m.split == null ? null : parseFloat(m.split);
+    if (typed != null && isNaN(typed)) typed = null;
+    var best = C.bestPrice(bids, mc), line = C.fitLine(bids);
+    return { sets: sets, ds: ds, mc: mc, cap: capInfo(ds.parts), bids: bids, price: price, buyers: C.buyersAt(bids, price), profit: C.profitAtPrice(bids, price, mc), best: best,
+             line: line, lp: C.linePricing(line, bids, mc), typed: typed, auto: C.bestSplit(bids), range: C.splitRange(bids), two: C.twoLines(bids, mc, typed) };
   }
   function buildMocha() {
     var el = $("tab-mocha");
     if (!datasets().length) { el.innerHTML = '<div class="info">No bids are built into this copy of the page.</div>'; return; }
     // One panel: the price first, then the data it is tried on; the bids to ignore are folded away until used.
-    el.innerHTML = '<p class="caption" style="margin:0 0 6px">Each bid is the most one student said they would pay for ' + esc(DATA.item || "Mocha") + ' in Session 1. At a price, everyone whose bid is at least the price buys.</p>' +
+    el.innerHTML = '<p class="caption" style="margin:0 0 6px">Each bid is the most one student said they would pay for ' + esc(DATA.item || "Mocha") + ' in Session 1. At a price, everyone whose bid is at least the price buys. ' +
+      'Three ways to choose the price: try every price, fit one line to the demand, or fit two.</p>' +
       '<div class="cols-5-7"><div><div class="panel">' +
       '<label for="mo-price" style="margin-top:0">Your price (£)</label><input type="number" id="mo-price" step="1" min="0" style="font-size:1.3rem">' +
       '<label for="mo-data">Bids</label><select id="mo-data"></select>' +
+      '<div class="radio" id="mo-cap-row" style="margin-top:8px"><label><input type="checkbox" id="mo-cap"> <span id="mo-cap-text"></span></label></div>' +
       '<label for="mo-cost">Cost per ' + esc(DATA.item || "Mocha") + ' (£)</label><input type="number" id="mo-cost" step="1" min="0">' +
-      '<div class="radio" style="margin-top:10px"><label><input type="checkbox" id="mo-line"> Show the straight line fitted to the bids, and the price MR = MC gives on it</label></div>' +
-      '<details class="how" id="mo-ignore"' + (S.mocha.dropZero || S.mocha.above !== "" ? " open" : "") + '><summary>Ignore some bids</summary>' +
+      '<details class="how" id="mo-ignore"' + (S.mocha.dropZero || S.mocha.above !== "" ? " open" : "") + '><summary>Ignore other bids</summary>' +
       '<div class="radio"><label><input type="checkbox" id="mo-zero"> Bids of £0</label></div>' +
       '<div class="row"><label for="mo-above" style="margin:0">Bids above £</label><input type="number" id="mo-above" step="1" min="0" placeholder="none" style="width:110px"></div></details>' +
       '</div></div><div id="mo-results"></div></div>';
-    $("mo-data").onchange = function () { S.mocha.dataset = this.value; S.mocha.price = ""; renderMocha(); };
+    $("mo-data").onchange = function () { S.mocha.dataset = this.value; S.mocha.price = ""; S.mocha.split = ""; renderMocha(); };
     ["mo-cost", "mo-above", "mo-price"].forEach(function (id) { $(id).addEventListener("change", readMocha); });
-    $("mo-zero").addEventListener("change", readMocha); $("mo-line").addEventListener("change", readMocha);
-    el.addEventListener("click", function (ev) {
-      var t = ev.target;
-      if (t.getAttribute && t.getAttribute("data-inner")) { S.mocha.inner = t.getAttribute("data-inner"); renderMocha(); }
-      else if (t.id === "mo-fourth") { S.mocha.fourth = t.checked; renderMocha(); }
-    });
+    $("mo-zero").addEventListener("change", readMocha); $("mo-cap").addEventListener("change", readMocha);
+    // The views' buttons act when the mouse goes down, not only on the click. A number just typed in a box is
+    // announced by the browser when the box loses the focus, which is at that same press; the results are then
+    // redrawn under the pointer, and a click on a button that has been replaced never arrives.
+    var press = function (ev) {
+      var t = ev.target, view = t.getAttribute && t.getAttribute("data-inner");
+      if (view && view !== S.mocha.inner) { commitMocha(); S.mocha.inner = view; renderMocha(); }
+      else if (t.id === "mo-split-auto" && !t.disabled) { commitMocha(); S.mocha.split = ""; renderMocha(); }
+    };
+    el.addEventListener("mousedown", press); el.addEventListener("click", press);
+    el.addEventListener("change", function (ev) { if (ev.target.id === "mo-split") readMocha(); });
   }
-  function readMocha() {
-    var m = S.mocha;
+  // What is typed in the boxes, whether or not the browser has announced it yet. The split counts as typed only
+  // when it differs from the one the page put in the box (which may be the best-fitting one).
+  function commitMocha() {
+    var m = S.mocha, sp = $("mo-split");
     m.cost = num($("mo-cost").value, 15); m.above = $("mo-above").value === "" ? "" : String(num($("mo-above").value, "")); m.price = $("mo-price").value;
-    m.dropZero = $("mo-zero").checked; m.showLine = $("mo-line").checked;
-    renderMocha();
+    m.dropZero = $("mo-zero").checked; m.dropCap = $("mo-cap").checked;
+    if (sp && sp.value !== sp.getAttribute("data-shown")) m.split = sp.value;
   }
-  function demandChart(r) {
-    var sched = C.schedule(r.bids), pts = [], top = sched.length - 1;
+  function readMocha() { commitMocha(); renderMocha(); }
+  function lineText(l) { return "P = " + fmt(l.a, 2) + " − " + fmt(l.b, 3) + " Q"; }
+  function shareOfBest(profit, r) { return r.best.profit > 0 ? Math.round(100 * profit / r.best.profit) + "%" : "–"; }
+  // The demand from the bids as a staircase, with what the method in view adds to it: nothing (every price), the
+  // fitted line and its marginal revenue (one line), or the two segments' lines and the split (two lines).
+  function demandChart(r, mode) {
+    var sched = C.schedule(r.bids), pts = [], top = sched.length - 1, K = C.COLORS;
     for (var k = top; k >= 1; k--) { pts.push([sched[k][1], k]); pts.push([sched[k][1], k - 1]); }
     pts.push([sched[0][1], 0]);
-    var n = r.bids.length, pmax = Math.max(top, r.line ? r.line.a : 0) * 1.08;
-    var lines = [{ pts: pts, color: C.COLORS.red, width: 2.5, name: "Demand: buyers at each price" }];
-    if (S.mocha.showLine && r.line) lines.push({ pts: [[0, r.line.a], [r.line.a / r.line.b, 0]], color: C.COLORS.purple, width: 2, dash: "dash", name: "Fitted line P = " + fmt(r.line.a, 1) + " − " + fmt(r.line.b, 2) + " Q" });
-    var markers = [{ x: r.buyers, y: r.price, color: C.COLORS.black, name: "Your price", title: "Price " + money(r.price) + ": " + r.buyers + " buyers" },
-                   { x: r.best.buyers, y: r.best.price, color: C.COLORS.green, hollow: true, name: "Best price on these bids", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": " + r.best.buyers + " buyers, profit " + money(r.best.profit) }];
-    if (S.mocha.showLine && r.lp) markers.push({ x: r.lp.buyers, y: r.lp.price, color: C.COLORS.purple, hollow: true, name: "The line's price (MR = MC)", title: "Line's price " + money(r.lp.price, 2) + ": " + r.lp.buyers + " buyers" });
-    return C.chart({ title: "Demand from the bids", h: 380, x: { max: n * 1.04, label: "Buyers (bids at least the price)" }, y: { max: pmax, label: "Price (£)" }, lines: lines,
-                     hlines: [{ y: r.mc, label: "cost", color: C.COLORS.grey }], markers: markers });
+    var n = r.bids.length, ytop = top;
+    var lines = [{ pts: pts, color: K.red, width: 2.5, name: "Demand: buyers at each price" }], hlines = [{ y: r.mc, label: "cost", color: K.grey }];
+    var markers = [{ x: r.buyers, y: r.price, color: K.black, name: "Your price", title: "Price " + money(r.price) + ": " + r.buyers + " buyers" },
+                   { x: r.best.buyers, y: r.best.price, color: K.green, hollow: true, name: "Best price on these bids", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": " + r.best.buyers + " buyers, profit " + money(r.best.profit) }];
+    if (mode === "line" && r.line && r.lp) {
+      ytop = Math.max(top, r.line.a);
+      lines.push({ pts: [[0, r.line.a], [r.line.a / r.line.b, 0]], color: K.purple, width: 2, dash: "dash", name: "Fitted line " + lineText(r.line) });
+      lines.push({ pts: [[0, r.line.a], [r.line.a / (2 * r.line.b), 0]], color: K.purple, width: 1.5, dash: "dot", name: "Its marginal revenue" });
+      if (r.lp.lineQ > 0) markers.push({ x: r.lp.lineQ, y: r.lp.price, color: K.purple, hollow: true, name: "The line's price: buyers the line expects", title: C.fareText(r.lp.price) + ": the line expects " + fmt(r.lp.lineQ, 1) + " buyers" });
+      markers.push({ x: r.lp.buyers, y: r.lp.rounded, color: K.purple, name: "To the nearest pound: buyers on the bids", title: money(r.lp.rounded) + ": " + r.lp.buyers + " buyers on the bids" });
+    }
+    if (mode === "two" && r.two) {
+      var t = r.two, hiTop = Math.min(t.high.a, top * 1.08);
+      lines.push({ pts: [[(t.high.a - hiTop) / t.high.b, hiTop], [(t.high.a - t.split) / t.high.b, t.split]], color: K.orange, width: 2, dash: "dash", name: "High segment " + lineText(t.high) });
+      lines.push({ pts: [[(t.low.a - t.split) / t.low.b, t.split], [t.low.a / t.low.b, 0]], color: K.blue, width: 2, dash: "dash", name: "Low segment " + lineText(t.low) });
+      hlines.push({ y: t.split, label: "split at " + money(t.split), color: K.orange });
+      if (t.lineQ > 0) markers.push({ x: t.lineQ, y: t.price, color: K.orange, hollow: true, name: "The two lines' price: buyers the lines expect", title: C.fareText(t.price) + ": the lines expect " + fmt(t.lineQ, 1) + " buyers" });
+      markers.push({ x: t.buyers, y: t.rounded, color: K.orange, name: "To the nearest pound: buyers on the bids", title: money(t.rounded) + ": " + t.buyers + " buyers on the bids" });
+    }
+    return C.chart({ title: "Demand from the bids", h: 380, x: { max: n * 1.04, label: "Buyers (bids at least the price)" }, y: { max: ytop * 1.08, label: "Price (£)" }, lines: lines, hlines: hlines, markers: markers });
   }
+  // Profit against the price, with the price each method gives.
   function profitChartMocha(r) {
-    var top = Math.ceil(Math.max.apply(null, r.bids)), pts = [];
-    for (var p = 0; p <= top; p++) pts.push([p, C.profitAtPrice(r.bids, p, r.mc)]);
-    var ymin = Math.min(0, pts[0][1]), ymax = Math.max(r.best.profit, 1) * 1.1;
-    var markers = [{ x: r.price, y: r.profit, color: C.COLORS.black, name: "Your price" }, { x: r.best.price, y: r.best.profit, color: C.COLORS.green, hollow: true, name: "Best price", label: money(r.best.price) }];
-    if (S.mocha.showLine && r.lp) markers.push({ x: r.lp.price, y: r.lp.profit, color: C.COLORS.purple, hollow: true, name: "The line's price" });
-    return C.chart({ title: "Profit against the price", h: 380, x: { max: top, label: "Price (£)" }, y: { min: ymin, max: ymax, label: "Profit (£)" },
-                     lines: [{ pts: pts, color: C.COLORS.blue, width: 2.5, name: "Profit at each price" }], vlines: [{ x: r.mc, label: "cost", color: C.COLORS.grey }], markers: markers });
+    // The losses at prices far below the cost run off the bottom of the chart: they would flatten the part that matters.
+    var K = C.COLORS, top = Math.max.apply(null, r.bids), pts = C.profitCurve(r.bids, r.mc), high = Math.max(r.best.profit, 1), ymin = 0;
+    pts.forEach(function (xy) { ymin = Math.min(ymin, xy[1]); });
+    ymin = Math.max(ymin, -0.3 * high);
+    pts.push([top * 1.04, 0]);
+    var markers = [{ x: r.price, y: r.profit, color: K.black, name: "Your price", title: "Your price " + money(r.price) + ": profit " + C.fareText(r.profit) },
+                   { x: r.best.price, y: r.best.profit, color: K.green, hollow: true, name: "1. Every price: the best", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": profit " + money(r.best.profit) }];
+    if (r.lp) markers.push({ x: r.lp.rounded, y: r.lp.profit, color: K.purple, hollow: true, name: "2. One line's price", title: "One line: " + money(r.lp.rounded) + ", profit " + money(r.lp.profit) });
+    if (r.two) markers.push({ x: r.two.rounded, y: r.two.profit, color: K.orange, hollow: true, name: "3. Two lines' price", title: "Two lines: " + money(r.two.rounded) + ", profit " + money(r.two.profit) });
+    return C.chart({ title: "Profit against the price", h: 340, x: { max: top * 1.04, label: "Price (£)" }, y: { min: ymin, max: high * 1.1, label: "Profit (£)" },
+                     lines: [{ pts: pts, color: K.blue, width: 2, name: "Profit at each price" }], vlines: [{ x: r.mc, label: "cost", color: K.grey }], markers: markers });
+  }
+  // The three methods side by side on the bids in view; the method whose view is open is marked.
+  function methodsTable(r, mode) {
+    var rows = [["direct", "1. Every price tried", r.best.price != null ? r.best : null],
+                ["line", "2. One line", r.lp && { price: r.lp.rounded, buyers: r.lp.buyers, profit: r.lp.profit }],
+                ["two", "3. Two lines" + (r.two ? ", split at " + money(r.two.split) : ""), r.two && { price: r.two.rounded, buyers: r.two.buyers, profit: r.two.profit }]];
+    return '<h3 style="margin:14px 0 4px">The three methods on these bids</h3><div class="wide"><table class="grid methods"><thead><tr><th>Method</th><th class="num">Price</th><th class="num">Buyers</th><th class="num">Profit</th><th class="num">Share of the best</th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        var v = x[2];
+        return '<tr' + (x[0] === mode ? ' class="me"' : "") + '><td>' + esc(x[1]) + '</td>' + (v ? '<td class="num">' + C.fareText(v.price) + '</td><td class="num">' + v.buyers + '</td><td class="num">' + C.fareText(v.profit) + '</td><td class="num">' + shareOfBest(v.profit, r) + '</td>'
+                                                                                                 : '<td class="num" colspan="4">no line can be fitted</td>') + '</tr>';
+      }).join("") + '</tbody></table></div>';
+  }
+  // What a line's price earns: charged to the nearest pound, since the bids are in whole pounds.
+  function chargedText(v, r) {
+    var whole = Math.abs(v.price - v.rounded) < 0.005;
+    return (whole ? 'On the actual bids that price' : 'The bids are in whole pounds, so the price to charge is the nearest pound, <b>' + money(v.rounded) + '</b>. On the actual bids it') +
+           ' sells ' + v.buyers + ' and earns <b>' + money(v.profit) + '</b>, ' + shareOfBest(v.profit, r) + ' of the best.';
+  }
+  function directText(r) {
+    return '<p class="reveal-line">Best price on these bids: <b>' + money(r.best.price) + '</b>, ' + r.best.buyers + ' buyers, profit <b>' + money(r.best.profit) + '</b>. With every bid known there is nothing to estimate: try every price and keep the best.</p>';
+  }
+  // One line: MR = MC and the midpoint rule are two routes to the same price.
+  function lineTextHtml(r) {
+    if (!r.line || !r.lp) return '<p class="caption">No line can be fitted to these bids.</p>';
+    var l = r.line, lp = r.lp;
+    return '<p class="reveal-line">The straight line fitted to the demand schedule: <b>' + lineText(l) + '</b>.</p>' +
+      '<p class="reveal-line"><b>MR = MC:</b> the line\'s marginal revenue is ' + fmt(l.a, 2) + ' − ' + fmt(2 * l.b, 3) + ' Q, which equals the cost of ' + money(r.mc) + ' at Q = ' + fmt(lp.lineQ, 1) + '; the line\'s price there is <b>' + C.fareText(lp.price) + '</b>.</p>' +
+      '<p class="reveal-line"><b>Midpoint rule:</b> half-way between the line\'s choke price (' + money(l.a, 2) + ') and the cost (' + money(r.mc) + ') is the same <b>' + C.fareText(lp.price) + '</b>.</p>' +
+      '<p class="reveal-line">The line expects ' + fmt(lp.lineQ) + ' buyers and a profit of ' + money(lp.expected) + ' there. ' + chargedText(lp, r) + '</p>';
+  }
+  function splitControl(r) {
+    var shown = r.typed != null ? r.typed : r.auto, isAuto = r.typed == null || r.typed === r.auto;
+    return '<div class="row" style="align-items:center;margin:2px 0 4px"><label for="mo-split" style="margin:0">Split the bids at £</label><input type="number" id="mo-split" step="1" min="1" style="width:90px" value="' + (shown != null ? esc(shown) : "") + '" data-shown="' + (shown != null ? esc(shown) : "") + '">' +
+      '<button type="button" class="small" id="mo-split-auto"' + (isAuto ? " disabled" : "") + '>Best-fitting split</button></div>' +
+      '<p class="caption" style="margin:0 0 6px">Prices at or above the split are the high segment, prices below it the low segment; each gets its own line. ' +
+      (r.auto != null ? 'The best-fitting split, the one whose two lines leave the smallest squared error, is ' + money(r.auto) + '. Move it and watch the price.' : '') + '</p>';
+  }
+  function segmentText(s, isHigh, t, mc) {
+    var h = '<p class="reveal-line"><b>' + (isHigh ? 'High segment, prices of ' + money(t.split) + ' and above' : 'Low segment, prices under ' + money(t.split)) + ':</b> ' + lineText(s) +
+            '. MR = MC gives ' + C.fareText(s.mid) + ', half-way between its choke price (' + money(s.a, 2) + ') and the cost';
+    if (s.where === "inside") h += ', inside the segment; the line expects ' + money(s.expected) + ' there.';
+    else if (isHigh && s.where === "above") h += ', above the highest bid (' + money(t.top) + '), where there is nothing to fit: the segment\'s best price is ' + money(t.top) + ', and the line expects ' + money(s.expected) + ' there.';
+    else if (isHigh) h += ', below the split, where this line does not hold: the segment\'s best price is the split, ' + money(t.split) + ', and the line expects ' + money(s.expected) + ' there.';
+    else h += ', not below the split, where this line does not hold: the segment\'s best price is just under ' + money(t.split) + ', and the line expects ' + money(s.expected) + ' there.';
+    return h + '</p>';
+  }
+  function twoTextHtml(r) {
+    if (!r.two) {
+      return '<div class="info">' + (r.typed != null && r.range ? 'Two lines cannot be fitted with the split at ' + money(r.typed) + ': each segment needs at least three prices and a falling line. Try a split between ' + money(r.range[0]) + ' and ' + money(r.range[1]) + ', or the best-fitting one.'
+                                                                  : 'Two lines cannot be fitted to these bids.') + '</div>';
+    }
+    var t = r.two, won = t.pick === "high" ? t.high : t.low, lost = t.pick === "high" ? t.low : t.high;
+    return segmentText(t.high, true, t, r.mc) + segmentText(t.low, false, t, r.mc) +
+      '<p class="reveal-line">The lines expect more from the ' + t.pick + ' segment (' + money(won.expected) + ' against ' + money(lost.expected) + '), so the two lines say <b>' + C.fareText(t.price) + '</b>. ' + chargedText(t, r) + '</p>';
   }
   function histChart(r) {
     var bins = C.histogram(r.bids, 5), ymax = Math.max.apply(null, bins.map(function (b) { return b.n; })) * 1.15;
@@ -919,11 +1097,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
                      bars: bins.map(function (b) { return { x0: b.lo, x1: b.hi, y: b.n, color: C.COLORS.blue, title: "£" + b.lo + " to £" + b.hi + ": " + b.n }; }), legend: false });
   }
   function segmentsPanel(r) {
-    var sets = DATA.streams.map(function (s) { return { name: s.label + " (" + DATA.year + ")", bids: C.clean(s.bids, r.opts) }; });
-    if (S.mocha.fourth && DATA.last && DATA.last.bids.length) sets.push({ name: "Last year (" + DATA.last.label + ")", bids: C.clean(DATA.last.bids, r.opts) });
+    var sets = DATA.streams.map(function (s) { return { name: s.label + " (" + DATA.year + ")", bids: countedBids([s]) }; });
     var seg = C.segmentation(sets, r.mc);
-    var h = '<p class="caption">One price for every market against a price per market, at a cost of ' + money(r.mc) + ' with the bids ignored as set (' + esc(cleaningText(S.mocha)) + ').</p>' +
-      '<div class="radio"><label><input type="checkbox" id="mo-fourth"' + (S.mocha.fourth ? " checked" : "") + '> Add last year\'s bids as a fourth market</label></div>' +
+    var h = '<p class="caption">One price for every market against a price per market, at a cost of ' + money(r.mc) + ', on the bids as set on the left (' + esc(cleaningText(S.mocha, capInfo(DATA.streams))) + ').</p>' +
       '<table class="grid"><thead><tr><th>Market</th><th class="num">Bids</th><th class="num">Own best price</th><th class="num">Buyers</th><th class="num">Profit</th><th class="num">At one price for all (' + money(seg.uniform.price) + ')</th><th class="num">Profit</th></tr></thead><tbody>';
     sets.forEach(function (s, i) {
       var sp = seg.separate[i], u = seg.uniform.per[i];
@@ -937,28 +1113,29 @@ if (typeof module !== "undefined" && module.exports) module.exports = MOCHA_DATA
     if (!$("mo-results")) return;
     var r = computeMocha(); if (!r) return;
     var m = S.mocha, sel = $("mo-data");
+    if (INNER.indexOf(m.inner) < 0) m.inner = "direct";      // "pricing": the one view an older page had
     sel.innerHTML = r.sets.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === r.ds.key ? " selected" : "") + '>' + esc(s.label) + '</option>'; }).join("");
-    $("mo-cost").value = r.mc; $("mo-price").value = r.price; $("mo-zero").checked = !!m.dropZero; $("mo-above").value = m.above; $("mo-line").checked = !!m.showLine;
+    $("mo-cost").value = r.mc; $("mo-price").value = r.price; $("mo-zero").checked = !!m.dropZero; $("mo-above").value = m.above;
+    $("mo-cap").checked = !!m.dropCap; $("mo-cap-row").hidden = !r.cap.n; $("mo-cap-text").textContent = "Leave out the " + capWords(r.cap);
     var el = $("mo-results"), n = r.bids.length;
-    var h = '<div class="metrics">' + metric("Buyers at " + money(r.price), r.buyers, { sub: n ? Math.round(100 * r.buyers / n) + "% of " + n + " bids" : "" }) + metric("Revenue", r.price * r.buyers, { money: true }) +
+    if (!n) { el.innerHTML = '<div class="info">No bids are left: every bid is left out. Change the boxes on the left.</div>'; saveLocal(); return; }
+    var h = '<div class="metrics">' + metric("Buyers at " + money(r.price), r.buyers, { sub: Math.round(100 * r.buyers / n) + "% of " + n + " bids" }) + metric("Revenue", r.price * r.buyers, { money: true }) +
             metric("Cost", r.mc * r.buyers, { money: true }) + metric("Profit", r.profit, { money: true, sub: r.best.profit > 0 ? Math.round(100 * r.profit / r.best.profit) + "% of the best" : "" }) + '</div>';
-    h += '<div class="tabs inner"><button type="button" data-inner="pricing" class="' + (m.inner === "pricing" ? "active" : "") + '">Pricing</button><button type="button" data-inner="bids" class="' + (m.inner === "bids" ? "active" : "") + '">The bids</button>' +
-         (DATA.streams.length > 1 ? '<button type="button" data-inner="segments" class="' + (m.inner === "segments" ? "active" : "") + '">Three streams</button>' : "") + '</div>';
-    if (m.inner === "pricing") {
-      h += demandChart(r) + '<p class="reveal-line">Best price on these bids: <b>' + money(r.best.price) + '</b>, ' + r.best.buyers + ' buyers, profit <b>' + money(r.best.profit) + '</b>. With every bid known there is nothing to estimate: try every price and keep the best.</p>';
-      if (m.showLine) {
-        if (r.line && r.lp) h += '<p class="reveal-line">The straight line fitted to the demand schedule: <b>P = ' + fmt(r.line.a, 2) + ' − ' + fmt(r.line.b, 3) + ' Q</b>. Its marginal revenue is ' + fmt(r.line.a, 2) + ' − ' + fmt(2 * r.line.b, 3) + ' Q; MR = MC at Q = ' + fmt(r.lp.lineQ, 1) +
-                                 ', so the line says price <b>' + money(r.lp.price, 2) + '</b>, the same as (' + fmt(r.line.a, 2) + ' + ' + fmt(r.mc) + ') / 2. On the actual bids that price sells ' + r.lp.buyers + ' and earns <b>' + money(r.lp.profit, 2) + '</b>' +
-                                 (r.best.profit > 0 ? ', ' + Math.round(100 * r.lp.profit / r.best.profit) + '% of the best' : "") + '.</p>';
-        else h += '<p class="caption">No line can be fitted to these bids.</p>';
-      }
-      h += profitChartMocha(r);
-    } else if (m.inner === "bids") {
+    h += '<div class="tabs inner">' + METHODS.map(function (x) { return '<button type="button" data-inner="' + x[0] + '" class="' + (m.inner === x[0] ? "active" : "") + '">' + x[1] + '</button>'; }).join("") +
+         '<button type="button" data-inner="bids" class="' + (m.inner === "bids" ? "active" : "") + '">The bids</button>' +
+         (DATA.streams.length > 1 ? '<button type="button" data-inner="segments" class="' + (m.inner === "segments" ? "active" : "") + '">' + (DATA.streams.length === 3 ? "Three" : DATA.streams.length) + ' streams</button>' : "") + '</div>';
+    if (m.inner === "bids") {
       var sorted = r.bids.slice().sort(function (x, y) { return y - x; });
-      h += histChart(r) + '<p class="caption">' + n + ' bids counted (' + esc(cleaningText(m)) + '); median ' + money(C.median(r.bids)) + ', highest ' + money(sorted[0]) + ', ' + sorted.filter(function (v) { return v === sorted[0]; }).length + ' at the highest.</p>' +
+      h += histChart(r) + '<p class="caption">' + n + ' bids counted (' + esc(cleaningText(m, r.cap)) + '); median ' + money(C.median(r.bids)) + ', highest ' + money(sorted[0]) + ', ' + sorted.filter(function (v) { return v === sorted[0]; }).length + ' at the highest.' +
+           (!r.cap.n ? '' : m.dropCap ? ' A bid of the most allowed says “at any price”, not what the student would pay; untick the box on the left to count ' + (r.cap.n === 1 ? 'it' : 'them') + ' all the same.'
+                                      : ' The ' + capWords(r.cap) + (r.cap.value != null ? ',' : '') + (r.cap.n === 1 ? ' is' : ' are') + ' counted: a bid of the most allowed says “at any price”, not what the student would pay.') + '</p>' +
            '<details class="panel"><summary>The demand schedule</summary><div class="labbook-wrap"><table class="grid"><thead><tr><th class="num">Price</th><th class="num">Buyers</th><th class="num">Revenue</th><th class="num">Profit at cost ' + money(r.mc) + '</th></tr></thead><tbody>' +
            C.schedule(r.bids).slice().reverse().map(function (pq) { return '<tr><td class="num">' + money(pq[0]) + '</td><td class="num">' + pq[1] + '</td><td class="num">' + money(pq[0] * pq[1]) + '</td><td class="num">' + money((pq[0] - r.mc) * pq[1]) + '</td></tr>'; }).join("") + '</tbody></table></div></details>';
-    } else h += segmentsPanel(r).html;
+    } else if (m.inner === "segments") h += segmentsPanel(r).html;
+    else {
+      h += (m.inner === "two" ? splitControl(r) : "") + demandChart(r, m.inner) +
+           (m.inner === "direct" ? directText(r) : m.inner === "line" ? lineTextHtml(r) : twoTextHtml(r)) + methodsTable(r, m.inner) + profitChartMocha(r);
+    }
     el.innerHTML = h;
     saveLocal();
   }

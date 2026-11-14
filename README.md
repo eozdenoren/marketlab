@@ -57,16 +57,26 @@ record is never touched while an assignment runs on it.
   on a demand it cannot see (linear, hidden in the script, different per
   class and per route). The slides argue in quantities (MR = MC, and Cournot
   later), so the game does too. Every flight counts, scored against the
-  trial flights; live leaderboards on the projector. The instructor opens
+  trial flight; live leaderboards on the projector. The instructor opens
   the challenge, closes it and reveals the demand (the profit against the
   seats sold, with every flight on it). There is no second round (demand up
   40% and demand doubled are a class question on the slides).
 * **Mocha.** Pricing on the class's own Session 1 bids (`src/mocha_data.js`,
-  written by `tools/mocha_data.py` from the auction sheet, amounts only):
-  demand from the bids, the best price by trying every price, the straight
-  line fitted to the schedule and MR = MC on it, bids to ignore, and one price
-  for the three streams against a price per stream. No demand can be typed
-  in: nothing on these pages answers an exam question.
+  written by `tools/mocha_data.py` from the auction sheet, amounts only; this
+  year's three streams, no earlier year). Three ways to choose the price,
+  each a view: (1) try every price; (2) fit one straight line to the demand
+  schedule, where MR = MC and the midpoint rule give the same price; (3) fit
+  two lines, a high and a low segment split at a price (the best-fitting
+  split to start with, and the user can move it). A table sets the three
+  against each other on the actual bids, and the profit curve carries the
+  three prices. A line's price is charged to the nearest pound, the bids
+  being in whole pounds (to the penny, 30.21 would lose everyone who bid
+  30). The bids at the most the auction accepted (50) are left out unless
+  a box is unticked: a pile sits at the maximum whatever the maximum is, so
+  those bids say "at any price", not what the student would pay (the user's
+  decision, 14 November 2026). Also: other bids to ignore, and one price for
+  the three streams against a price per stream. No demand can be typed in:
+  nothing on these pages answers an exam question.
 * **No lab book** (removed 14 November 2026): nothing is pinned or answered
   on these pages, and the only things they send to the script are group
   registrations and flights. Work on an assignment is handed in on Canvas.

@@ -86,9 +86,11 @@ var PricingCore = (function () {
   // ---- Mocha -----------------------------------------------------------------------------------------------
   function buyersAt(bids, p) { var n = 0; for (var i = 0; i < bids.length; i++) if (bids[i] >= p - 1e-9) n++; return n; }
   function profitAtPrice(bids, p, mc) { return (p - mc) * buyersAt(bids, p); }
+  // The bids that count: opts.dropZero leaves out bids of nothing, opts.above bids over an amount, and opts.cap the
+  // bids at the most the auction accepted (a bid of the maximum says "at any price", not what the student would pay).
   function clean(bids, opts) {
     opts = opts || {};
-    return bids.filter(function (v) { return !(opts.dropZero && v <= 0) && !(opts.above != null && !isNaN(opts.above) && v > opts.above); });
+    return bids.filter(function (v) { return !(opts.dropZero && v <= 0) && !(opts.above != null && !isNaN(opts.above) && v > opts.above) && !(opts.cap != null && !isNaN(opts.cap) && v >= opts.cap - 1e-9); });
   }
   // The demand schedule: at each whole price from 0 to the highest bid, how many would buy.
   function schedule(bids) {
@@ -106,24 +108,88 @@ var PricingCore = (function () {
     });
     return best || { price: null, buyers: 0, profit: 0 };
   }
-  // The straight line fitted to the schedule, price on quantity (as the spreadsheet does with SLOPE and
-  // INTERCEPT over the Price and Demand columns): P = a - b Q.
-  function fitLine(bids) {
-    var pts = schedule(bids), n = pts.length;
+  // The straight line fitted to points [[price, buyers], ...] of a schedule, price on quantity (as the spreadsheet
+  // does with SLOPE and INTERCEPT over the Price and Demand columns): P = a - b Q, with the squared error it leaves
+  // (in pounds squared). null when the points do not give a falling line.
+  function fitPoints(pts) {
+    var n = pts.length;
     if (n < 2) return null;
     var sx = 0, sy = 0, sxx = 0, sxy = 0;
     pts.forEach(function (qp) { sx += qp[1]; sy += qp[0]; sxx += qp[1] * qp[1]; sxy += qp[1] * qp[0]; });
     var den = n * sxx - sx * sx;
-    if (Math.abs(den) < 1e-12) return null;
-    var slope = (n * sxy - sx * sy) / den, inter = (sy - slope * sx) / n;
+    if (Math.abs(den) < 1e-9) return null;
+    var slope = (n * sxy - sx * sy) / den, inter = (sy - slope * sx) / n, sse = 0;
     if (!(slope < 0)) return null;
-    return { a: inter, b: -slope };
+    pts.forEach(function (qp) { var e = qp[0] - (inter + slope * qp[1]); sse += e * e; });
+    return { a: inter, b: -slope, sse: sse, n: n };
   }
-  // MR = MC on the fitted line: Q = (a - mc) / (2b), P = (a + mc) / 2; the profit it earns on the actual bids.
+  function fitLine(bids) { return fitPoints(schedule(bids)); }
+  // MR = MC on the fitted line: Q = (a - mc) / (2b), P = (a + mc) / 2, the midpoint of the line's choke price and
+  // the cost, and what the line expects to earn there. The bids are in whole pounds, so the price charged is that
+  // price to the nearest pound (`rounded`): to the penny, a price of 30.21 would lose everyone who bid 30. `buyers`
+  // and `profit` are what the rounded price earns on the actual bids.
   function linePricing(line, bids, mc) {
     if (!line) return null;
-    var p = (line.a + mc) / 2, q = (line.a - mc) / (2 * line.b);
-    return { price: p, lineQ: q, buyers: buyersAt(bids, p), profit: profitAtPrice(bids, p, mc) };
+    var p = (line.a + mc) / 2, q = (line.a - mc) / (2 * line.b), r = Math.round(p);
+    return { price: p, rounded: r, lineQ: q, expected: (p - mc) * q, buyers: buyersAt(bids, r), profit: profitAtPrice(bids, r, mc) };
+  }
+  // Two lines: the schedule split at a price. The high segment is the prices of `split` and above, the low segment
+  // the prices below it; each gets its own line. A segment needs three prices and a falling line.
+  var SEGMENT_MIN = 3;
+  function splitFit(pts, split) {
+    var hi = pts.filter(function (qp) { return qp[0] >= split - 1e-9; }), lo = pts.filter(function (qp) { return qp[0] < split - 1e-9; });
+    if (hi.length < SEGMENT_MIN || lo.length < SEGMENT_MIN) return null;
+    var fh = fitPoints(hi), fl = fitPoints(lo);
+    return fh && fl ? { split: split, high: fh, low: fl, sse: fh.sse + fl.sse } : null;
+  }
+  // The split (a whole price) whose two lines leave the smallest squared error; null when no split can be fitted.
+  function bestSplit(bids) {
+    var pts = schedule(bids), best = null;
+    for (var t = 1; t < pts.length; t++) { var f = splitFit(pts, t); if (f && (!best || f.sse < best.sse - 1e-9)) best = f; }
+    return best ? best.split : null;
+  }
+  // Pricing on the two lines. On each line MR = MC gives the midpoint of its choke price and the cost. That price
+  // counts only if it lies among the prices the line was fitted to (the split to the highest bid for the high
+  // line, below the split for the low line); otherwise the segment's best price is the nearest end of that range.
+  // Of the two prices, the lines choose the one they expect to earn more. `split` null: the best-fitting split.
+  // Returns the two segments ({a, b, mid, where: "inside" | "below" | "above", price, q, expected}), the price
+  // chosen, that price to the nearest pound (`rounded`, the price charged: see linePricing) and what the rounded
+  // price earns on the actual bids; null when the split cannot be fitted.
+  function twoLines(bids, mc, split) {
+    var auto = bestSplit(bids), pts = schedule(bids), top = pts.length ? pts[pts.length - 1][0] : 0;
+    if (split == null || isNaN(split)) split = auto;
+    if (split == null) return null;
+    var f = splitFit(pts, split);
+    if (!f) return null;
+    function seg(line, isHigh) {
+      var mid = (line.a + mc) / 2, where = mid < split - 1e-9 ? (isHigh ? "below" : "inside") : (isHigh ? (mid > top + 1e-9 ? "above" : "inside") : "above");
+      var price = where === "inside" ? mid : (isHigh && where === "above" ? top : split), q = Math.max(0, (line.a - price) / line.b);
+      return { a: line.a, b: line.b, mid: mid, where: where, price: price, q: q, expected: (price - mc) * q };
+    }
+    var high = seg(f.high, true), low = seg(f.low, false), pick = low.expected > high.expected + 1e-9 ? "low" : "high", chosen = pick === "high" ? high : low;
+    var rounded = Math.round(chosen.price);
+    return { split: split, auto: auto, top: top, sse: f.sse, high: high, low: low, pick: pick, price: chosen.price, rounded: rounded, lineQ: chosen.q, expected: chosen.expected,
+             buyers: buyersAt(bids, rounded), profit: profitAtPrice(bids, rounded, mc) };
+  }
+  // The splits that can be fitted, as [lowest, highest] whole prices, or null.
+  function splitRange(bids) {
+    var pts = schedule(bids), lo = null, hi = null;
+    for (var t = 1; t < pts.length; t++) if (splitFit(pts, t)) { if (lo == null) lo = t; hi = t; }
+    return lo == null ? null : [lo, hi];
+  }
+  // Profit against the price, exactly, as points [[price, profit], ...]. Between two neighbouring bid values the
+  // buyers do not change, so the profit rises in a straight line up to each bid value and drops just above it,
+  // where the students who bid that value are lost. Above the highest bid nobody buys.
+  function profitCurve(bids, mc) {
+    var vals = bids.slice().sort(function (x, y) { return x - y; }).filter(function (v, i, arr) { return i === 0 || v !== arr[i - 1]; }), pts = [], prev = 0;
+    vals.forEach(function (v) {
+      var nb = buyersAt(bids, v);
+      if (v > prev || !pts.length) pts.push([prev, (prev - mc) * nb]);
+      if (v > prev) pts.push([v, (v - mc) * nb]);
+      prev = v;
+    });
+    pts.push([prev, 0]);
+    return pts;
   }
   // One price for every set against a price per set.
   function segmentation(sets, mc) {
@@ -224,7 +290,8 @@ var PricingCore = (function () {
            intercept: intercept, chokePrice: chokePrice, fareFor: fareFor, profitSelling: profitSelling, statusQuoProfit: statusQuoProfit, maxSeats: maxSeats,
            bestSeats: bestSeats, fullPlane: fullPlane, fareText: fareText, plain: plain, inverseText: inverseText,
            profitChartHtml: profitChartHtml, demandChartHtml: demandChartHtml, lineThrough: lineThrough,
-           buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitLine: fitLine, linePricing: linePricing,
+           buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitPoints: fitPoints, fitLine: fitLine, linePricing: linePricing,
+           bestSplit: bestSplit, twoLines: twoLines, splitRange: splitRange, profitCurve: profitCurve,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;

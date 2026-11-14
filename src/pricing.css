@@ -5,6 +5,7 @@
 .phase.open { background: #e5f4e4; color: #1f6b2a; } .phase.closed { background: #fbebeb; color: #9b1c1c; } .phase.revealed, .phase.round2 { background: #e7f1fb; color: #1f5fae; }
 table.grid.board td.rank { width: 40px; text-align: center; color: var(--muted); }
 table.grid.board tr.me td { background: #e7f1fb; font-weight: 600; }
+table.grid.methods tr.me td { background: #e7f1fb; font-weight: 600; }
 body.projector .wrap { max-width: 1400px; }
 body.projector table.grid.board { font-size: 1.35rem; } body.projector table.grid.board th { font-size: 1rem; }
 body.projector h1 { font-size: 2rem; }
