@@ -177,14 +177,15 @@ var PricingCore = (function () {
     for (var t = 1; t < pts.length; t++) if (splitFit(pts, t)) { if (lo == null) lo = t; hi = t; }
     return lo == null ? null : [lo, hi];
   }
-  // A made-up market with two kinds of buyer, to show what two lines are for (nobody's bids): 20 fans who would pay
-  // 38 to 57, one at each pound, and 112 others who would pay 1 to 14, eight at each pound. At a cost of 15 the
-  // best price is 38 (all the fans, 460); one line, dragged down by buyers nobody would serve, says 28 (57% of
-  // that); two lines say 38.
-  var MADE_UP = { fans: { from: 38, to: 57, each: 1 }, others: { from: 1, to: 14, each: 8 } };
-  function madeUpBids() {
-    var bids = [];
-    [MADE_UP.others, MADE_UP.fans].forEach(function (g) { for (var v = g.from; v <= g.to; v++) for (var k = 0; k < g.each; k++) bids.push(v); });
+  // A made-up demand that is a curve, not a straight line, to show what two lines are for (nobody's bids): 200
+  // buyers, and every 14 pounds on the price halves the number who would buy, Q(P) = 200 x 0.5^(P / 14), to the
+  // nearest buyer at each whole pound. No groups of buyers: one smooth curve with a long thin tail. At a cost of
+  // 15 the best price is 36 (34 buyers, 714); one line, pulled up by the tail, says 48 (88% of that); two lines
+  // follow the curve far better (a ninth of the squared error) and say 32 (98%).
+  var CURVE = { buyers: 200, half: 14 };
+  function curveBids() {
+    var bids = [], q = function (p) { return Math.round(CURVE.buyers * Math.pow(0.5, p / CURVE.half)); };
+    for (var p = 0; q(p) > 0; p++) for (var k = q(p) - q(p + 1); k > 0; k--) bids.push(p);
     return bids;
   }
   // One price for every set against a price per set.
@@ -287,7 +288,7 @@ var PricingCore = (function () {
            bestSeats: bestSeats, fullPlane: fullPlane, fareText: fareText, plain: plain, inverseText: inverseText,
            profitChartHtml: profitChartHtml, demandChartHtml: demandChartHtml, lineThrough: lineThrough,
            buyersAt: buyersAt, profitAtPrice: profitAtPrice, clean: clean, schedule: schedule, bestPrice: bestPrice, fitPoints: fitPoints, fitLine: fitLine, linePricing: linePricing,
-           bestSplit: bestSplit, twoLines: twoLines, splitRange: splitRange, MADE_UP: MADE_UP, madeUpBids: madeUpBids,
+           bestSplit: bestSplit, twoLines: twoLines, splitRange: splitRange, CURVE: CURVE, curveBids: curveBids,
            segmentation: segmentation, histogram: histogram, median: median, chart: chart };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = PricingCore;

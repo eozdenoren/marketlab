@@ -267,7 +267,7 @@ def main():
             s1.click("#main-tabs button[data-tab=mocha]")
             s1.wait_for_selector("#mo-results")
             check("Your stream (Stream A, 69 bids)" in s1.locator("#mo-data").inner_text() and s1.locator("#mo-data").input_value() == "mine", "the group's own stream is the default data")
-            check("Last year" not in s1.locator("#mo-data").inner_text() and s1.locator("#mo-data option").count() == 5 and s1.locator("#mo-data option").last.inner_text() == "A made-up market with two kinds of buyer (132 bids)", "the bids are this year's streams, and a made-up market last: %r" % s1.locator("#mo-data").inner_text())
+            check("Last year" not in s1.locator("#mo-data").inner_text() and s1.locator("#mo-data option").count() == 5 and s1.locator("#mo-data option").last.inner_text() == "A curved demand, made up (200 buyers)", "the bids are this year's streams, and a made-up curved demand last: %r" % s1.locator("#mo-data").inner_text())
             check(s1.locator("#mo-note").is_hidden(), "nothing is said about made-up bids while the class's own are in view")
             check(s1.locator("#mo-cap").is_checked() and s1.locator("#mo-cap-row").inner_text().strip() == "Leave out the 6 bids at £50, the most the auction accepted", "the bids at the cap are left out to start with, in view: %r" % s1.locator("#mo-cap-row").inner_text())
             check(s1.locator("#mo-count").inner_text() == "63 of 69 bids counted", "how many bids count is in view: %r" % s1.locator("#mo-count").inner_text())
@@ -330,18 +330,26 @@ def main():
             check(s1.locator("#mo-cap-row").inner_text().strip().startswith("Leave out the 18 bids at £50") and "of 167 bids" in results() and rows[0].split()[-4:] == ["£25", "49", "£490", "100%"] and rows[1].split()[-4:] == ["£28", "35", "£455", "93%"]
                   and "split at £31" in rows[2] and rows[2].split()[-4:] == ["£24", "49", "£441", "90%"], "all three streams without the 18 bids at 50: %r" % rows)
             s1.screenshot(path=os.path.join(OUT, "11d_student_mocha_two_lines_all.png"), full_page=True)
-            # the made-up market with two kinds of buyer: one line fails, two lines do not
-            s1.select_option("#mo-data", "madeup")
-            s1.get_by_text("so the two lines say £37.58", exact=False).wait_for()
+            # the made-up curved demand (every 14 pounds on the price halves the buyers): one line is pulled up by the
+            # long tail, two lines follow the curve
+            s1.select_option("#mo-data", "curve")
+            s1.get_by_text("so the two lines say £32.37", exact=False).wait_for()
             rows = method_rows()
             note = s1.locator("#mo-note").inner_text()
-            check(s1.locator("#mo-note").is_visible() and "Made up" in note and "20 fans who would pay £38 to £57 (one at each pound) and 112 others who would pay £1 to £14 (eight at each pound)" in note, "the made-up market says what it is: %r" % note)
-            check(s1.locator("#mo-cap-row").is_hidden() and s1.locator("#mo-count").inner_text() == "132 bids counted" and s1.locator("#mo-split").input_value() == "27", "no cap in a made-up market; 132 bids; the split at 27")
-            check(rows[0].split()[-4:] == ["£38", "20", "£460", "100%"] and rows[1].split()[-4:] == ["£28", "20", "£260", "57%"] and rows[2].split()[-4:] == ["£38", "20", "£460", "100%"], "one line gets 57 per cent of the best there, two lines all of it: %r" % rows)
-            s1.screenshot(path=os.path.join(OUT, "11e_student_mocha_made_up.png"), full_page=True)
+            check(s1.locator("#mo-note").is_visible() and note == "Made up, to show what two lines are for; nobody's bids. 200 buyers whose demand is a curve, not a straight line: every £14 on the price halves the number who would buy.", "the made-up demand says what it is: %r" % note)
+            check(s1.locator("#mo-cap-row").is_hidden() and s1.locator("#mo-count").inner_text() == "" and s1.locator("#mo-split").input_value() == "60" and "of 200 buyers" in results(), "no cap and no count of bids for a made-up demand; 200 buyers; the split at 60")
+            check(rows[0].split()[-4:] == ["£36", "34", "£714", "100%"] and rows[1].split()[-4:] == ["£48", "19", "£627", "88%"] and "split at £60" in rows[2] and rows[2].split()[-4:] == ["£32", "41", "£697", "98%"], "one line gets 88 per cent of the best there, two lines 98: %r" % rows)
+            check("The three methods on this demand" in results() and "Prices are in whole pounds here, so the price to charge is the nearest pound, £32. On the curve itself it sells 41 and earns £697, 98% of the best." in results(), "the words speak of the demand and the curve, not of bids: %r" % results()[-600:])
+            s1.screenshot(path=os.path.join(OUT, "11e_student_mocha_curve.png"), full_page=True)
+            s1.click("#mo-results button[data-inner=line]")
+            s1.get_by_text("P = 80.74 − 0.597 Q", exact=False).first.wait_for()
+            check("the nearest pound, £48. On the curve itself it sells 19 and earns £627, 88% of the best." in results(), "the one line on the curve: 48")
+            s1.screenshot(path=os.path.join(OUT, "11f_student_mocha_curve_one_line.png"), full_page=True)
+            s1.click("#mo-results button[data-inner=two]")
             s1.reload()
             s1.wait_for_selector("#mo-results table.methods")
-            check(s1.locator("#mo-data").input_value() == "mine" and s1.locator("#mo-note").is_hidden() and s1.locator("#mo-count").inner_text() == "63 of 69 bids counted", "a new visit starts on the class's own bids, not on the made-up market")
+            check(s1.locator("#mo-data").input_value() == "mine" and s1.locator("#mo-note").is_hidden() and s1.locator("#mo-count").inner_text() == "63 of 69 bids counted" and s1.locator("#mo-results .tabs.inner button.active").inner_text() == "1. Every price",
+                  "a new visit starts as the tab is built: the class's own bids, the first method")
             s1.fill("#mo-price", "25"); s1.press("#mo-price", "Enter")
             s1.get_by_text("Buyers at £25", exact=False).wait_for()
             # a number typed in a box and then, without Enter, a press on a view's button: the box's change redraws the
@@ -416,24 +424,36 @@ def main():
             s5.fill("#mo-price", "35"); s5.locator("#mo-price").dispatch_event("change")
             s5.get_by_text("Buyers at £35", exact=False).wait_for()
             check("Best price on these bids: £25" in s5.locator("#mo-results").inner_text() and "8" in s5.locator("#mo-results .metric .value").first.inner_text() and s5.locator("#group-form").count() == 1, "Mocha works without signing in")
-            # what an older page stored (last year's bids, the one "Pricing" view, the line's tick box) opens the first method
-            s5.evaluate("(k) => localStorage.setItem(k, JSON.stringify({tab: 'mocha', mocha: {dataset: 'last', cost: 15, price: '20', dropZero: true, above: '49', showLine: true, inner: 'pricing', fourth: true}}))", "pricinglab:" + CLS + ":_")
+            # Nothing of the Mocha tab is remembered between visits. What an older page stored there (last year's bids,
+            # "ignore bids above 49", with or without the new box) is not brought back: left in force, "above 49" kept the
+            # bids at 50 out whatever the box said, so the box seemed to do nothing (the user's report, 14 November 2026, twice).
+            for label, stored in (("the old tab", {"dataset": "last", "cost": 15, "price": "20", "dropZero": True, "above": "49", "showLine": True, "inner": "pricing", "fourth": True}),
+                                  ("this morning's page", {"dataset": "all", "cost": 9, "price": "20", "dropCap": True, "dropZero": False, "above": "49", "inner": "two", "split": "40"})):
+                s5.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify({tab: 'mocha', mocha: v}))", ["pricinglab:" + CLS + ":_", stored])
+                s5.reload()
+                s5.wait_for_selector("#mo-results table.methods")
+                check(not s5.locator("#tab-mocha").is_hidden() and s5.locator("#mo-data").input_value() == "mine" and s5.locator("#mo-results .tabs.inner button.active").inner_text() == "1. Every price" and s5.locator("#mo-cost").input_value() == "15"
+                      and s5.locator("#mo-count").inner_text() == "63 of 69 bids counted" and s5.locator("#mo-above").input_value() == "" and not s5.locator("#mo-above").is_visible() and s5.locator("#mo-cap").is_checked(),
+                      "what %s remembered is not brought back, only the tab: %r" % (label, s5.locator("#mo-count").inner_text()))
+                before = s5.locator("table.methods tbody tr").first.inner_text()
+                s5.locator("#mo-cap-text").click()
+                s5.get_by_text("69 bids counted", exact=True).wait_for(timeout=5000)
+                check(s5.locator("table.methods tbody tr").first.inner_text() != before and "£35" in s5.locator("table.methods tbody tr").first.inner_text(), "and the box acts after %s: the best price moves from 25 to 35" % label)
+            # the same in projector view, where the user met it
+            s5.goto(app_url + "/pricing.html?class=" + CLS + "&projector=1&tab=mocha")
+            s5.wait_for_selector("#mo-results table.methods")
+            s5.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify({tab: 'mocha', mocha: v}))", ["pricinglab:" + CLS + ":Projector", {"dataset": "", "cost": 15, "price": "25", "dropCap": True, "dropZero": False, "above": "49", "inner": "direct", "split": ""}])
             s5.reload()
             s5.wait_for_selector("#mo-results table.methods")
-            check(s5.locator("#mo-data").input_value() == "mine" and s5.locator("#mo-results .tabs.inner button.active").inner_text() == "1. Every price" and "Buyers at £20" in s5.locator("#mo-results").inner_text() and s5.locator("#mo-cap").is_checked(), "a browser that remembers the old Mocha tab opens on the first method with this year's bids, the bids at 50 left out")
-            # the old tab's remembered "ignore bids above 49" and "bids of 0" are dropped: left in force they kept the bids
-            # at 50 out whatever the new box said, so the box seemed to do nothing (the user's report, 14 November 2026)
-            check(s5.locator("#mo-count").inner_text() == "63 of 69 bids counted" and s5.locator("#mo-above").input_value() == "" and not s5.locator("#mo-zero").is_checked() and not s5.locator("#mo-above").is_visible(), "bids the old tab was told to ignore are counted again: %r" % s5.locator("#mo-count").inner_text())
-            before = s5.locator("table.methods tbody tr").first.inner_text()
             s5.locator("#mo-cap-text").click()
             s5.get_by_text("69 bids counted", exact=True).wait_for(timeout=5000)
-            check(s5.locator("table.methods tbody tr").first.inner_text() != before and "£35" in s5.locator("table.methods tbody tr").first.inner_text(), "and the box acts: the best price moves from 25 to 35")
-            # bids to ignore set on today's page are remembered, and the folded boxes then open so that they are seen
+            check("£35" in s5.locator("table.methods tbody tr").first.inner_text() and "Projector" in s5.locator("#group-panel").inner_text(), "in projector view the box acts too")
+            # and a box ticked today is gone on the next visit
             s5.click("#mo-ignore summary"); s5.fill("#mo-above", "30"); s5.locator("#mo-above").dispatch_event("change")
             s5.get_by_text("of 69 bids counted", exact=False).wait_for()
             s5.reload()
             s5.wait_for_selector("#mo-results table.methods")
-            check(s5.locator("#mo-above").input_value() == "30" and s5.locator("#mo-above").is_visible() and "of 69 bids counted" in s5.locator("#mo-count").inner_text(), "bids ignored on this page are remembered and shown open: %r" % s5.locator("#mo-count").inner_text())
+            check(s5.locator("#mo-above").input_value() == "" and s5.locator("#mo-count").inner_text() == "63 of 69 bids counted", "bids ignored on one visit are counted again on the next: %r" % s5.locator("#mo-count").inner_text())
             ctx5.close(); ctx7.close()
 
             # ---- the instructor page: two views, no lab books

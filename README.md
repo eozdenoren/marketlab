@@ -71,10 +71,14 @@ record is never touched while an assignment runs on it.
   against each other on the actual bids, and the profit chart (profit at
   each whole-pound price) carries the three prices; on a line's view it
   also shows the profit hill that line expects, a parabola. The Bids list
-  ends with a made-up market with two kinds of buyer (20 fans at 38 to 57,
-  112 others at 1 to 14; `madeUpBids` in the core), where one line earns
-  57% of the best and two lines all of it: on the class's own bids two
-  lines add little. A line's price is charged to the nearest pound, the bids
+  ends with a made-up curved demand (200 buyers, halved by every 14 pounds
+  on the price; `curveBids` in the core): one smooth curve with a long
+  tail, no groups of buyers (the user: explicit high and low segments are
+  "not the point"). There one line earns 88% of the best and two lines
+  98%; on the class's own bids two lines add little. Nothing of the Mocha
+  tab is remembered between visits: it always opens on the class's own
+  bids with only the bids at the cap left out (a remembered "ignore bids
+  above 49" twice made the cap box seem dead). A line's price is charged to the nearest pound, the bids
   being in whole pounds (to the penny, 30.21 would lose everyone who bid
   30). The bids at the most the auction accepted (50) are left out unless
   a box is unticked: a pile sits at the maximum whatever the maximum is, so

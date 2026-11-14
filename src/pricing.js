@@ -40,21 +40,16 @@
   function storeKey() { return "pricinglab:" + S.classCode + ":" + groupKey(); }
   function saveLocal() {
     try {
-      localStorage.setItem(storeKey(), JSON.stringify({ group: S.group, tab: S.tab, mocha: S.mocha }));
+      localStorage.setItem(storeKey(), JSON.stringify({ group: S.group, tab: S.tab }));     // nothing of the Mocha tab: see mergeStored
       if (!S.projector) localStorage.setItem("pricinglab:" + S.classCode + ":last", S.group ? JSON.stringify(S.group) : "");
     } catch (e) {}
   }
   function loadStored(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  // Only the tab is taken from what an earlier visit stored. The Mocha tab starts every visit as it is built: the
+  // class's own bids, the bids at the cap left out, nothing else ignored. Remembered boxes were a trap: a forgotten
+  // "ignore bids above 49" kept the bids at 50 out whatever the tick box said (the user, 14 November 2026, twice).
   function mergeStored(d) {
-    if (!d) return;
-    if (d.tab) S.tab = d.tab;
-    // What a page from before the tick box for the bids at the cap remembered about bids to ignore is dropped: a
-    // forgotten "bids above 49" there left the bids at 50 out whatever the box said, so the box seemed to do nothing.
-    if (d.mocha && typeof d.mocha === "object") {
-      var old = !("dropCap" in d.mocha);
-      Object.keys(d.mocha).forEach(function (k) { if (!(old && (k === "above" || k === "dropZero"))) S.mocha[k] = d.mocha[k]; });
-      if (S.mocha.dataset === "madeup") { S.mocha.dataset = ""; S.mocha.price = ""; S.mocha.split = ""; }      // a visit starts on the class's own bids
-    }
+    if (d && d.tab) S.tab = d.tab;
   }
 
   // ---- class record: the sign-in ------------------------------------------------------------------------------
@@ -450,15 +445,13 @@
     if (mine) out.push({ key: "mine", label: "Your stream (" + mine.label + ", " + mine.bids.length + " bids)", parts: [mine] });
     DATA.streams.forEach(function (s) { if (!mine || s.code !== mine.code) out.push({ key: s.code, label: s.label + ", " + DATA.year + " (" + s.bids.length + " bids)", parts: [s] }); });
     if (DATA.streams.length > 1) out.push({ key: "all", label: "All " + DATA.streams.length + " streams, " + DATA.year + " (" + DATA.streams.reduce(function (n, s) { return n + s.bids.length; }, 0) + " bids)", parts: DATA.streams });
-    var made = C.madeUpBids();
-    out.push({ key: "madeup", label: "A made-up market with two kinds of buyer (" + made.length + " bids)", parts: [{ bids: made, max: null }], madeUp: true });
+    var made = C.curveBids();
+    out.push({ key: "curve", label: "A curved demand, made up (" + made.length + " buyers)", parts: [{ bids: made, max: null }], madeUp: true });
     return out;
   }
-  // What the made-up market is, in words (the numbers are the core's).
+  // What the made-up demand is, in words (the numbers are the core's).
   function madeUpNote() {
-    var f = C.MADE_UP.fans, o = C.MADE_UP.others, nf = (f.to - f.from + 1) * f.each, no = (o.to - o.from + 1) * o.each;
-    function each(g) { return g.each === 1 ? "one at each pound" : numWord(g.each) + " at each pound"; }
-    return "Made up, to show what two lines are for; nobody's bids. " + nf + " fans who would pay " + money(f.from) + " to " + money(f.to) + " (" + each(f) + ") and " + no + " others who would pay " + money(o.from) + " to " + money(o.to) + " (" + each(o) + ").";
+    return "Made up, to show what two lines are for; nobody's bids. " + C.CURVE.buyers + " buyers whose demand is a curve, not a straight line: every " + money(C.CURVE.half) + " on the price halves the number who would buy.";
   }
   // The bids at the most the auction accepted, over some streams: how many, and that maximum when the streams share it.
   function capInfo(streams) {
@@ -541,13 +534,14 @@
     var n = r.bids.length, ytop = top;
     var lines = [{ pts: pts, color: K.red, width: 2.5, name: "Demand: buyers at each price" }], hlines = [{ y: r.mc, label: "cost", color: K.grey }];
     var markers = [{ x: r.buyers, y: r.price, color: K.black, name: "Your price", title: "Price " + money(r.price) + ": " + r.buyers + " buyers" },
-                   { x: r.best.buyers, y: r.best.price, color: K.green, hollow: true, name: "Best price on these bids", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": " + r.best.buyers + " buyers, profit " + money(r.best.profit) }];
+                   { x: r.best.buyers, y: r.best.price, color: K.green, hollow: true, name: r.madeUp ? "Best price on this demand" : "Best price on these bids", label: money(r.best.price), title: "Best price " + money(r.best.price) + ": " + r.best.buyers + " buyers, profit " + money(r.best.profit) }];
+    var onBids = r.madeUp ? "buyers on the curve" : "buyers on the bids";
     if (mode === "line" && r.line && r.lp) {
       ytop = Math.max(top, r.line.a);
       lines.push({ pts: [[0, r.line.a], [r.line.a / r.line.b, 0]], color: K.purple, width: 2, dash: "dash", name: "Fitted line " + lineText(r.line) });
       lines.push({ pts: [[0, r.line.a], [r.line.a / (2 * r.line.b), 0]], color: K.purple, width: 1.5, dash: "dot", name: "Its marginal revenue" });
       if (r.lp.lineQ > 0) markers.push({ x: r.lp.lineQ, y: r.lp.price, color: K.purple, hollow: true, name: "The line's price: buyers the line expects", title: C.fareText(r.lp.price) + ": the line expects " + fmt(r.lp.lineQ, 1) + " buyers" });
-      markers.push({ x: r.lp.buyers, y: r.lp.rounded, color: K.purple, name: "To the nearest pound: buyers on the bids", title: money(r.lp.rounded) + ": " + r.lp.buyers + " buyers on the bids" });
+      markers.push({ x: r.lp.buyers, y: r.lp.rounded, color: K.purple, name: "To the nearest pound: " + onBids, title: money(r.lp.rounded) + ": " + r.lp.buyers + " " + onBids });
     }
     if (mode === "two" && r.two) {
       var t = r.two, hiTop = Math.min(t.high.a, top * 1.08);
@@ -555,9 +549,9 @@
       lines.push({ pts: [[(t.low.a - t.split) / t.low.b, t.split], [t.low.a / t.low.b, 0]], color: K.blue, width: 2, dash: "dash", name: "Low segment " + lineText(t.low) });
       hlines.push({ y: t.split, label: "split at " + money(t.split), color: K.orange });
       if (t.lineQ > 0) markers.push({ x: t.lineQ, y: t.price, color: K.orange, hollow: true, name: "The two lines' price: buyers the lines expect", title: C.fareText(t.price) + ": the lines expect " + fmt(t.lineQ, 1) + " buyers" });
-      markers.push({ x: t.buyers, y: t.rounded, color: K.orange, name: "To the nearest pound: buyers on the bids", title: money(t.rounded) + ": " + t.buyers + " buyers on the bids" });
+      markers.push({ x: t.buyers, y: t.rounded, color: K.orange, name: "To the nearest pound: " + onBids, title: money(t.rounded) + ": " + t.buyers + " " + onBids });
     }
-    return C.chart({ title: "Demand from the bids", h: 380, x: { max: n * 1.04, label: "Buyers (bids at least the price)" }, y: { max: ytop * 1.08, label: "Price (£)" }, lines: lines, hlines: hlines, markers: markers });
+    return C.chart({ title: "Demand from the bids", h: 380, x: { max: n * 1.04, label: r.madeUp ? "Buyers (who would pay at least the price)" : "Buyers (bids at least the price)" }, y: { max: ytop * 1.08, label: "Price (£)" }, lines: lines, hlines: hlines, markers: markers });
   }
   // Profit against the price, at the whole-pound prices that can be charged, with the price each method gives.
   // The view of a line also shows the profit that line expects at each price: for a straight-line demand that is
@@ -588,7 +582,7 @@
     var rows = [["direct", "1. Every price tried", r.best.price != null ? r.best : null],
                 ["line", "2. One line", r.lp && { price: r.lp.rounded, buyers: r.lp.buyers, profit: r.lp.profit }],
                 ["two", "3. Two lines" + (r.two ? ", split at " + money(r.two.split) : ""), r.two && { price: r.two.rounded, buyers: r.two.buyers, profit: r.two.profit }]];
-    return '<h3 style="margin:14px 0 4px">The three methods on these bids</h3><div class="wide"><table class="grid methods"><thead><tr><th>Method</th><th class="num">Price</th><th class="num">Buyers</th><th class="num">Profit</th><th class="num">Share of the best</th></tr></thead><tbody>' +
+    return '<h3 style="margin:14px 0 4px">The three methods on ' + (r.madeUp ? 'this demand' : 'these bids') + '</h3><div class="wide"><table class="grid methods"><thead><tr><th>Method</th><th class="num">Price</th><th class="num">Buyers</th><th class="num">Profit</th><th class="num">Share of the best</th></tr></thead><tbody>' +
       rows.map(function (x) {
         var v = x[2];
         return '<tr' + (x[0] === mode ? ' class="me"' : "") + '><td>' + esc(x[1]) + '</td>' + (v ? '<td class="num">' + C.fareText(v.price) + '</td><td class="num">' + v.buyers + '</td><td class="num">' + C.fareText(v.profit) + '</td><td class="num">' + shareOfBest(v.profit, r) + '</td>'
@@ -598,11 +592,12 @@
   // What a line's price earns: charged to the nearest pound, since the bids are in whole pounds.
   function chargedText(v, r) {
     var whole = Math.abs(v.price - v.rounded) < 0.005;
-    return (whole ? 'On the actual bids that price' : 'The bids are in whole pounds, so the price to charge is the nearest pound, <b>' + money(v.rounded) + '</b>. On the actual bids it') +
+    var on = r.madeUp ? 'On the curve itself' : 'On the actual bids', why = r.madeUp ? 'Prices are in whole pounds here' : 'The bids are in whole pounds';
+    return (whole ? on + ' that price' : why + ', so the price to charge is the nearest pound, <b>' + money(v.rounded) + '</b>. ' + on + ' it') +
            ' sells ' + v.buyers + ' and earns <b>' + money(v.profit) + '</b>, ' + shareOfBest(v.profit, r) + ' of the best.';
   }
   function directText(r) {
-    return '<p class="reveal-line">Best price on these bids: <b>' + money(r.best.price) + '</b>, ' + r.best.buyers + ' buyers, profit <b>' + money(r.best.profit) + '</b>. With every bid known there is nothing to estimate: try every price and keep the best.</p>';
+    return '<p class="reveal-line">Best price on ' + (r.madeUp ? 'this demand' : 'these bids') + ': <b>' + money(r.best.price) + '</b>, ' + r.best.buyers + ' buyers, profit <b>' + money(r.best.profit) + '</b>. With ' + (r.madeUp ? 'the whole demand' : 'every bid') + ' known there is nothing to estimate: try every price and keep the best.</p>';
   }
   // One line: MR = MC and the midpoint rule are two routes to the same price.
   function lineTextHtml(r) {
@@ -615,7 +610,7 @@
   }
   function splitControl(r) {
     var shown = r.typed != null ? r.typed : r.auto, isAuto = r.typed == null || r.typed === r.auto;
-    return '<div class="row" style="align-items:center;margin:2px 0 4px"><label for="mo-split" style="margin:0">Split the bids at £</label><input type="number" id="mo-split" step="1" min="1" style="width:90px" value="' + (shown != null ? esc(shown) : "") + '" data-shown="' + (shown != null ? esc(shown) : "") + '">' +
+    return '<div class="row" style="align-items:center;margin:2px 0 4px"><label for="mo-split" style="margin:0">Split the demand at £</label><input type="number" id="mo-split" step="1" min="1" style="width:90px" value="' + (shown != null ? esc(shown) : "") + '" data-shown="' + (shown != null ? esc(shown) : "") + '">' +
       '<button type="button" class="small" id="mo-split-auto"' + (isAuto ? " disabled" : "") + '>Best-fitting split</button></div>' +
       '<p class="caption" style="margin:0 0 6px">Prices at or above the split are the high segment, prices below it the low segment; each gets its own line. ' +
       (r.auto != null ? 'The best-fitting split, the one whose two lines leave the smallest squared error, is ' + money(r.auto) + '. Move it and watch the price.' : '') + '</p>';
@@ -665,12 +660,12 @@
     $("mo-cost").value = r.mc; $("mo-price").value = r.price; $("mo-zero").checked = !!m.dropZero; $("mo-above").value = m.above;
     $("mo-cap").checked = !!m.dropCap; $("mo-cap-row").hidden = !r.cap.n; $("mo-cap-text").textContent = "Leave out the " + capWords(r.cap);
     // How many bids count is always in view, so that every box is seen to act; the folded boxes open when they are in use.
-    $("mo-count").textContent = r.bids.length === r.total ? r.total + " bids counted" : r.bids.length + " of " + r.total + " bids counted";
+    $("mo-count").textContent = r.madeUp ? "" : (r.bids.length === r.total ? r.total + " bids counted" : r.bids.length + " of " + r.total + " bids counted");
     $("mo-note").hidden = !r.madeUp; $("mo-note").textContent = r.madeUp ? madeUpNote() : "";
     if (m.dropZero || m.above !== "") $("mo-ignore").open = true;
     var el = $("mo-results"), n = r.bids.length;
     if (!n) { el.innerHTML = '<div class="info">No bids are left: every bid is left out. Change the boxes on the left.</div>'; saveLocal(); return; }
-    var h = '<div class="metrics">' + metric("Buyers at " + money(r.price), r.buyers, { sub: Math.round(100 * r.buyers / n) + "% of " + n + " bids" }) + metric("Revenue", r.price * r.buyers, { money: true }) +
+    var h = '<div class="metrics">' + metric("Buyers at " + money(r.price), r.buyers, { sub: Math.round(100 * r.buyers / n) + "% of " + n + (r.madeUp ? " buyers" : " bids") }) + metric("Revenue", r.price * r.buyers, { money: true }) +
             metric("Cost", r.mc * r.buyers, { money: true }) + metric("Profit", r.profit, { money: true, sub: r.best.profit > 0 ? Math.round(100 * r.profit / r.best.profit) + "% of the best" : "" }) + '</div>';
     h += '<div class="tabs inner">' + METHODS.map(function (x) { return '<button type="button" data-inner="' + x[0] + '" class="' + (m.inner === x[0] ? "active" : "") + '">' + x[1] + '</button>'; }).join("") +
          '<button type="button" data-inner="bids" class="' + (m.inner === "bids" ? "active" : "") + '">The bids</button>' +
