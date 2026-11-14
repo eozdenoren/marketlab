@@ -128,12 +128,18 @@ def main():
             s1.get_by_text("Seats to sell on flight 1 of 6", exact=False).wait_for(timeout=15000)
             brief = s1.locator("#tab-challenge .briefing").inner_text()
             check("Your route: London–Anchorage" in s1.locator("#tab-challenge").inner_text() and "between London and Anchorage" in brief and "Your class is split across three routes" in brief, "Group 13 flies the first route and is told the class is split: %r" % brief[:400])
-            check("WeezyJet has just opened the only direct flight between" in brief and "consulting teams" in brief and "trial flights" in brief and "six flights" in brief
-                  and "how many seats to sell" in brief and "the highest at which that many people will buy" in brief and "£160,000 each" in brief,
-                  "the brief: WeezyJet's new route, the consulting teams, six flights, seats chosen and the fare that follows: %r" % brief[:500])
-            tiles = s1.locator("#tab-challenge .briefing .metrics").inner_text()
-            check("500" in tiles and "£80" in tiles and "400" in tiles and "100 flew empty" in tiles and "£480" in tiles, "four numbers: the seats, the cost, the trial flights' seats and fare: %r" % tiles)
-            check(s1.locator("#how").get_attribute("open") is not None and len(brief.split()) < 190, "the rules are a short list, open before the first flight (%d words in the brief)" % len(brief.split()))
+            check("WeezyJet has just opened the only direct flight between" in brief and "The flight operates once a week" in brief and "does not know the exact demand" in brief
+                  and "the more seats it sells on a flight, the lower the fare has to be" in brief and "all passengers on a flight pay the same fare" in brief
+                  and "So far it has run one trial flight" in brief and "consulting teams" in brief and "It gave the teams the following information" in brief,
+                  "the preamble: the new weekly route, what WeezyJet knows (more seats, a lower fare; one fare for all), one trial flight, the consulting teams: %r" % brief[:600])
+            facts = s1.locator("#tab-challenge .briefing ul.facts").inner_text()
+            check(s1.locator("#tab-challenge .briefing ul.facts li").count() == 4 and "The plane has 500 seats" in facts and "The trial flight sold 400 seats at a fare of £480, so 100 seats flew empty" in facts
+                  and "Each passenger costs £80" in facts and "the trial flight made £160,000" in facts and s1.locator("#tab-challenge .briefing .metrics").count() == 0,
+                  "what the teams were told is a list of four lines, with no tiles of large numbers: %r" % facts)
+            how = s1.locator("#how").inner_text()
+            check(s1.locator("#how").get_attribute("open") is not None and "the next six flights" in how and "how many seats to sell (1 to 500)" in how and "the highest fare at which that many people buy" in how
+                  and "minus six times the trial flight's profit" in how and "the team with the highest score wins" in how and len(brief.split()) <= 260,
+                  "how the challenge works is a short list, open before the first flight (%d words in all): %r" % (len(brief.split()), how[:300]))
             s1.screenshot(path=os.path.join(OUT, "03_student_open.png"), full_page=True)
             s1.fill("#seats", "501"); s1.click("#fly")
             s1.get_by_text("a whole number from 1 to 500", exact=False).wait_for()
@@ -174,7 +180,7 @@ def main():
             s4.get_by_text("Your group: Group 8", exact=False).wait_for()
             s4.wait_for_selector("#seats", timeout=15000)
             brief4 = s4.locator("#tab-challenge .briefing").inner_text()
-            check("between London and Zanzibar" in brief4 and "380" in brief4 and "£550" in brief4 and "100 flew empty" in brief4 and "(1 to 480)" in brief4, "Group 8 is briefed on the second route: %r" % brief4[:400])
+            check("between London and Zanzibar" in brief4 and "sold 380 seats at a fare of £550, so 100 seats flew empty" in brief4 and "(1 to 480)" in brief4, "Group 8 is briefed on the second route: %r" % brief4[:400])
             s4.fill("#seats", "280"); s4.click("#fly")
             s4.get_by_text("Seats to sell on flight 2 of 6", exact=False).wait_for()
             row4 = s4.locator("table.flights tbody tr").first.inner_text()
@@ -215,8 +221,8 @@ def main():
             s1.get_by_text("The demand on your route", exact=False).wait_for(timeout=15000)
             txt = s1.locator("#tab-challenge").inner_text()
             check("1,280 − 2 × Q" in txt and "nobody flies above £1,280" in txt and "each extra seat lowers the fare by £2" in txt, "the reveal states the demand as the slides write it: %r" % txt[:400])
-            rt = s1.locator("#tab-challenge .metrics").nth(1).inner_text()
-            check("300" in rt and "200 seats left empty" in rt and "£680" in rt and "£180,000" in rt and "£20,000 more than a trial flight" in rt and "the best there is" in rt, "four tiles: the best seats, its fare, its profit, and the team's own best flight: %r" % rt)
+            rt = s1.locator("#tab-challenge .metrics").first.inner_text()
+            check("300" in rt and "200 seats left empty" in rt and "£680" in rt and "£180,000" in rt and "£20,000 more than the trial flight" in rt and "the best there is" in rt, "four tiles: the best seats, its fare, its profit, and the team's own best flight: %r" % rt)
             check("A full plane (500 seats) needs a fare of £280 and makes £100,000" in txt and "25 seats too many or too few costs £1,250" in txt, "the full plane and the cost of a small error")
             check("Two points give a line" in txt and "your first flight (300 seats at £680)" in txt and "the demand itself" in txt, "the line through the trial flights and the first flight is the demand")
             check(s1.locator("#tab-challenge svg").count() == 2 and "Seats sold" in s1.locator("#tab-challenge svg").first.text_content(), "two charts at the reveal, the profit against the seats sold")

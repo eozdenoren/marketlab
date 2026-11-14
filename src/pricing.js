@@ -223,9 +223,11 @@
   }
   function demandOf(ch) { return ch && ch.demand && ch.told ? { a: ch.demand.a, b: ch.demand.b, mc: ch.told.mc, seats: ch.told.seats } : null; }
 
-  // ---- what a team is told. The route is new, so the airline knows only its trial flights: one point on the
-  // demand, nothing about the slope. A short story, four numbers, and the rules as a list that folds away once the
-  // team has flown (S.howOpen remembers a team that opens or closes it itself).
+  // ---- what a team is told: a few plain sentences, the facts WeezyJet gave the teams as a list, and how the
+  // challenge works as a second list that folds away once the team has flown (S.howOpen remembers a team that
+  // opens or closes it itself). The route is new, so the airline has one trial flight to go on: one point on the
+  // demand, nothing about the slope. What it does know is said outright: more seats take a lower fare, and
+  // everyone on a flight pays the same fare.
   var AIRLINE = "WeezyJet";
   function numWord(n) { return ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"][n] || fmt(n); }
   function nFlights(n) { return numWord(n) + (n === 1 ? " flight" : " flights"); }
@@ -235,27 +237,29 @@
     var parts = label.split(/\s*[–—-]\s*/);
     return parts.length === 2 && parts[0] && parts[1] ? 'between <b>' + esc(parts[0]) + ' and ' + esc(parts[1]) + '</b>' : 'on the <b>' + esc(label) + '</b> route';
   }
-  function factTiles(t) {
-    return '<div class="metrics">' + metric("Seats on the plane", t.seats) + metric("Cost per passenger", t.mc, { money: true }) +
-      metric("Seats sold on a trial flight", t.q0, { sub: fmt(t.seats - t.q0) + " flew empty" }) +
-      metric("Fare on the trial flights", t.p0, { money: true, sub: money(C.statusQuoProfit(t)) + " profit a flight" }) + '</div>';
+  var KNOWS = 'does not know the exact demand, but it knows that the more seats it sells on a flight, the lower the fare has to be. It sells only one type of ticket, so all passengers on a flight pay the same fare. ';
+  function factsList(t) {
+    return '<ul class="facts"><li>The plane has <b>' + fmt(t.seats) + ' seats</b>.</li>' +
+      '<li>The trial flight sold <b>' + fmt(t.q0) + ' seats</b> at a fare of <b>' + money(t.p0) + '</b>, so ' + fmt(t.seats - t.q0) + ' seats flew empty.</li>' +
+      '<li>Each passenger costs <b>' + money(t.mc) + '</b> (fuel, catering, airport fees). The plane and the crew cost the same however many fly.</li>' +
+      '<li>After passenger costs, the trial flight made <b>' + money(C.statusQuoProfit(t)) + '</b>.</li></ul>';
   }
   // t: the team's route, or null for the class as a whole (the numbers are then in the table of routes).
-  function rules(flights, t, open) {
+  function rules(flights, t, nroutes, open) {
     var nf = nFlights(flights), items = [
-      'Before each flight, choose <b>how many seats to sell</b>' + (t ? ' (1 to ' + fmt(t.seats) + ')' : ', up to the plane\'s seats') + '.',
-      'Everyone on a flight pays the same fare: the highest at which that many people will buy. You see it after the flight.',
-      'Each passenger costs ' + (t ? money(t.mc) : 'the amount shown') + ' (fuel, catering, airport fees). The plane and the crew cost the same however many fly.',
-      'Demand is the same on every flight. The airline knows only its trial flights; the rest you learn from your own.',
-      '<b>Score:</b> the profit of your ' + nf + ' minus the profit of ' + nf + ' like the trial flights' + (t ? ' (' + money(C.statusQuoProfit(t)) + ' each)' : '') + '. Every flight counts.'];
-    return '<details class="how" id="how"' + (open ? " open" : "") + '><summary>How it works</summary><ul>' + items.map(function (x) { return '<li>' + x + '</li>'; }).join("") + '</ul></details>';
+      (t ? 'Your team runs' : 'Each team runs') + ' the next <b>' + nf + '</b>' + (t ? '' : ' on one route') + '. Before each flight, choose <b>how many seats to sell</b>' + (t ? ' (1 to ' + fmt(t.seats) + ')' : ', up to the plane\'s seats') + '.',
+      'After the flight you see the fare at which they sold: the highest fare at which that many people buy.',
+      'Demand is the same every week. Anything more you learn about it, you learn from your own flights.',
+      '<b>Score:</b> the profit of your ' + nf + ' minus ' + (flights === 1 ? '' : numWord(flights) + ' times ') + 'the trial flight\'s profit. Every flight counts.',
+      nroutes > 1 ? (t ? 'Your class is split across ' + numWord(nroutes) + ' routes with different numbers. On your route, the team with the highest score wins.' : 'On each route, the team with the highest score wins.') : 'The team with the highest score wins.'];
+    return '<details class="how" id="how"' + (open ? " open" : "") + '><summary>How the challenge works</summary><ul>' + items.map(function (x) { return '<li>' + x + '</li>'; }).join("") + '</ul></details>';
   }
   function howOpen(byDefault) { return S.howOpen == null ? byDefault : S.howOpen; }
   // nroutes: how many routes the class runs; with more than one, the team competes on its own route only.
   function briefing(t, nroutes, flown) {
-    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened the only direct flight ' + routePhrase(t.label) + ' and isn\'t sure its fare is right, so it has asked consulting teams to run its next flights. ' +
-      'Your team runs <b>' + nFlights(t.flights) + '</b>. ' + (nroutes > 1 ? 'Your class is split across ' + numWord(nroutes) + ' routes with different numbers; on yours, the team that makes the most money wins.' : 'The team that makes the most money wins.') + '</p>' +
-      factTiles(t) + rules(t.flights, t, howOpen(!flown)) + '</div>';
+    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened the only direct flight ' + routePhrase(t.label) + '. The flight operates once a week. ' + AIRLINE + ' ' + KNOWS +
+      'So far it has run one trial flight. It isn\'t sure its fare is right, so it has asked consulting teams to run its next flights. It gave the teams the following information:</p>' +
+      factsList(t) + rules(t.flights, t, nroutes, howOpen(!flown)) + '</div>';
   }
   // d (the demand) is given once it is revealed: the team's most profitable flight is then marked and each flight
   // is set against the best number of seats. During the challenge nothing may tell a team it has found the best.
@@ -263,7 +267,7 @@
     if (!flights || !flights.length) return '<p class="caption">No flights yet.</p>';
     var best = d ? C.bestSeats(d) : null, bestF = null;
     if (d) flights.forEach(function (f) { if (!bestF || f.profit > bestF.profit) bestF = f; });
-    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Seats sold</th><th class="num">Fare</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against a trial flight</th>' + (d ? '<th class="num">Seats off the best</th>' : "") + '</tr></thead><tbody>';
+    var h = '<div class="wide"><table class="grid flights"><thead><tr><th>Flight</th><th class="num">Seats sold</th><th class="num">Fare</th><th class="num opt">Revenue</th><th class="num opt">Cost</th><th class="num">Profit</th><th class="num">Against the trial flight</th>' + (d ? '<th class="num">Seats off the best</th>' : "") + '</tr></thead><tbody>';
     var total = 0;
     flights.forEach(function (f) {
       total += f.gain;
@@ -282,7 +286,7 @@
     var b = v.board || [];
     if (!b.length) return '<p class="caption">No flights flown yet on this route.</p>';
     var me = groupKey();
-    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial flights') + '</th></tr></thead><tbody>';
+    var h = '<table class="grid board"><thead><tr><th class="rank">#</th><th>Group</th><th class="num">Flights</th><th class="num">' + (compact ? 'Score' : 'Score: profit over the trial flight') + '</th></tr></thead><tbody>';
     b.forEach(function (g, i) {
       h += '<tr' + (g.group === me ? ' class="me"' : "") + '><td class="rank">' + (i + 1) + '</td><td>' + esc(g.group) + '</td><td class="num">' + g.n + (v.told ? " / " + v.told.flights : "") + '</td><td class="num">' + money(g.gain, 0, true) + '</td></tr>';
     });
@@ -308,7 +312,7 @@
     var full = C.fullPlane(d);
     if (best.seats >= full.seats) return 'The best is a full plane.';
     if (short) return 'A full plane (' + fmt(full.seats) + ' seats at ' + C.fareText(full.fare) + ') makes ' + money(full.profit) + '.';
-    return 'A full plane (' + fmt(full.seats) + ' seats) needs a fare of ' + C.fareText(full.fare) + ' and makes ' + money(full.profit) + ', ' + money(Math.abs(sq - full.profit)) + (full.profit < sq ? ' less' : ' more') + ' than a trial flight.';
+    return 'A full plane (' + fmt(full.seats) + ' seats) needs a fare of ' + C.fareText(full.fare) + ' and makes ' + money(full.profit) + ', ' + money(Math.abs(sq - full.profit)) + (full.profit < sq ? ' less' : ' more') + ' than the trial flight.';
   }
   function revealSection(ch) {
     var t = ch.told, d = demandOf(ch), best = C.bestSeats(d), sq = C.statusQuoProfit(t);
@@ -318,12 +322,12 @@
     var step = best.seats > 25 ? 25 : 1;
     var h = '<h2>The demand on your route</h2>' + demandLine(d) +
       '<div class="metrics">' + metric("Best: seats to sell", best.seats, { sub: best.seats >= t.seats ? "a full plane" : fmt(t.seats - best.seats) + " seats left empty" }) +
-      metric("at a fare of", C.fareText(best.fare)) + metric("Profit a flight", best.profit, { money: true, sub: money(best.profit - sq) + " more than a trial flight" }) +
+      metric("at a fare of", C.fareText(best.fare)) + metric("Profit a flight", best.profit, { money: true, sub: money(best.profit - sq) + " more than the trial flight" }) +
       (bestF ? metric("Your best flight", fmt(bestF.passengers) + " seats", { sub: money(bestF.profit) + (bestF.profit < best.profit ? ", " + money(best.profit - bestF.profit) + " short of the best" : ", the best there is") }) : "") + '</div>' +
       '<p class="reveal-line">' + fullPlaneText(t, d, best, sq) + ' ' + step + ' seat' + (step > 1 ? 's' : '') + ' too many or too few costs ' + money(best.profit - C.profitSelling(d, best.seats - step)) + ' a flight.</p>';
     if (mine && mine.length) {
       var first = mine[0], ln = C.lineThrough(t.p0, t.q0, first.fare, first.passengers);
-      if (ln) h += '<p class="reveal-line">Two points give a line. The trial flights (' + fmt(t.q0) + ' seats at ' + C.fareText(t.p0) + ') and your first flight (' + fmt(first.passengers) + ' seats at ' + C.fareText(first.fare) + ') give fare = ' + C.inverseText(ln) +
+      if (ln) h += '<p class="reveal-line">Two points give a line. The trial flight (' + fmt(t.q0) + ' seats at ' + C.fareText(t.p0) + ') and your first flight (' + fmt(first.passengers) + ' seats at ' + C.fareText(first.fare) + ') give fare = ' + C.inverseText(ln) +
                    (Math.abs(ln.a - d.a) < 1 && Math.abs(ln.b - d.b) < 0.01 ? ': the demand itself.' : '.') + '</p>';
     }
     h += '<div class="cols"><div>' + C.profitChartHtml(d, { seats: t.q0, profit: sq }, dots, { r: mine ? undefined : 4 }) + '</div><div>' + C.demandChartHtml(t, d, 360) + '</div></div>';
@@ -335,20 +339,20 @@
   // The story, a table of the routes and a board per route; at the reveal each route's demand, best seats and
   // profit curve with its flights, then every team by its share of the gain its route allowed.
   function routesTable(R) {
-    return '<div class="wide"><table class="grid routes"><thead><tr><th>Route</th><th class="num">Seats on the plane</th><th class="num">Cost per passenger</th><th class="num">Seats sold on a trial flight</th><th class="num">Fare on the trial flights</th><th class="num">Profit a flight</th></tr></thead><tbody>' +
+    return '<div class="wide"><table class="grid routes"><thead><tr><th>Route</th><th class="num">Seats on the plane</th><th class="num">Cost per passenger</th><th class="num">Trial flight: seats sold</th><th class="num">at a fare of</th><th class="num">and it made</th></tr></thead><tbody>' +
       R.map(function (v) { var t = v.told; return '<tr><td>' + esc(t.label) + '</td><td class="num">' + fmt(t.seats) + '</td><td class="num">' + money(t.mc) + '</td><td class="num">' + fmt(t.q0) + '</td><td class="num">' + money(t.p0) + '</td><td class="num">' + money(C.statusQuoProfit(t)) + '</td></tr>'; }).join("") +
-      '</tbody></table></div>';
+      '</tbody></table></div><p class="caption" style="margin:4px 0 0">The cost per passenger is fuel, catering and airport fees; the plane and the crew cost the same however many fly.</p>';
   }
   function classBriefing(ch) {
     var R = ch.routes, fl = R[0].told.flights;
-    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened ' + numWord(R.length) + ' new routes, each the only direct flight between its two cities, and isn\'t sure its fares are right, so it has asked consulting teams to run its next flights. ' +
-      'Each team runs <b>' + nFlights(fl) + '</b> on one route. On each route, the team that makes the most money wins.</p>' +
-      routesTable(R) + rules(fl, null, howOpen(ch.phase === "setup")) + '</div>';
+    return '<div class="briefing"><p class="story">' + AIRLINE + ' has just opened ' + numWord(R.length) + ' new routes, each the only direct flight between its two cities and each flown once a week. On each route it ' + KNOWS +
+      'So far it has run one trial flight on each route. It isn\'t sure its fares are right, so it has asked consulting teams to run its next flights. It gave the teams the following information:</p>' +
+      routesTable(R) + rules(fl, null, R.length, howOpen(ch.phase === "setup")) + '</div>';
   }
   function routeReveal(v) {
     var t = v.told, d = demandOf(v), best = C.bestSeats(d), sq = C.statusQuoProfit(t);
     return demandLine(d, true) +
-      '<p class="reveal-line">Best: <b>' + fmt(best.seats) + ' seats at ' + C.fareText(best.fare) + '</b>, <b>' + money(best.profit) + '</b> a flight, ' + money(best.profit - sq) + ' more than a trial flight. ' + fullPlaneText(t, d, best, sq, true) + '</p>' +
+      '<p class="reveal-line">Best: <b>' + fmt(best.seats) + ' seats at ' + C.fareText(best.fare) + '</b>, <b>' + money(best.profit) + '</b> a flight, ' + money(best.profit - sq) + ' more than the trial flight. ' + fullPlaneText(t, d, best, sq, true) + '</p>' +
       C.profitChartHtml(d, { seats: t.q0, profit: sq }, teamDots(v.board, d), { r: 4, h: 300 }) + C.demandChartHtml(t, d, 280);
   }
   function overallTable(ch) {

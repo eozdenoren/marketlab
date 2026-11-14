@@ -1,7 +1,7 @@
 /* Pricing Laboratory: the arithmetic and the SVG chart, shared by the class page (pricing.js) and the instructor
    page (pricing_instructor.js). Plain script, no dependencies.
 
-   The challenge: a route with cost mc per passenger, `seats` seats, the trial flights (q0 seats sold at a fare of
+   The challenge: a route with cost mc per passenger, `seats` seats, the trial flight (q0 seats sold at a fare of
    p0) and a hidden linear demand Q = a - b P through that point (a = q0 + b p0). A team chooses how many seats to
    sell; the fare is then the highest at which that many people buy, (a - seats) / b. The same arithmetic as the
    script's (backend/Pricing.gs): the fare to the penny, the profit to the pound.
@@ -25,7 +25,7 @@ var PricingCore = (function () {
   function chokePrice(d) { return d.a / d.b; }
   function fareFor(d, q) { return (d.a - q) / d.b; }
   function profitSelling(d, q) { return Math.round((fareFor(d, q) - d.mc) * q); }
-  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }                      // what a trial flight made
+  function statusQuoProfit(s) { return (s.p0 - s.mc) * s.q0; }                      // what the trial flight made
   // The most seats that can be sold: the plane's, or everyone who would fly for nothing.
   function maxSeats(d) { return Math.max(1, Math.min(d.seats, Math.floor(d.a))); }
   // The best number of seats: MR = MC gives (a - b mc) / 2; with fewer seats than that, a full plane. Whole seats,
@@ -44,7 +44,7 @@ var PricingCore = (function () {
   // The demand as the slides write it: fare = choke - slope x Q.
   function inverseText(d) { return fmt(Math.round(chokePrice(d))) + " − " + plain(1 / d.b) + " × Q"; }
   // The profit chart: profit per flight against the seats sold, in a window centred on the best number of seats and
-  // ending at the full plane (when the best is a full plane, the last 60% of the seats). The trial flights are a
+  // ending at the full plane (when the best is a full plane, the last 60% of the seats). The trial flight is a
   // hollow dot and a dashed line, the best a green dot, and the flights given are dots ({seats, profit, title,
   // name}); flights left of the window are listed under the chart instead of stretching it.
   function profitChartHtml(d, old, flights, opts) {
@@ -54,7 +54,7 @@ var PricingCore = (function () {
     var pts = [], lo = Infinity, hi = -Infinity;
     for (var q = Math.max(1, x0); q <= top; q++) { var pr = profitSelling(d, q); pts.push([q, pr]); lo = Math.min(lo, pr); hi = Math.max(hi, pr); }
     var r = Math.max(1, hi - lo), pad = Math.max(1, Math.round(0.03 * (top - x0))), markers = [], off = [];
-    if (old) markers.push({ x: old.seats, y: old.profit, color: COLORS.grey, hollow: true, name: "The trial flights", title: "The trial flights: " + fmt(old.seats) + " seats, profit " + money(old.profit) });
+    if (old) markers.push({ x: old.seats, y: old.profit, color: COLORS.grey, hollow: true, name: "The trial flight", title: "The trial flight: " + fmt(old.seats) + " seats, profit " + money(old.profit) });
     markers.push({ x: best.seats, y: best.profit, color: COLORS.green, r: 8, name: "Best: " + fmt(best.seats) + " seats", label: fmt(best.seats) + " seats", title: "Best: " + fmt(best.seats) + " seats at " + fareText(best.fare) + ", profit " + money(best.profit) });
     (flights || []).forEach(function (f) {
       if (f.seats < x0) { off.push(f); return; }
@@ -62,21 +62,21 @@ var PricingCore = (function () {
     });
     var html = chart({ title: "Profit against the seats sold", h: opts.h, x: { min: x0, max: top + pad, label: "Seats sold" }, y: { min: lo - 0.08 * r, max: hi + 0.08 * r, label: "Profit per flight (£)" },
                        lines: [{ pts: pts, color: COLORS.blue, width: 2.5, name: "Profit at each number of seats" }],
-                       hlines: old ? [{ y: old.profit, label: "a trial flight's profit", color: COLORS.grey }] : [],
+                       hlines: old ? [{ y: old.profit, label: "the trial flight's profit", color: COLORS.grey }] : [],
                        vlines: top >= d.seats ? [{ x: top, label: "plane full", color: COLORS.orange, left: true }] : [], markers: markers });
     if (off.length) html += '<p class="caption">Off the chart: ' + off.map(function (f) { return (f.title || fmt(f.seats) + " seats") + " (profit " + money(f.profit) + ")"; }).join("; ") + '.</p>';
     return html;
   }
-  // The demand line with the trial flights and the best point on it.
+  // The demand line with the trial flight and the best point on it.
   function demandChartHtml(t, d, h) {
     var choke = chokePrice(d), best = bestSeats(d);
     return chart({ title: "The demand", h: h, x: { max: Math.max(d.a, t.seats) * 1.05, label: "Seats sold" }, y: { max: choke * 1.05, label: "Fare (£)" },
                    lines: [{ pts: [[0, choke], [d.a, 0]], color: COLORS.red, width: 2.5, name: "Demand: fare = " + inverseText(d) }],
                    hlines: [{ y: t.mc, label: "cost per passenger", color: COLORS.grey }], vlines: [{ x: t.seats, label: "plane full", color: COLORS.orange }],
-                   markers: [{ x: t.q0, y: t.p0, color: COLORS.grey, hollow: true, name: "The trial flights", label: fmt(t.q0) + " at " + fareText(t.p0) },
+                   markers: [{ x: t.q0, y: t.p0, color: COLORS.grey, hollow: true, name: "The trial flight", label: fmt(t.q0) + " at " + fareText(t.p0) },
                              { x: best.seats, y: best.fare, color: COLORS.green, name: "Best", label: fmt(best.seats) + " at " + fareText(best.fare) }] });
   }
-  // The line through the trial flights and one test flight: the group's own estimate of the demand.
+  // The line through the trial flight and one test flight: the group's own estimate of the demand.
   function lineThrough(p1, q1, p2, q2) {
     if (Math.abs(p2 - p1) < 1e-9) return null;
     var b = (q1 - q2) / (p2 - p1);
